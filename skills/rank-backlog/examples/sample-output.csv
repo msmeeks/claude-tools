@@ -1,0 +1,16 @@
+Rank,Work ID,Link,Subject,Assigned To,Created Date,Age (Days),Customer/Case Count,Days Since Last Activity,Nevering Score,Recommendation
+1,W-12345678,https://gus.lightning.force.com/lightning/r/W-12345678/view,Add support for legacy API v1 endpoints,john.doe@salesforce.com,2023-05-15,620,0,450,130,Critical: Epic completed
+2,W-12345679,https://gus.lightning.force.com/lightning/r/W-12345679/view,Bug: Incorrect error message in migration script,jane.smith@salesforce.com,2023-08-20,523,0,387,125,Critical: Epic nevered
+3,W-12345680,https://gus.lightning.force.com/lightning/r/W-12345680/view,Investigate performance issue with batch processing,bob.johnson@salesforce.com,2024-01-10,412,0,280,110,High: Zero customer impact + old
+4,W-12345681,https://gus.lightning.force.com/lightning/r/W-12345681/view,Update documentation for deprecated feature,john.doe@salesforce.com,2023-11-05,478,0,312,105,High: Zero customer impact + very old
+5,W-12345682,https://gus.lightning.force.com/lightning/r/W-12345682/view,Bug: UI glitch on settings page,alice.williams@salesforce.com,2024-03-22,341,1,245,95,High: Minimal impact + inactive
+6,W-12345683,https://gus.lightning.force.com/lightning/r/W-12345683/view,Feature request: Export to CSV enhancement,jane.smith@salesforce.com,2024-02-18,373,3,198,90,High: Low cases + old
+7,W-12345684,https://gus.lightning.force.com/lightning/r/W-12345684/view,Bug: Tooltip text truncated on mobile,bob.johnson@salesforce.com,2023-09-10,534,2,401,85,Medium: Low impact + very old
+8,W-12345685,https://gus.lightning.force.com/lightning/r/W-12345685/view,Add bulk delete functionality to admin panel,alice.williams@salesforce.com,2024-04-15,317,4,189,70,Medium: Low cases + old + inactive
+9,W-12345686,https://gus.lightning.force.com/lightning/r/W-12345686/view,Refactor authentication module for better testing,john.doe@salesforce.com,2024-06-01,270,N/A,156,65,Medium: Old and inactive
+10,W-12345687,https://gus.lightning.force.com/lightning/r/W-12345687/view,Bug: Dashboard widget fails to load in Edge browser,jane.smith@salesforce.com,2024-05-10,292,8,134,60,Medium: Old + inactive
+11,W-12345688,https://gus.lightning.force.com/lightning/r/W-12345688/view,Improve error handling in data import process,bob.johnson@salesforce.com,2024-07-15,226,N/A,98,45,Lower: Consider for nevering
+12,W-12345689,https://gus.lightning.force.com/lightning/r/W-12345689/view,Bug: Inconsistent date format in reports,alice.williams@salesforce.com,2024-08-22,188,12,87,40,Lower: Some customer impact
+13,W-12345690,https://gus.lightning.force.com/lightning/r/W-12345690/view,Feature: Add dark mode support,john.doe@salesforce.com,2024-09-10,169,25,45,20,Low priority
+14,W-12345691,https://gus.lightning.force.com/lightning/r/W-12345691/view,Bug: Validation error on form submission,jane.smith@salesforce.com,2024-10-05,144,18,32,10,Low priority
+15,W-12345692,https://gus.lightning.force.com/lightning/r/W-12345692/view,Upgrade to latest framework version,bob.johnson@salesforce.com,2024-11-12,106,N/A,15,0,Low priority
