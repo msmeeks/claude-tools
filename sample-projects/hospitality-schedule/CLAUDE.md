@@ -8,8 +8,7 @@ for the current task. Run it before implementation starts (planning phase) and a
 written for post-implementation review.
 
 For documentation: read `docs/llms.md` first, then only the relevant feature doc(s).
-After every non-trivial change run `doc-writer` to update the feature doc, `CHANGELOG.md`, and
-`docs/llms.md`.
+After every non-trivial change run `doc-writer` to update the feature doc and `docs/llms.md`.
 
 ## Branching & Promotion
 

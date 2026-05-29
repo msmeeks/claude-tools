@@ -87,7 +87,7 @@ Run QA and documentation update **in parallel** after all review fixes are appli
 ```
 Agent(qa-engineer): Run automated tests, lint, API smoke tests, and regression check for [feature description].
 
-Agent(doc-writer): Update documentation for [feature changed]. Create or update the relevant docs/features/<name>.md, append to CHANGELOG.md, and update docs/llms.md if any new doc files were created.
+Agent(doc-writer): Update documentation for [feature changed]. Create or update the relevant docs/features/<name>.md, and update docs/llms.md if any new doc files were created.
 ```
 
 QA must **PASS** before marking the task complete. Any QA failure must be fixed and QA re-run. Documentation must be updated before the task is marked done.
@@ -124,7 +124,7 @@ Before any UI work, verify `meta/DESIGN_BRIEF.md` exists. If not, create the `me
 - [ ] All 7 review agents run in parallel
 - [ ] All Critical/Blocker findings fixed
 - [ ] QA agent run and PASS
-- [ ] Doc update done (feature doc + CHANGELOG.md + llms.md)
+- [ ] Doc update done (feature doc + llms.md)
 - [ ] Design brief up to date
 
 ## Demo & Help-Docs Phase (run after docs phase on significant features)

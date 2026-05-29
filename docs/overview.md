@@ -36,8 +36,3 @@ claude-tools/
 3. **Portable** — the repo clones to `~/Code/claude-tools` on any macOS/Linux machine and `setup-symlinks.sh` handles the rest.
 4. **No code-generation at repo level** — this repo defines *how to do things*, not an app that *does things*.
 
-## Changelog
-
-| Date | Change |
-|---|---|
-| 2026-05-29 | Initial documentation |

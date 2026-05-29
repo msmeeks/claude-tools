@@ -98,8 +98,3 @@ ln -s ~/Code/claude-tools/skills/new-skill ~/.claude/skills/new-skill
 
 If a real (non-symlink) file existed at any destination before the script ran, the script renames it to `<file>.bak`. These can be deleted once the new symlinks are confirmed working.
 
-## Changelog
-
-| Date | Change |
-|---|---|
-| 2026-05-29 | Initial documentation |

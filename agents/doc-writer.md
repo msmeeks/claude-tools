@@ -1,6 +1,6 @@
 ---
 name: doc-writer
-description: Creates and updates project documentation. Maintains docs/features/<name>.md per feature, docs/llms.md index, and CHANGELOG.md. Use at the start of planning (to read context) and after every non-trivial code change (to write/update docs). Always reads docs/llms.md first.
+description: Creates and updates project documentation. Maintains docs/features/<name>.md per feature and docs/llms.md index. Use at the start of planning (to read context) and after every non-trivial code change (to write/update docs). Always reads docs/llms.md first.
 model: sonnet
 tools:
   - Read
@@ -26,7 +26,7 @@ If `docs/llms.md` does not exist, check whether `docs/` exists. If neither exist
 
 **Read mode** (called during planning): Read `docs/llms.md`, then read only the feature doc(s) relevant to the task at hand. Return a structured summary of what's documented and flag any gaps or outdated sections.
 
-**Write mode** (called after a code change): Create or update the relevant feature doc(s), update `CHANGELOG.md`, and update `docs/llms.md` if new files were added.
+**Write mode** (called after a code change): Create or update the relevant feature doc(s), and update `docs/llms.md` if new files were added.
 
 ## Feature doc format
 
@@ -60,27 +60,7 @@ Every `docs/features/<name>.md` must follow this structure:
 ### [Subfeature / area]
 [detail, edge cases, notable constraints]
 
-## Changelog
-| Date | Change |
-|---|---|
-| YYYY-MM-DD | Initial documentation |
 ```
-
-## CHANGELOG.md format
-
-At the project root. New entries go at the top:
-
-```markdown
-# Changelog
-
-## [Unreleased]
-
-## [date] — Feature / Change Title
-- What changed (user-visible summary)
-- What changed (technical summary if distinct)
-```
-
-Never delete existing entries. Always prepend.
 
 ## docs/llms.md format
 
@@ -96,12 +76,10 @@ Load this file first. Then load only the specific doc files relevant to your tas
 ## Design & dev
 - [../DESIGN_BRIEF.md](../DESIGN_BRIEF.md) — full UI design system
 - [../DEVELOPMENT.md](../DEVELOPMENT.md) — local setup guide
-- [../CHANGELOG.md](../CHANGELOG.md) — project changelog
 ```
 
 ## Rules
 
-- Never delete changelog entries — always append
 - Keep feature docs accurate to the current code — if you notice a discrepancy, note it
 - Feature doc descriptions should be written from a user's perspective first, then technical
 - Do not duplicate information from DESIGN_BRIEF.md or DEVELOPMENT.md — link to them instead

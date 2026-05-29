@@ -64,7 +64,3 @@ Copy an `*.example.json`, fill in real values, and save as `*.local.json`. See `
 - Gemini and OpenAI prompts leave your machine under those providers' data retention policies — avoid sending confidential code or secrets
 - Re-audit `@musistudio/claude-code-router` with `npm audit` after each version upgrade
 
-## Changelog
-| Date | Change |
-|---|---|
-| 2026-05-29 | Initial documentation |

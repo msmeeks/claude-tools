@@ -110,7 +110,6 @@ Full results saved to: backlog-nevering-analysis-pardot-maiday-2026-02-26.csv
 ├── SKILL.md                      # Main skill definition (586 lines)
 ├── USAGE-GUIDE.md                # Detailed user guide (546 lines)
 ├── GUS-MCP-SETUP.md              # gus-mcp server setup guide (204 lines)
-├── CHANGELOG.md                  # Version history
 ├── examples/
 │   └── sample-output.csv         # Example CSV output
 └── templates/
@@ -233,7 +232,6 @@ A: Manual mode still works! Just provide team member emails with `--users` flag.
 - **Detailed usage:** USAGE-GUIDE.md
 - **Setup gus-mcp:** GUS-MCP-SETUP.md
 - **Technical details:** SKILL.md
-- **Version history:** CHANGELOG.md
 
 ## Success Stories
 

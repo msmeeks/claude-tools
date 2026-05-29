@@ -80,8 +80,3 @@ Scoring algorithm weights: epic completed/nevered (+100), zero customer impact (
 3. Run `setup-symlinks.sh` (or `ln -s skills/<name> ~/.claude/skills/<name>`).
 4. Invoke with `/<name>` in Claude Code.
 
-## Changelog
-
-| Date | Change |
-|---|---|
-| 2026-05-29 | Initial documentation; 5 skills documented |

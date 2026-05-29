@@ -27,7 +27,7 @@ Each file in `agents/` is a standalone `.md` with a YAML frontmatter block follo
 | `agents/privacy-reviewer.md` | GDPR, PII handling, consent flows, data minimization |
 | `agents/accessibility-reviewer.md` | WCAG 2.2 AA, keyboard navigation, ARIA, color contrast |
 | `agents/design-reviewer.md` | Design brief adherence, component reuse, spacing/color tokens |
-| `agents/doc-writer.md` | Creates/updates docs/features/, CHANGELOG.md, docs/llms.md |
+| `agents/doc-writer.md` | Creates/updates docs/features/ and docs/llms.md |
 | `agents/qa-engineer.md` | Runs automated tests, lint, API smoke tests, regression checks |
 | `agents/test-reviewer.md` | Test value, edge cases, branch coverage, 90%+ line coverage target |
 
@@ -75,8 +75,3 @@ Each agent reports findings grouped by severity. The severity vocabulary differs
 3. Run `setup-symlinks.sh` (or `ln -s`) to make it available at `~/.claude/agents/<name>.md`.
 4. Dispatch with `Agent(subagent_type="<name>", ...)`.
 
-## Changelog
-
-| Date | Change |
-|---|---|
-| 2026-05-29 | Initial documentation; 9 agents documented |

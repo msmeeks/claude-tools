@@ -11,4 +11,3 @@ Load this file first. Then load only the specific doc files relevant to your tas
 
 ## Dev
 - [../README.md](../README.md) — quick-start, skills reference, agents reference
-- [../CHANGELOG.md](../CHANGELOG.md) — project changelog

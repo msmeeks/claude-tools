@@ -99,6 +99,6 @@ git add -A && git commit -m "..." && git push   # push your edits
 | privacy-reviewer | GDPR, PII handling, consent flows, data minimization |
 | accessibility-reviewer | WCAG 2.2 AA, keyboard nav, ARIA, color contrast |
 | design-reviewer | Design brief adherence, component reuse, spacing/color tokens |
-| doc-writer | Maintains `docs/features/`, `CHANGELOG.md`, `docs/llms.md` |
+| doc-writer | Maintains `docs/features/` and `docs/llms.md` |
 | qa-engineer | Automated tests, smoke tests, regression checks |
 | test-reviewer | Test value, edge cases, branch coverage, 90%+ line coverage, FE+BE parity, boundary cases |
