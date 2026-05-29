@@ -84,11 +84,17 @@ Every project under `~/Code/` must have a `docs/` directory. If it doesn't exist
 - `docs/features/<name>.md` — one file per major feature area
 - `CHANGELOG.md` — project-level changelog at the project root
 
+**Before planning, reviewing code, or responding to any prompt about the codebase:** read `docs/llms.md` first, then the relevant feature doc(s). The docs are a maintained reference that identifies likely source files, key patterns, and architectural boundaries — use them to narrow your code search before reading code directly. Code is always the authoritative source of truth, but docs dramatically reduce the search space.
+
 At the start of every planning operation: read `docs/llms.md`, then only the relevant feature doc(s). After every non-trivial change, run `doc-writer` to update the feature doc, `CHANGELOG.md`, and `docs/llms.md`.
 
 ## QA
 
 Run tests, linter, smoke test, and boundary inputs before marking work done. Update docs (feature doc + CHANGELOG.md + llms.md index if new files added).
+
+## PR Conflicts
+
+When a PR has merge conflicts, always resolve them before pushing. Fetch the base branch, merge or rebase, resolve all conflicts, then push the updated branch. Never leave a PR in a conflicted state.
 
 ## Design Briefs & Brand Voice
 
