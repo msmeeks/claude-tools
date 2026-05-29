@@ -1,6 +1,6 @@
 ---
 name: sdlc
-description: Full software development lifecycle orchestrator. Dispatches parallel subagent reviews (code quality, style/lint, security, privacy, accessibility, design, QA, documentation) for any code change. Use this skill whenever making non-trivial code changes. Also use during planning phase to run doc review plus security, privacy, accessibility, and design reviews before implementation.
+description: Full software development lifecycle orchestrator. Dispatches parallel subagent reviews (code quality, style/lint, security, privacy, accessibility, design, tests, QA, documentation) for any code change. Use this skill whenever making non-trivial code changes. Also use during planning phase to run doc review plus security, privacy, accessibility, and design reviews before implementation.
 ---
 
 # SDLC Orchestrator
@@ -15,7 +15,7 @@ This skill manages the full review and QA pipeline for code changes. Always invo
 
 - `/sdlc` — full pipeline (all phases)
 - `/sdlc plan` — planning/design phase only (docs + security + privacy + a11y + design)
-- `/sdlc review` — code + style + security + privacy + a11y + design reviews only
+- `/sdlc review` — code + style + security + privacy + a11y + design + test reviews only
 - `/sdlc qa` — QA phase only
 - `/sdlc docs` — documentation update only (run after changes, before merging)
 
@@ -60,10 +60,10 @@ Follow these rules during implementation:
 
 ## Phase 3: Review (run after implementation, before QA)
 
-Dispatch all six review agents **in parallel**:
+Dispatch all seven review agents **in parallel**:
 
 ```
-Agent(code-reviewer): Review [files changed] for DRY/SOLID, test coverage, correctness, and third-party usage.
+Agent(code-reviewer): Review [files changed] for DRY/SOLID, correctness, and third-party usage.
 
 Agent(style-reviewer): Review [files changed] for naming, comment quality, idiomatic constructs, and linting compliance.
 
@@ -74,6 +74,8 @@ Agent(privacy-reviewer): Review [files changed] for GDPR compliance, PII handlin
 Agent(accessibility-reviewer): Review [files changed] for WCAG 2.2 AA compliance.
 
 Agent(design-reviewer): Review [files changed] for design brief adherence and component consistency.
+
+Agent(test-reviewer): Review [files changed] for test quality: genuine-value assertions, edge cases, branch coverage, line coverage (target 90%+), frontend+backend unit-test parity, and boundary cases for conditionals and range comparisons.
 ```
 
 Fix all Critical/Blocker issues. Fix Major issues unless there is a documented reason not to. Minor issues may be deferred to a follow-up.
@@ -119,7 +121,7 @@ Before any UI work, verify `meta/DESIGN_BRIEF.md` exists. If not, create the `me
 - [ ] Planning reviews done (security, privacy, a11y, design)
 - [ ] Implementation follows DRY/SOLID, minimal deps, TDD
 - [ ] Linter clean throughout
-- [ ] All 6 review agents run in parallel
+- [ ] All 7 review agents run in parallel
 - [ ] All Critical/Blocker findings fixed
 - [ ] QA agent run and PASS
 - [ ] Doc update done (feature doc + CHANGELOG.md + llms.md)

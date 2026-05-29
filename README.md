@@ -14,6 +14,7 @@ agents/                   # Subagent definitions (~/.claude/agents/)
   qa-engineer.md
   security-reviewer.md
   style-reviewer.md
+  test-reviewer.md
 
 skills/                   # Slash-command skills (~/.claude/skills/)
   demo/                   # /demo  — HTML + MP4 demo artifacts
@@ -82,7 +83,7 @@ git add -A && git commit -m "..." && git push   # push your edits
 
 | Agent | Purpose |
 |---|---|
-| code-reviewer | DRY/SOLID, test coverage, correctness, dependency audit |
+| code-reviewer | DRY/SOLID, correctness, dependency audit |
 | style-reviewer | Naming, comments, idiomatic style, linting |
 | security-reviewer | OWASP Top 10, auth/authz, CVEs, injection risks |
 | privacy-reviewer | GDPR, PII handling, consent flows, data minimization |
@@ -90,3 +91,4 @@ git add -A && git commit -m "..." && git push   # push your edits
 | design-reviewer | Design brief adherence, component reuse, spacing/color tokens |
 | doc-writer | Maintains `docs/features/`, `CHANGELOG.md`, `docs/llms.md` |
 | qa-engineer | Automated tests, smoke tests, regression checks |
+| test-reviewer | Test value, edge cases, branch coverage, 90%+ line coverage, FE+BE parity, boundary cases |
