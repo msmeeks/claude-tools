@@ -1,0 +1,16 @@
+{
+  "Providers": [
+    {
+      "name": "ollama",
+      "api_base_url": "http://LAN_IP_HERE:11434/v1",
+      "api_key": "",
+      "models": ["qwen2.5-coder:32b", "llama3.1:8b"]
+    }
+  ],
+  "Router": {
+    "default":     "ollama,qwen2.5-coder:32b",
+    "background":  "ollama,llama3.1:8b",
+    "think":       "ollama,qwen2.5-coder:32b",
+    "longContext": "ollama,qwen2.5-coder:32b"
+  }
+}

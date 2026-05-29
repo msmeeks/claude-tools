@@ -82,15 +82,15 @@ Every project under `~/Code/` must have a `docs/` directory. If it doesn't exist
 - `docs/llms.md` — index of all doc files; **always read this first during planning**
 - `docs/overview.md` — project purpose, users, roles, architecture, tech stack
 - `docs/features/<name>.md` — one file per major feature area
-- `CHANGELOG.md` — project-level changelog at the project root
+- Release-level history lives in GitHub Releases, auto-generated from merged PR titles by `deploy-prod.yml`.
 
 **Before planning, reviewing code, or responding to any prompt about the codebase:** read `docs/llms.md` first, then the relevant feature doc(s). The docs are a maintained reference that identifies likely source files, key patterns, and architectural boundaries — use them to narrow your code search before reading code directly. Code is always the authoritative source of truth, but docs dramatically reduce the search space.
 
-At the start of every planning operation: read `docs/llms.md`, then only the relevant feature doc(s). After every non-trivial change, run `doc-writer` to update the feature doc, `CHANGELOG.md`, and `docs/llms.md`.
+At the start of every planning operation: read `docs/llms.md`, then only the relevant feature doc(s). After every non-trivial change, run `doc-writer` to update the feature doc and `docs/llms.md`.
 
 ## QA
 
-Run tests, linter, smoke test, and boundary inputs before marking work done. Update docs (feature doc + CHANGELOG.md + llms.md index if new files added).
+Run tests, linter, smoke test, and boundary inputs before marking work done. Update docs (feature doc + llms.md index if new files added).
 
 ## PR Conflicts
 

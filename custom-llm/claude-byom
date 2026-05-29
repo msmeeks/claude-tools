@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# claude-byom
+#
+# Switch the active claude-code-router backend profile and launch Claude Code.
+# Atomically replaces ~/.claude-code-router/config.json with the chosen profile,
+# then execs `ccr code` so signals and exit codes propagate correctly.
+#
+# Usage:
+#   ./claude-byom <profile> [-- ccr/claude args...]
+#
+#   profile — name of configs/<profile>.local.json (without the .local.json suffix)
+#   --       — everything after is passed to `ccr code`
+#
+# Examples:
+#   ./claude-byom ollama-lan
+#   ./claude-byom gemini -- --verbose
+#
+# Requires: ccr (run install.sh first), configs/<profile>.local.json
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CCR_HOME="${CCR_HOME:-${HOME}/.claude-code-router}"
+
+# Warn if api_base_url looks like a loopback-only URL that won't reach a LAN host.
+# This is a sanity hint, not a security control — users can configure any URL.
+warn_loopback_only() {
+  local url="$1"
+  if [[ "$url" == "http://LAN_IP_HERE"* ]]; then
+    echo "warning: api_base_url still contains placeholder 'LAN_IP_HERE'" >&2
+    echo "         Edit configs/${PROFILE}.local.json before continuing." >&2
+    exit 1
+  fi
+}
+
+if [[ $# -lt 1 ]]; then
+  echo "usage: $(basename "$0") <profile> [-- ccr args...]" >&2
+  echo "" >&2
+  echo "Available profiles (configs/*.local.json):" >&2
+  for f in "${SCRIPT_DIR}/configs"/*.local.json; do
+    [[ -f "$f" ]] && echo "  $(basename "$f" .local.json)" >&2
+  done
+  echo "" >&2
+  echo "No *.local.json found? Copy an example:" >&2
+  echo "  cp configs/ollama-lan.example.json configs/ollama-lan.local.json" >&2
+  exit 1
+fi
+
+PROFILE="$1"
+shift
+# Strip leading -- separator if present
+if [[ "${1:-}" == "--" ]]; then shift; fi
+
+PROFILE_FILE="${SCRIPT_DIR}/configs/${PROFILE}.local.json"
+
+if [[ ! -f "${PROFILE_FILE}" ]]; then
+  echo "error: profile '${PROFILE}' not found at ${PROFILE_FILE}" >&2
+  echo "       Copy the example and fill in your values:" >&2
+  echo "         cp configs/${PROFILE}.example.json configs/${PROFILE}.local.json" >&2
+  exit 1
+fi
+
+# Prevent other local users from reading API keys in the source file
+chmod 600 "${PROFILE_FILE}"
+
+# Check for unfilled placeholders via env var to avoid shell injection
+if command -v python3 &>/dev/null; then
+  base_url="$(CCR_PROFILE="${PROFILE_FILE}" python3 - <<'PYEOF'
+import json, os, sys
+try:
+    d = json.load(open(os.environ["CCR_PROFILE"]))
+    print(d["Providers"][0]["api_base_url"])
+except Exception:
+    pass
+PYEOF
+  )" || true
+  if [[ -n "${base_url}" ]]; then
+    warn_loopback_only "${base_url}"
+  fi
+fi
+
+# Atomically swap config; set mode 600 before mv so there is no readable window
+mkdir -p "${CCR_HOME}"
+tmp="$(mktemp "${CCR_HOME}/config.json.XXXXXX")"
+cp "${PROFILE_FILE}" "${tmp}"
+chmod 600 "${tmp}"
+mv "${tmp}" "${CCR_HOME}/config.json"
+
+echo "=== Launching Claude Code via ${PROFILE} ==="
+
+if ! command -v ccr &>/dev/null; then
+  echo "error: ccr not found. Run: bash install.sh" >&2
+  exit 1
+fi
+
+exec ccr code "$@"

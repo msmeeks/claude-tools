@@ -30,6 +30,14 @@ sample-projects/
   hospitality-schedule/
     CLAUDE.md             # Example project-level CLAUDE.md
 
+custom-llm/               # Route `claude` to Ollama / Gemini / OpenAI via claude-code-router
+  README.md
+  install.sh              # one-time bootstrap: installs ccr
+  claude-byom             # launcher: ./claude-byom <profile>
+  configs/                # per-backend config templates (.example.json)
+  network/                # Tailscale / SSH / Caddy options for remote Ollama
+  deploy/                 # fly.io + AWS recipes for self-hosted Ollama
+
 setup-symlinks.sh         # One-time setup: symlink repo → ~/.claude (see below)
 ```
 
@@ -47,6 +55,8 @@ takes effect in Claude Code immediately — no copy or restart required.
 
 The script backs up any existing file it replaces as `<file>.bak` and skips anything that is
 already a symlink.
+
+To run Claude Code against a non-Anthropic backend (Ollama, Gemini, OpenAI), see `custom-llm/`.
 
 ## Updating
 

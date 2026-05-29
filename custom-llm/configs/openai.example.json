@@ -1,0 +1,16 @@
+{
+  "Providers": [
+    {
+      "name": "openai",
+      "api_base_url": "https://api.openai.com/v1",
+      "api_key": "YOUR_OPENAI_API_KEY",
+      "models": ["gpt-4o", "gpt-4o-mini"]
+    }
+  ],
+  "Router": {
+    "default":     "openai,gpt-4o",
+    "background":  "openai,gpt-4o-mini",
+    "think":       "openai,gpt-4o",
+    "longContext": "openai,gpt-4o"
+  }
+}
