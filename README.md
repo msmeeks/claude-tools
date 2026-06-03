@@ -16,7 +16,7 @@ agents/                   # Subagent definitions (~/.claude/agents/)
   style-reviewer.md
   test-reviewer.md
 
-skills/                   # Slash-command skills (~/.claude/skills/)
+skills/                   # Slash-command skills
   demo/                   # /demo  — HTML + MP4 demo artifacts
   help-docs/              # /help-docs  — customer-facing docs site
   pr-image-upload/        # /pr-image-upload  — embed screenshots in PRs
@@ -38,10 +38,11 @@ custom-llm/               # Route `claude` to Ollama / Gemini / OpenAI via claud
   network/                # Tailscale / SSH / Caddy options for remote Ollama
   deploy/                 # fly.io + AWS recipes for self-hosted Ollama
 
-setup-symlinks.sh         # One-time setup: symlink repo → ~/.claude (see below)
+setup-symlinks.sh         # Claude CLI setup: symlink repo → ~/.claude (see below)
+setup-symlinks-desktop.sh # Claude Desktop setup (macOS): symlink repo → Desktop app (see below)
 ```
 
-## Quick start (new machine)
+## Quick start — Claude CLI (new machine)
 
 ```bash
 git clone <this-repo> ~/Code/claude-tools
@@ -56,13 +57,34 @@ takes effect in Claude Code immediately — no copy or restart required.
 The script backs up any existing file it replaces as `<file>.bak` and skips anything that is
 already a symlink.
 
+## Quick start — Claude Desktop (macOS)
+
+```bash
+git clone <this-repo> ~/Code/claude-tools
+cd ~/Code/claude-tools
+bash setup-symlinks-desktop.sh
+```
+
+`setup-symlinks-desktop.sh` is the macOS-only variant for the Claude Desktop app. It:
+
+- Symlinks each skill into the Desktop app's skills-plugin directory
+  (`~/Library/Application Support/Claude/local-agent-mode-sessions/skills-plugin/…/skills/`)
+  and registers each skill in the plugin's `manifest.json` so it appears in the Desktop UI.
+- Symlinks agents into `~/.claude/agents/` (same location as the CLI).
+- Symlinks `global/CLAUDE.md` to `~/.claude/CLAUDE.md` (same location as the CLI).
+
+**Prerequisites:** Open Claude Desktop at least once before running the script so it can
+initialize the skills-plugin directory. After running, restart Claude Desktop for skills to
+appear.
+
 To run Claude Code against a non-Anthropic backend (Ollama, Gemini, OpenAI), see `custom-llm/`.
 
 ## Updating
 
 ```bash
 git pull        # pull latest
-# changes are live immediately via symlinks
+# changes are live immediately via symlinks (CLI)
+# restart Claude Desktop after pulling to pick up skill changes
 git add -A && git commit -m "..." && git push   # push your edits
 ```
 
@@ -70,13 +92,15 @@ git add -A && git commit -m "..." && git push   # push your edits
 
 1. Create `skills/<name>/SKILL.md` with the required frontmatter (`name`, `description`).
 2. Add any supporting files in the same directory.
-3. Run `setup-symlinks.sh` to link it (or manually `ln -s`).
-4. Invoke it in Claude Code with `/<name>`.
+3. **CLI:** run `setup-symlinks.sh` to link it (or manually `ln -s`).
+   **Desktop (macOS):** run `setup-symlinks-desktop.sh` to link it and register it in
+   `manifest.json`, then restart Claude Desktop.
+4. Invoke it with `/<name>`.
 
 ## Adding a new agent
 
 1. Create `agents/<name>.md` with frontmatter (`name`, `description`, `model`, `tools`).
-2. Run `setup-symlinks.sh` to link it (or manually `ln -s`).
+2. Run `setup-symlinks.sh` or `setup-symlinks-desktop.sh` to link it (or manually `ln -s`).
 3. Dispatch it with `Agent(subagent_type="<name>", ...)`.
 
 ## Skills reference
