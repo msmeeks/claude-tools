@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{{ product|e }} — {{ feature|e }} demo">
+  <title>{{ script.title|e }} | {{ product|e }}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 15px;
+      background: {{ tok.page_bg }};
+      color: {{ tok.body_text }};
+      line-height: 1.6;
+    }
+    header {
+      background: linear-gradient(135deg, {{ tok.brand_gradient_start }} 0%, {{ tok.brand_gradient_end }} 100%);
+      color: #fff;
+      padding: 48px 32px 40px;
+      text-align: center;
+    }
+    header h1 { font-size: 2rem; font-weight: 700; margin-bottom: 8px; }
+    header .tagline { font-size: 1.05rem; opacity: 0.85; }
+    header .demo-title { font-size: 1.25rem; font-weight: 500; margin-top: 12px; opacity: 0.9; }
+    .page-body {
+      display: flex;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 16px;
+      gap: 24px;
+    }
+    aside.sidebar-nav {
+      width: 220px;
+      flex-shrink: 0;
+      position: sticky;
+      top: 24px;
+      align-self: flex-start;
+      background: {{ tok.card_bg }};
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      padding: 20px 16px;
+    }
+    .sidebar-nav h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; margin-bottom: 12px; }
+    .sidebar-nav a {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-radius: 8px;
+      text-decoration: none; color: {{ tok.secondary_text }};
+      font-size: 13px; margin-bottom: 2px;
+      transition: background 0.15s;
+    }
+    .sidebar-nav a:hover, .sidebar-nav a.active {
+      background: {{ tok.brand_primary_light }};
+      color: {{ tok.brand_primary }};
+    }
+    .nav-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; border-radius: 50%;
+      background: {{ tok.brand_primary_light }}; color: {{ tok.brand_primary }};
+      font-size: 11px; font-weight: 700; flex-shrink: 0;
+    }
+    .sidebar-nav a.active .nav-num { background: {{ tok.brand_primary }}; color: #fff; }
+    .main-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+    .summary-card {
+      background: {{ tok.card_bg }}; border-radius: 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 24px 28px;
+    }
+    .summary-card h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }
+    .card {
+      background: {{ tok.card_bg }}; border-radius: 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 28px;
+      scroll-margin-top: 24px;
+    }
+    .step-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px; }
+    .step-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+      background: {{ tok.brand_primary }}; color: #fff; font-size: 18px; font-weight: 700;
+    }
+    .step-title { font-size: 1.1rem; font-weight: 600; color: {{ tok.body_text }}; padding-top: 10px; }
+    .screenshot-wrap { position: relative; margin: 16px 0; }
+    .screenshot-wrap img { width: 100%; border-radius: 8px; display: block; }
+    .highlight { outline: 3px solid {{ tok.highlight_color }}; outline-offset: 3px; border-radius: 8px; }
+    .callout-label {
+      position: absolute; top: -28px; left: 0;
+      background: {{ tok.highlight_color }}; color: #fff;
+      font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px;
+      pointer-events: none;
+    }
+    .callout-label::after {
+      content: ""; position: absolute; top: 100%; left: 12px;
+      border: 6px solid transparent; border-top-color: {{ tok.highlight_color }};
+    }
+    .mock-screenshot {
+      background: #e5e7eb; border-radius: 8px; padding: 32px;
+      text-align: center; color: #6b7280; font-size: 13px;
+      min-height: 200px; display: flex; align-items: center; justify-content: center;
+      margin: 16px 0;
+    }
+    .caption {
+      border-left: {{ tok.caption_border_width }} solid {{ tok.brand_primary }};
+      background: {{ tok.brand_primary_light }};
+      color: {{ tok.brand_primary_dark }};
+      padding: 10px 14px; border-radius: 0 6px 6px 0;
+      font-size: 13px; margin-top: 12px;
+    }
+    {% if polish == "production" %}
+    .takeaways {
+      background: linear-gradient(135deg, {{ tok.brand_gradient_start }} 0%, {{ tok.brand_gradient_end }} 100%);
+      color: #fff; border-radius: 16px; padding: 32px 36px;
+      scroll-margin-top: 24px;
+    }
+    .takeaways h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 16px; }
+    .takeaways ul { list-style: none; }
+    .takeaways li { padding: 6px 0 6px 28px; position: relative; opacity: 0.92; }
+    .takeaways li::before { content: "✓"; position: absolute; left: 0; font-weight: 700; }
+    {% else %}
+    .takeaways {
+      background: {{ tok.card_bg }}; border-radius: 16px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 28px;
+    }
+    .takeaways h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 12px; }
+    .takeaways li { padding: 4px 0 4px 16px; color: {{ tok.secondary_text }}; }
+    {% endif %}
+    footer {
+      text-align: center; padding: 32px 16px;
+      color: #9ca3af; font-size: 13px;
+      border-top: 1px solid #e5e7eb;
+    }
+    @media (max-width: 768px) {
+      .page-body { flex-direction: column; }
+      aside.sidebar-nav { width: 100%; position: static; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>{{ product|e }}</h1>
+    <p class="tagline">{{ tagline|e }}</p>
+    <p class="demo-title">{{ script.title|e }}</p>
+  </header>
+  <div class="page-body">
+    <aside class="sidebar-nav">
+      <h3>Steps</h3>
+      {% for step in script.steps %}
+      <a href="#step{{ loop.index }}">
+        <span class="nav-num">{{ loop.index }}</span>
+        {{ step.heading[:30]|e }}{% if step.heading|length > 30 %}…{% endif %}
+      </a>
+      {% endfor %}
+      <a href="#takeaways">
+        <span class="nav-num" style="background:#f3f4f6;color:#6b7280">★</span>
+        Takeaways
+      </a>
+    </aside>
+    <main class="main-content">
+      {% if script.executive_summary %}
+      <div class="summary-card">
+        <h2>About this demo</h2>
+        <p>{{ script.executive_summary|e }}</p>
+      </div>
+      {% endif %}
+      {% for step in script.steps %}
+      <section class="card" id="step{{ loop.index }}">
+        <div class="step-header">
+          <span class="step-num">{{ loop.index }}</span>
+          <p class="step-title">{{ step.heading|e }}</p>
+        </div>
+        {% if step.screenshot_index is not none and screenshots %}
+        <div class="screenshot-wrap{% if polish == 'production' %} highlight{% endif %}">
+          <img src="{{ screenshots[step.screenshot_index]|e }}" alt="{{ product|e }}: {{ step.heading|e }}">
+          {% if polish == 'production' and step.callout_label %}
+          <div class="callout-label">{{ step.callout_label|e }}</div>
+          {% endif %}
+        </div>
+        {% else %}
+        <div class="mock-screenshot" role="img" aria-label="{{ step.heading|e }}">
+          <span>[ {{ step.heading|e }} ]</span>
+        </div>
+        {% endif %}
+        {% if step.caption %}
+        <div class="caption">{{ step.caption|e }}</div>
+        {% endif %}
+      </section>
+      {% endfor %}
+      <section class="takeaways" id="takeaways">
+        <h2>Key Takeaways</h2>
+        <ul>
+          {% for point in script.takeaways %}
+          <li>{{ point|e }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+    </main>
+  </div>
+  <footer>
+    <strong>{{ product|e }}</strong>{% if tagline %} — {{ tagline|e }}{% endif %}
+    {% if polish == 'production' %} · {{ year }}{% endif %}
+  </footer>
+  {% if polish == 'production' %}
+  <script>
+    const sections = document.querySelectorAll('section[id], .takeaways[id]');
+    const navLinks = document.querySelectorAll('.sidebar-nav a');
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          navLinks.forEach(a => a.classList.remove('active'));
+          const link = document.querySelector('.sidebar-nav a[href="#' + entry.target.id + '"]');
+          if (link) link.classList.add('active');
+        }
+      });
+    }, { threshold: 0.3 });
+    sections.forEach(s => observer.observe(s));
+  </script>
+  {% endif %}
+</body>
+</html>

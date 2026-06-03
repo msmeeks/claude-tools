@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="demo-gen complete walkthrough — install, brand, and ship polished demos from your command line">
+  <title>Complete Walkthrough | demo-gen</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 15px; background: #f8f9fc; color: #111827; line-height: 1.6; }
+    header { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: #fff; padding: 56px 32px 48px; text-align: center; }
+    header h1 { font-size: 2.2rem; font-weight: 800; }
+    header .tagline { font-size: 1.1rem; opacity: 0.85; margin-top: 10px; }
+    header .meta { font-size: 12px; opacity: 0.6; margin-top: 12px; }
+    .page-body { display: flex; max-width: 1200px; margin: 0 auto; padding: 32px 16px; gap: 28px; }
+    aside.sidebar-nav { width: 220px; flex-shrink: 0; position: sticky; top: 24px; align-self: flex-start; background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 20px 16px; }
+    .sidebar-nav h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; margin-bottom: 10px; }
+    .sidebar-nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; text-decoration: none; color: #374151; font-size: 13px; margin-bottom: 2px; }
+    .sidebar-nav a:hover, .sidebar-nav a.active { background: #dbeafe; color: #1e40af; }
+    .nav-num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #dbeafe; color: #2563eb; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+    .sidebar-nav a.active .nav-num { background: #2563eb; color: #fff; }
+    .main-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+    .summary-card { background: #fff; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 24px 28px; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 28px; scroll-margin-top: 24px; }
+    .step-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px; }
+    .step-num { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; background: #2563eb; color: #fff; font-size: 18px; font-weight: 700; }
+    .step-title { font-size: 1.1rem; font-weight: 600; color: #111827; padding-top: 10px; }
+    .mock-terminal { background: #0f172a; border-radius: 10px; padding: 18px 20px; color: #e5e7eb; font-family: "SF Mono", monospace; font-size: 12px; line-height: 1.8; margin: 16px 0; }
+    .mock-terminal .prompt { color: #60a5fa; }
+    .mock-terminal .comment { color: #6b7280; }
+    .mock-terminal .success { color: #4ade80; }
+    .mock-terminal .dim { color: #9ca3af; }
+    .mock-terminal .stage { color: #93c5fd; }
+    .caption { border-left: 4px solid #2563eb; background: #dbeafe; color: #1e40af; padding: 10px 14px; border-radius: 0 6px 6px 0; font-size: 13px; margin-top: 12px; }
+    .pipeline { display: flex; align-items: center; gap: 0; margin: 16px 0; flex-wrap: wrap; }
+    .pipeline-stage { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 14px; font-size: 12px; font-weight: 600; text-align: center; flex: 1; min-width: 80px; }
+    .pipeline-stage span { display: block; font-size: 10px; font-weight: 400; color: #9ca3af; margin-top: 2px; }
+    .pipeline-arrow { color: #9ca3af; font-size: 18px; padding: 0 6px; }
+    .output-files { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin: 16px 0; }
+    .output-file { background: #f8f9fc; border-radius: 8px; padding: 14px; border: 1px solid #e5e7eb; }
+    .output-file .ext { font-size: 24px; margin-bottom: 6px; }
+    .output-file .name { font-size: 12px; font-weight: 600; color: #1e3a5f; margin-bottom: 4px; }
+    .output-file .desc { font-size: 11px; color: #6b7280; }
+    .takeaways { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: #fff; border-radius: 16px; padding: 32px 36px; scroll-margin-top: 24px; }
+    .takeaways h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 16px; }
+    .takeaways ul { list-style: none; }
+    .takeaways li { padding: 6px 0 6px 28px; position: relative; opacity: 0.92; }
+    .takeaways li::before { content: "✓"; position: absolute; left: 0; font-weight: 700; }
+    .cta { background: #fff; border-radius: 12px; padding: 20px 24px; text-align: center; border: 1px solid #e5e7eb; margin-top: 24px; }
+    .cta a { display: inline-block; background: #2563eb; color: #fff; padding: 10px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; }
+    footer { text-align: center; padding: 32px 16px; color: #9ca3af; font-size: 13px; border-top: 1px solid #e5e7eb; }
+    @media (max-width: 768px) { .page-body { flex-direction: column; } aside.sidebar-nav { width: 100%; position: static; } .output-files { grid-template-columns: 1fr; } .pipeline { flex-direction: column; } .pipeline-arrow { transform: rotate(90deg); } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>demo-gen — complete walkthrough</h1>
+    <p class="tagline">From zero to a polished demo in under five minutes.</p>
+    <p class="meta">~8 min read · All features covered</p>
+  </header>
+  <div class="page-body">
+    <aside class="sidebar-nav">
+      <h3>Sections</h3>
+      <a href="#step1"><span class="nav-num">1</span>The problem</a>
+      <a href="#step2"><span class="nav-num">2</span>Install</a>
+      <a href="#step3"><span class="nav-num">3</span>First run</a>
+      <a href="#step4"><span class="nav-num">4</span>The pipeline</a>
+      <a href="#step5"><span class="nav-num">5</span>Add screenshots</a>
+      <a href="#step6"><span class="nav-num">6</span>Custom branding</a>
+      <a href="#step7"><span class="nav-num">7</span>Production polish</a>
+      <a href="#step8"><span class="nav-num">8</span>Claude Code</a>
+      <a href="#takeaways"><span class="nav-num">★</span>Takeaways</a>
+    </aside>
+    <main class="main-content">
+      <div class="summary-card">
+        <h2>About this walkthrough</h2>
+        <p>Every feature release deserves a demo, but making one is slow: record the screen, edit the video, write the narration, burn the subtitles, create the HTML script. demo-gen does all of that in one command, using AI models that run entirely on your machine.</p>
+      </div>
+
+      <section class="card" id="step1">
+        <div class="step-header">
+          <span class="step-num">1</span>
+          <p class="step-title">The problem: demo creation is a tax on shipping</p>
+        </div>
+        <div style="background:#fef2f2;border-radius:8px;padding:20px;margin:16px 0">
+          <p style="font-size:13px;color:#991b1b;font-weight:600;margin-bottom:10px">Without demo-gen, a typical feature demo takes:</p>
+          <ul style="list-style:none;font-size:13px;color:#7f1d1d">
+            <li style="padding:4px 0 4px 20px;position:relative">⏱ Screen recording: 15 min</li>
+            <li style="padding:4px 0 4px 20px;position:relative">✂️ Video editing: 30 min</li>
+            <li style="padding:4px 0 4px 20px;position:relative">🎙 Voiceover recording &amp; sync: 20 min</li>
+            <li style="padding:4px 0 4px 20px;position:relative">📝 HTML script: 30 min</li>
+            <li style="padding:4px 0 4px 20px;position:relative;font-weight:700">Total: ~95 minutes per feature</li>
+          </ul>
+        </div>
+        <div style="background:#f0fdf4;border-radius:8px;padding:20px;margin:16px 0">
+          <p style="font-size:13px;color:#166534;font-weight:600;margin-bottom:10px">With demo-gen:</p>
+          <ul style="list-style:none;font-size:13px;color:#14532d">
+            <li style="padding:4px 0 4px 20px;position:relative">⚡ One command: ~2 min (standard) or ~30 sec (draft)</li>
+            <li style="padding:4px 0 4px 20px;position:relative">🏠 Fully local: no cloud services, no subscriptions</li>
+            <li style="padding:4px 0 4px 20px;position:relative">🎨 Per-project branding via design tokens</li>
+            <li style="padding:4px 0 4px 20px;position:relative">📦 HTML + MP4 + SRT in one output directory</li>
+          </ul>
+        </div>
+        <div class="caption">demo-gen doesn't eliminate judgment — you still choose what to demo and what screenshots to use. It eliminates the mechanical work of turning that judgment into polished artifacts.</div>
+      </section>
+
+      <section class="card" id="step2">
+        <div class="step-header">
+          <span class="step-num">2</span>
+          <p class="step-title">Install demo-gen and dependencies</p>
+        </div>
+        <div class="mock-terminal">
+          <span class="comment"># 1. Install ffmpeg (required for video assembly)</span><br>
+          <span class="prompt">$ </span>brew install ffmpeg<br><br>
+          <span class="comment"># 2. Install demo-gen</span><br>
+          <span class="prompt">$ </span>pip install demo-gen<br>
+          <span class="success">Successfully installed demo-gen-0.1.0</span><br><br>
+          <span class="comment"># 3. Install Ollama for local LLM scripting</span><br>
+          <span class="prompt">$ </span>ollama pull llama3.2<br>
+          <span class="dim">pulling manifest... done</span><br><br>
+          <span class="comment"># 4. Download TTS models (~90MB)</span><br>
+          <span class="prompt">$ </span>demo-gen download-models --tts-only<br>
+          <span class="success">  ✓ kokoro/kokoro-v1_1.onnx</span>
+        </div>
+        <div class="caption">After this one-time setup, every future demo run is fully offline. Model weights are verified by SHA-256 checksum on every load.</div>
+      </section>
+
+      <section class="card" id="step3">
+        <div class="step-header">
+          <span class="step-num">3</span>
+          <p class="step-title">Run your first demo — one command</p>
+        </div>
+        <div class="mock-terminal">
+          <span class="prompt">$ </span>demo-gen generate \<br>
+          &nbsp;&nbsp;--product "My App" \<br>
+          &nbsp;&nbsp;--feature "User Onboarding" \<br>
+          &nbsp;&nbsp;--polish standard \<br>
+          &nbsp;&nbsp;--format both \<br>
+          &nbsp;&nbsp;--output-dir ./output<br><br>
+          <span class="stage">Stage 1/6:</span> Generating script…<br>
+          <span class="stage">Stage 2/6:</span> Loading assets…<br>
+          <span class="stage">Stage 3/6:</span> Generating voiceovers…<br>
+          <span class="stage">Stage 4/6:</span> Rendering slides…<br>
+          <span class="stage">Stage 5/6:</span> Assembling video…<br>
+          <span class="stage">Stage 6/6:</span> Rendering HTML…<br>
+          <span class="success">Done.</span><br>
+          <span class="dim">  HTML: output/user-onboarding.html</span><br>
+          <span class="dim">  MP4:  output/user-onboarding.mp4</span><br>
+          <span class="dim">  SRT:  output/user-onboarding.srt</span>
+        </div>
+        <div class="output-files">
+          <div class="output-file"><div class="ext">🌐</div><div class="name">user-onboarding.html</div><div class="desc">Self-contained demo script. Open in any browser. Share by email or static host.</div></div>
+          <div class="output-file"><div class="ext">🎬</div><div class="name">user-onboarding.mp4</div><div class="desc">1280×720 video with voiceover, burned subtitles, and transition SFX.</div></div>
+          <div class="output-file"><div class="ext">📝</div><div class="name">user-onboarding.srt</div><div class="desc">Subtitle file in SRT format — use with any video player or embed elsewhere.</div></div>
+        </div>
+      </section>
+
+      <section class="card" id="step4">
+        <div class="step-header">
+          <span class="step-num">4</span>
+          <p class="step-title">Understand the six-stage pipeline</p>
+        </div>
+        <div class="pipeline">
+          <div class="pipeline-stage">1 Script<span>Ollama/Claude</span></div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage">2 Assets<span>Pillow / MoviePy</span></div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage">3 Voice<span>Kokoro ONNX</span></div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage">4 Slides<span>Pillow</span></div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage">5 Video<span>ffmpeg</span></div>
+          <div class="pipeline-arrow">→</div>
+          <div class="pipeline-stage">6 HTML<span>Jinja2</span></div>
+        </div>
+        <p style="color:#374151;font-size:13px;margin-top:12px">All intermediate files live in a temporary directory that is deleted automatically on completion — including on error. The only files written to disk are the final outputs in your <code>--output-dir</code>.</p>
+        <div class="caption">Every stage is skippable via <code>--format html</code> (skips stages 3–5) or <code>--format mp4</code> (skips stage 6). Use <code>--format html</code> in CI for maximum speed.</div>
+      </section>
+
+      <section class="card" id="step5">
+        <div class="step-header">
+          <span class="step-num">5</span>
+          <p class="step-title">Add real screenshots to upgrade from placeholder mocks</p>
+        </div>
+        <div class="mock-terminal">
+          <span class="comment"># Pass screenshots in the order they should appear in the demo</span><br>
+          <span class="prompt">$ </span>demo-gen generate \<br>
+          &nbsp;&nbsp;--product "My App" \<br>
+          &nbsp;&nbsp;--feature "Dashboard" \<br>
+          &nbsp;&nbsp;--screenshot screenshots/empty-state.png \<br>
+          &nbsp;&nbsp;--screenshot screenshots/populated-dashboard.png \<br>
+          &nbsp;&nbsp;--screenshot screenshots/export-modal.png \<br>
+          &nbsp;&nbsp;--polish standard \<br>
+          &nbsp;&nbsp;--format both \<br>
+          &nbsp;&nbsp;--output-dir ./output
+        </div>
+        <div class="caption">demo-gen validates all screenshot paths before running: checks the file exists, verifies the extension is in the allowed list (<code>.png</code>, <code>.jpg</code>, <code>.jpeg</code>, <code>.webp</code>), and rejects paths starting with <code>-</code> to prevent argument injection.</div>
+      </section>
+
+      <section class="card" id="step6">
+        <div class="step-header">
+          <span class="step-num">6</span>
+          <p class="step-title">Apply custom branding with tokens and brand voice</p>
+        </div>
+        <div class="mock-terminal">
+          <span class="comment"># Create your token file (only override what you need)</span><br>
+          <span class="dim">$ cat acme-tokens.json</span><br>
+          <span class="dim">{ "brand_gradient_start": "#4c1d95", "brand_gradient_end": "#6366f1", ... }</span><br><br>
+          <span class="comment"># Pass both files to demo-gen</span><br>
+          <span class="prompt">$ </span>demo-gen generate \<br>
+          &nbsp;&nbsp;--product "Acme Platform" \<br>
+          &nbsp;&nbsp;--feature "Reports" \<br>
+          &nbsp;&nbsp;--tokens ./acme-tokens.json \<br>
+          &nbsp;&nbsp;--brand-voice ./BRAND_VOICE.md \<br>
+          &nbsp;&nbsp;--format both \<br>
+          &nbsp;&nbsp;--output-dir ./output
+        </div>
+        <div class="caption">Design tokens propagate to every visual element: header gradient, step circles, caption borders, takeaways card, and video slide backgrounds. See the <a href="features/branding.html">branding demo</a> for a side-by-side comparison.</div>
+      </section>
+
+      <section class="card" id="step7">
+        <div class="step-header">
+          <span class="step-num">7</span>
+          <p class="step-title">Use production polish for customer-facing releases</p>
+        </div>
+        <div class="mock-terminal">
+          <span class="prompt">$ </span>demo-gen generate \<br>
+          &nbsp;&nbsp;--product "My App" \<br>
+          &nbsp;&nbsp;--feature "Reports" \<br>
+          &nbsp;&nbsp;--screenshot screenshots/s1.png \<br>
+          &nbsp;&nbsp;--screenshot screenshots/s2.png \<br>
+          &nbsp;&nbsp;--tokens ./my-tokens.json \<br>
+          &nbsp;&nbsp;--brand-voice ./BRAND_VOICE.md \<br>
+          &nbsp;&nbsp;--polish production \<br>
+          &nbsp;&nbsp;--voice am_adam \<br>
+          &nbsp;&nbsp;--tone professional \<br>
+          &nbsp;&nbsp;--format both \<br>
+          &nbsp;&nbsp;--output-dir ./help-docs/demos/features/
+        </div>
+        <div class="caption"><code>--polish production</code> adds: red highlight rings + callout labels on screenshots, gradient takeaways section, IntersectionObserver sidebar nav, best Kokoro voice, C5+E5 chord SFX, and fade+slide transitions. Use it for anything a customer will see.</div>
+      </section>
+
+      <section class="card" id="step8">
+        <div class="step-header">
+          <span class="step-num">8</span>
+          <p class="step-title">Use the /demo skill in Claude Code to generate automatically</p>
+        </div>
+        <div class="mock-terminal">
+          <span class="comment"># In a Claude Code session, after shipping a feature:</span><br>
+          <span class="dim">/demo reports</span><br><br>
+          <span class="comment"># Claude Code detects demo-gen in PATH and runs:</span><br>
+          <span class="dim">demo-gen generate \</span><br>
+          <span class="dim">&nbsp;&nbsp;--feature reports \</span><br>
+          <span class="dim">&nbsp;&nbsp;--brand-voice ./BRAND_VOICE.md \</span><br>
+          <span class="dim">&nbsp;&nbsp;--polish standard \</span><br>
+          <span class="dim">&nbsp;&nbsp;--format both \</span><br>
+          <span class="dim">&nbsp;&nbsp;--output-dir help-docs/demos/features/</span>
+        </div>
+        <div class="caption">The <code>/demo</code> skill in Claude Code automatically delegates to demo-gen when it's installed. No configuration needed — just ensure <code>demo-gen</code> is in your PATH. Falls back to ffmpeg/drawtext generation if not installed.</div>
+      </section>
+
+      <section class="takeaways" id="takeaways">
+        <h2>Key Takeaways</h2>
+        <ul>
+          <li>demo-gen replaces ~95 minutes of manual demo work with one command</li>
+          <li>All processing runs locally by default — no cloud services, no data leaving your machine</li>
+          <li>The six-stage pipeline produces HTML, MP4, and SRT in a single run</li>
+          <li>Design tokens and BRAND_VOICE.md make every demo match your product's identity</li>
+          <li>Three polish levels cover every workflow from CI preview to customer release</li>
+          <li>The <code>/demo</code> Claude Code skill auto-delegates to demo-gen when installed</li>
+        </ul>
+      </section>
+
+      <div class="cta">
+        <p style="margin-bottom:12px;font-weight:600">Ready to ship your first demo?</p>
+        <a href="../ui/index.html#install">Get started →</a>
+      </div>
+    </main>
+  </div>
+  <footer>
+    <strong>demo-gen</strong> — Ship demos as fast as you ship code. · 2026
+  </footer>
+  <script>
+    const sections = document.querySelectorAll('section[id], .summary-card, .cta');
+    const navLinks = document.querySelectorAll('.sidebar-nav a');
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          navLinks.forEach(a => a.classList.remove('active'));
+          const link = document.querySelector('.sidebar-nav a[href="#' + entry.target.id + '"]');
+          if (link) link.classList.add('active');
+        }
+      });
+    }, { threshold: 0.3 });
+    sections.forEach(s => observer.observe(s));
+  </script>
+</body>
+</html>

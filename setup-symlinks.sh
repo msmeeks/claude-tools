@@ -15,11 +15,28 @@ set -euo pipefail
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_DIR="${HOME}/.claude"
 
+# Resolve a path to its canonical absolute form (handles relative symlinks).
+# Uses python3 because `readlink -f` is not available on stock macOS.
+realpath_of() {
+  python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1"
+}
+
 link() {
   local src="$1"
   local dst="$2"
   if [[ -L "$dst" ]]; then
-    echo "  skip  $dst (already a symlink)"
+    # Compare resolved targets so symlinks created with relative paths still
+    # match correctly and are skipped instead of being noisily re-linked.
+    if [[ "$(realpath_of "$dst")" == "$(realpath_of "$src")" ]]; then
+      echo "  skip   $dst (already linked to $src)"
+    else
+      local current
+      current="$(readlink "$dst")"
+      echo "  relink $dst ($current → $src)"
+      # `ln -snf` atomically replaces a symlink (the -n flag prevents ln from
+      # following an existing symlink-to-directory and writing inside it).
+      ln -snf "$src" "$dst"
+    fi
   elif [[ -e "$dst" ]]; then
     echo "  backup $dst → ${dst}.bak"
     mv "$dst" "${dst}.bak"

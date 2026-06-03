@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="demo-gen — customize branding and design tokens for any project">
+  <title>Custom Branding | demo-gen</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 15px; background: #f8f9fc; color: #111827; line-height: 1.6; }
+    header { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: #fff; padding: 48px 32px 40px; }
+    header .eyebrow { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; margin-bottom: 8px; }
+    header h1 { font-size: 2rem; font-weight: 800; }
+    header .tagline { opacity: 0.85; margin-top: 8px; }
+    .page-body { display: flex; max-width: 1200px; margin: 0 auto; padding: 32px 16px; gap: 28px; }
+    aside.sidebar-nav { width: 220px; flex-shrink: 0; position: sticky; top: 24px; align-self: flex-start; background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 20px 16px; }
+    .sidebar-nav h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; margin-bottom: 10px; }
+    .sidebar-nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; text-decoration: none; color: #374151; font-size: 13px; margin-bottom: 2px; }
+    .sidebar-nav a:hover, .sidebar-nav a.active { background: #dbeafe; color: #1e40af; }
+    .nav-num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #dbeafe; color: #2563eb; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+    .sidebar-nav a.active .nav-num { background: #2563eb; color: #fff; }
+    .main-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+    .summary-card { background: #fff; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 24px 28px; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 28px; scroll-margin-top: 24px; }
+    .step-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px; }
+    .step-num { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; background: #2563eb; color: #fff; font-size: 18px; font-weight: 700; }
+    .step-title { font-size: 1.1rem; font-weight: 600; color: #111827; padding-top: 10px; }
+    .mock-screenshot { background: #e5e7eb; border-radius: 8px; margin: 16px 0; overflow: hidden; }
+    .mock-header { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); padding: 10px 16px; color: #fff; font-size: 13px; font-weight: 600; }
+    .mock-body { padding: 20px; }
+    .mock-terminal { background: #0f172a; border-radius: 8px; padding: 16px; color: #4ade80; font-family: "SF Mono", monospace; font-size: 12px; line-height: 1.7; }
+    .mock-terminal .prompt { color: #60a5fa; }
+    .mock-terminal .comment { color: #6b7280; }
+    .mock-json { background: #0f172a; border-radius: 8px; padding: 16px; color: #e5e7eb; font-family: "SF Mono", monospace; font-size: 12px; line-height: 1.7; }
+    .mock-json .key { color: #93c5fd; }
+    .mock-json .val { color: #86efac; }
+    .mock-json .comment { color: #6b7280; }
+    /* Preview: purple brand */
+    .preview-purple { border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb; }
+    .preview-purple-header { background: linear-gradient(135deg, #4c1d95 0%, #6366f1 100%); padding: 12px 16px; color: #fff; font-size: 13px; font-weight: 700; }
+    .preview-purple-body { background: #f8fafc; padding: 16px; }
+    .preview-step { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+    .preview-circle-purple { width: 32px; height: 32px; border-radius: 50%; background: #6366f1; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+    .preview-caption-purple { border-left: 4px solid #6366f1; background: #e0e7ff; color: #3730a3; padding: 8px 12px; border-radius: 0 6px 6px 0; font-size: 12px; margin-top: 8px; }
+    .preview-highlight-amber { outline: 3px solid #f59e0b; outline-offset: 3px; border-radius: 4px; }
+    /* Preview: teal brand */
+    .preview-teal-header { background: linear-gradient(135deg, #134e4a 0%, #0d9488 100%); padding: 12px 16px; color: #fff; font-size: 13px; font-weight: 700; }
+    .preview-circle-teal { width: 32px; height: 32px; border-radius: 50%; background: #0d9488; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+    .preview-caption-teal { border-left: 4px solid #0d9488; background: #ccfbf1; color: #134e4a; padding: 8px 12px; border-radius: 0 6px 6px 0; font-size: 12px; margin-top: 8px; }
+    .caption { border-left: 4px solid #2563eb; background: #dbeafe; color: #1e40af; padding: 10px 14px; border-radius: 0 6px 6px 0; font-size: 13px; margin-top: 12px; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+    .token-swatch { background: #f9fafb; border-radius: 8px; padding: 12px; }
+    .token-swatch .swatch { height: 32px; border-radius: 6px; margin-bottom: 8px; }
+    .token-swatch code { font-size: 11px; color: #6b7280; display: block; }
+    .takeaways { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: #fff; border-radius: 16px; padding: 32px 36px; scroll-margin-top: 24px; }
+    .takeaways h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 16px; }
+    .takeaways ul { list-style: none; }
+    .takeaways li { padding: 6px 0 6px 28px; position: relative; opacity: 0.92; }
+    .takeaways li::before { content: "✓"; position: absolute; left: 0; font-weight: 700; }
+    footer { text-align: center; padding: 32px 16px; color: #9ca3af; font-size: 13px; border-top: 1px solid #e5e7eb; }
+    @media (max-width: 768px) { .page-body { flex-direction: column; } aside.sidebar-nav { width: 100%; position: static; } .two-col { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Feature Demo</div>
+    <h1>Custom branding</h1>
+    <p class="tagline">Make every demo look like your product — not demo-gen's defaults.</p>
+  </header>
+  <div class="page-body">
+    <aside class="sidebar-nav">
+      <h3>Steps</h3>
+      <a href="#step1"><span class="nav-num">1</span>Create token file</a>
+      <a href="#step2"><span class="nav-num">2</span>Write BRAND_VOICE.md</a>
+      <a href="#step3"><span class="nav-num">3</span>Pass tokens flag</a>
+      <a href="#step4"><span class="nav-num">4</span>See the difference</a>
+      <a href="#takeaways"><span class="nav-num">★</span>Takeaways</a>
+    </aside>
+    <main class="main-content">
+      <div class="summary-card">
+        <h2>About this demo</h2>
+        <p>Every project has its own color palette, tone of voice, and terminology. demo-gen uses a simple <strong>design_tokens.json</strong> file and a <strong>BRAND_VOICE.md</strong> to match your brand exactly — from the header gradient down to the caption text color.</p>
+      </div>
+
+      <section class="card" id="step1">
+        <div class="step-header">
+          <span class="step-num">1</span>
+          <p class="step-title">Create a design_tokens.json file for your project</p>
+        </div>
+        <div class="mock-screenshot">
+          <div class="mock-header">design_tokens.json — Acme (purple brand)</div>
+          <div class="mock-body">
+            <div class="mock-json">
+{<br>
+&nbsp;&nbsp;<span class="key">"brand_gradient_start"</span>: <span class="val">"#4c1d95"</span>,<br>
+&nbsp;&nbsp;<span class="key">"brand_gradient_end"</span>: <span class="val">"#6366f1"</span>,<br>
+&nbsp;&nbsp;<span class="key">"brand_primary"</span>: <span class="val">"#6366f1"</span>,<br>
+&nbsp;&nbsp;<span class="key">"brand_primary_light"</span>: <span class="val">"#e0e7ff"</span>,<br>
+&nbsp;&nbsp;<span class="key">"brand_primary_dark"</span>: <span class="val">"#3730a3"</span>,<br>
+&nbsp;&nbsp;<span class="key">"highlight_color"</span>: <span class="val">"#f59e0b"</span>, <span class="comment">// amber instead of red</span><br>
+&nbsp;&nbsp;<span class="key">"page_bg"</span>: <span class="val">"#f8fafc"</span>,<br>
+&nbsp;&nbsp;<span class="key">"tagline"</span>: <span class="val">"Move faster with Acme."</span><br>
+}
+            </div>
+          </div>
+        </div>
+        <div class="caption">You only need to provide the keys you want to override. Every missing key falls back to demo-gen's defaults. The full list of available keys is in the <a href="../../api/index.html#tokens-schema">API reference</a>.</div>
+      </section>
+
+      <section class="card" id="step2">
+        <div class="step-header">
+          <span class="step-num">2</span>
+          <p class="step-title">Write a BRAND_VOICE.md to match your tone</p>
+        </div>
+        <div class="mock-screenshot">
+          <div class="mock-header">BRAND_VOICE.md</div>
+          <div class="mock-body">
+            <div class="mock-json" style="color:#e5e7eb">
+<span style="color:#c084fc"># Brand Voice — Acme Platform</span><br><br>
+<span style="color:#c084fc">## Product</span><br>
+<span style="color:#86efac">**Name:**</span> Acme Platform<br>
+<span style="color:#86efac">**Tagline:**</span> Move faster with Acme.<br><br>
+<span style="color:#c084fc">## Voice attributes</span><br>
+Confident, precise, fast, developer-friendly.<br><br>
+<span style="color:#c084fc">## Writing rules</span><br>
+- Lead with outcomes, not features.<br>
+- Use "you" (second person), active voice.<br>
+- Keep sentences under 18 words.<br>
+- Never say "leverage", "synergy", or "seamless".<br><br>
+<span style="color:#c084fc">## Demo tone</span><br>
+Pace: 160 wpm. Opening: state the pain, then the fix.
+            </div>
+          </div>
+        </div>
+        <div class="caption">demo-gen reads BRAND_VOICE.md before generating any script content. The LLM uses your voice rules directly — tone, terminology, sentences to avoid — so the output sounds like you wrote it.</div>
+      </section>
+
+      <section class="card" id="step3">
+        <div class="step-header">
+          <span class="step-num">3</span>
+          <p class="step-title">Pass --tokens and --brand-voice to demo-gen generate</p>
+        </div>
+        <div class="mock-screenshot">
+          <div class="mock-header">Terminal</div>
+          <div class="mock-body">
+            <div class="mock-terminal">
+              <span class="prompt">$ </span>demo-gen generate \<br>
+              &nbsp;&nbsp;--product "Acme Platform" \<br>
+              &nbsp;&nbsp;--feature "Reports" \<br>
+              <span class="comment">&nbsp;&nbsp;# point to your branding files</span><br>
+              &nbsp;&nbsp;--tokens ./acme-tokens.json \<br>
+              &nbsp;&nbsp;--brand-voice ./BRAND_VOICE.md \<br>
+              &nbsp;&nbsp;--polish production \<br>
+              &nbsp;&nbsp;--format both \<br>
+              &nbsp;&nbsp;--output-dir ./help-docs/demos/features/
+            </div>
+          </div>
+        </div>
+        <div class="caption">Both flags are optional — pass them together for the best results. <code>--tokens</code> controls the visual output; <code>--brand-voice</code> controls the script's language and tone.</div>
+      </section>
+
+      <section class="card" id="step4">
+        <div class="step-header">
+          <span class="step-num">4</span>
+          <p class="step-title">See the brand reflected across every element</p>
+        </div>
+        <div class="two-col">
+          <div>
+            <p style="font-size:13px;font-weight:600;margin-bottom:8px;color:#374151">Default tokens (demo-gen blue)</p>
+            <div style="border-radius:8px;overflow:hidden;border:1px solid #e5e7eb">
+              <div style="background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);padding:10px 14px;color:#fff;font-size:12px;font-weight:600">demo-gen — Reports Demo</div>
+              <div style="padding:14px;background:#f8f9fc">
+                <div class="preview-step">
+                  <div style="width:28px;height:28px;border-radius:50%;background:#2563eb;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex-shrink:0">1</div>
+                  <div style="font-size:13px;font-weight:600;padding-top:4px">Open the Reports tab</div>
+                </div>
+                <div style="border-left:4px solid #2563eb;background:#dbeafe;color:#1e40af;padding:8px 12px;border-radius:0 6px 6px 0;font-size:12px">Navigate to Reports to see all your analytics in one place.</div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <p style="font-size:13px;font-weight:600;margin-bottom:8px;color:#374151">Acme tokens (purple + amber)</p>
+            <div class="preview-purple">
+              <div class="preview-purple-header">Acme Platform — Reports Demo</div>
+              <div class="preview-purple-body">
+                <div class="preview-step">
+                  <div class="preview-circle-purple">1</div>
+                  <div style="font-size:13px;font-weight:600;padding-top:4px">Open the Reports tab</div>
+                </div>
+                <div class="preview-caption-purple">Navigate to Reports to see all your analytics in one place.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">The same demo script, two completely different brand identities. Design tokens propagate to every element: header gradient, step circles, caption borders, takeaways section, and video slides.</div>
+      </section>
+
+      <section class="takeaways" id="takeaways">
+        <h2>Key Takeaways</h2>
+        <ul>
+          <li>Design tokens control all colors in both HTML output and video slides</li>
+          <li>Only supply the keys you want to override — defaults handle the rest</li>
+          <li>BRAND_VOICE.md shapes the script's language, not just the visuals</li>
+          <li>Bundled presets include <code>hospitality-scheduled.json</code> — copy and adapt for your own project</li>
+          <li>Branding changes take effect immediately on the next <code>demo-gen generate</code> run</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+  <footer>
+    <strong>demo-gen</strong> — Ship demos as fast as you ship code. · 2026
+  </footer>
+  <script>
+    const sections = document.querySelectorAll('section[id]');
+    const navLinks = document.querySelectorAll('.sidebar-nav a');
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          navLinks.forEach(a => a.classList.remove('active'));
+          const link = document.querySelector('.sidebar-nav a[href="#' + entry.target.id + '"]');
+          if (link) link.classList.add('active');
+        }
+      });
+    }, { threshold: 0.3 });
+    sections.forEach(s => observer.observe(s));
+  </script>
+</body>
+</html>

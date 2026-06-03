@@ -2,3 +2,19 @@
 *.pyc
 __pycache__/
 *.log
+
+# Python build / venv — scoped to demo-gen subproject so we don't
+# accidentally hide unrelated build/ or dist/ dirs elsewhere in the repo.
+*.pyo
+*.pyd
+*.egg
+demo-gen/.venv/
+demo-gen/build/
+demo-gen/dist/
+demo-gen/*.egg-info/
+demo-gen/.mypy_cache/
+demo-gen/.pytest_cache/
+demo-gen/.ruff_cache/
+demo-gen/.coverage
+demo-gen/htmlcov/
+demo-gen/output/

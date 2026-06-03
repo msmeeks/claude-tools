@@ -136,7 +136,7 @@ demo-gen generate \
 Pass `--polish production` for public-facing releases. Pass `--tone casual` for internal demos.
 Pass `--cloud` only if the user has explicitly opted in; default is `--local`.
 
-**Voice selection:** Default voice is `af_sky` (warm American female — matches BRAND_VOICE.md recommendation). Other options: `af_kore`, `af_heart`, `am_puck` (male), `am_michael`, `am_echo`, `am_santa`. Always use `--voice af_sky` for Hospitality Scheduler demos unless the user requests otherwise. Kokoro requires Python 3.11+ and the `kokoro` extra (`pip install demo-gen[kokoro]`). Models are cached at `~/.demo-gen/models/kokoro/` after first use. demo-gen binary is at `~/Code/demo-generator/.venv/bin/demo-gen`.
+**Voice selection:** Default voice is `af_sky` (warm American female — matches BRAND_VOICE.md recommendation). Other options: `af_kore`, `af_heart`, `am_puck` (male), `am_michael`, `am_echo`, `am_santa`. Always use `--voice af_sky` for Hospitality Scheduler demos unless the user requests otherwise. Kokoro requires Python 3.11+ and the `kokoro` extra (`pip install demo-gen[kokoro]`). Models are cached at `~/.demo-gen/models/kokoro/` after first use. demo-gen binary is at `~/Code/claude-tools/demo-gen/.venv/bin/demo-gen`.
 
 **Python requirement:** demo-gen requires Python 3.11+. The project venv must be created with `python3.11 -m venv .venv`.
 

@@ -1,0 +1,18 @@
+{
+  "brand_gradient_start": "#1e3a5f",
+  "brand_gradient_end": "#2563eb",
+  "brand_primary": "#2563eb",
+  "brand_primary_light": "#dbeafe",
+  "brand_primary_dark": "#1e40af",
+  "highlight_color": "#ef4444",
+  "highlight_shadow": "rgba(239,68,68,0.12)",
+  "page_bg": "#f8f9fc",
+  "card_bg": "#ffffff",
+  "body_text": "#111827",
+  "secondary_text": "#374151",
+  "app_shell_sidebar_bg": "#111827",
+  "video_canvas_bg": "#0f172a",
+  "caption_border_width": "4px",
+  "product_name": "Hospitality Scheduler",
+  "tagline": "Scheduling that checks in, so you don't have to."
+}

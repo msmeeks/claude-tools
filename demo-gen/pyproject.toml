@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "demo-gen"
+version = "0.1.0"
+description = "Generate polished demo artifacts (HTML + MP4) using local AI models"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "click>=8.0",
+    "anthropic>=0.50",
+    "moviepy>=2.0",
+    "pillow>=10.0",
+    "rich>=13.0",
+    "pydantic>=2.0",
+    "jinja2>=3.1.6",
+    "markupsafe>=2.1",
+    "soundfile>=0.12",
+    "numpy>=1.26",
+    "requests>=2.31",
+    "ollama>=0.3",
+]
+
+[project.optional-dependencies]
+kokoro = ["kokoro-onnx>=0.5", "onnxruntime>=1.20.1"]
+piper = ["piper-tts>=1.2"]       # GPL-3.0 — note license before distributing
+image-gen = [
+    "diffusers>=0.30",
+    "torch>=2.4",
+    "transformers>=4.44",
+    "accelerate>=0.30",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "pip-audit>=2.7",
+    "types-requests>=2.31",
+]
+
+[project.scripts]
+demo-gen = "demo_gen.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["demo_gen*"]
+
+[tool.setuptools.package-data]
+demo_gen = ["templates/**", "templates/tokens/**"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"

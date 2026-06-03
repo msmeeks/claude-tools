@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="demo-gen demo gallery — walkthroughs for every major feature">
+  <title>Demo Gallery | demo-gen</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 15px; background: #f8f9fc; color: #111827; line-height: 1.6; }
+    header { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: #fff; padding: 56px 32px 48px; text-align: center; }
+    header h1 { font-size: 2.2rem; font-weight: 800; }
+    header .tagline { font-size: 1.1rem; opacity: 0.85; margin-top: 10px; }
+    header .back { margin-top: 18px; }
+    header .back a { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 13px; }
+    header .back a:hover { color: #fff; }
+    .page-body { max-width: 1100px; margin: 0 auto; padding: 40px 16px 60px; }
+    .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #9ca3af; margin-bottom: 16px; }
+    .featured { margin-bottom: 48px; }
+    .featured-card { background: #fff; border-radius: 20px; box-shadow: 0 4px 24px rgba(0,0,0,0.10); overflow: hidden; display: flex; flex-direction: column; }
+    .featured-thumb { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); padding: 40px 40px 32px; color: #fff; }
+    .featured-thumb .demo-icon { font-size: 48px; margin-bottom: 16px; }
+    .featured-thumb h2 { font-size: 1.6rem; font-weight: 800; margin-bottom: 8px; }
+    .featured-thumb p { opacity: 0.85; font-size: 14px; max-width: 560px; }
+    .featured-meta { display: flex; gap: 20px; margin-top: 16px; }
+    .featured-meta span { font-size: 12px; opacity: 0.7; display: flex; align-items: center; gap: 5px; }
+    .featured-body { padding: 28px 40px 32px; display: flex; gap: 32px; align-items: center; }
+    .featured-toc { flex: 1; }
+    .featured-toc h3 { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 10px; }
+    .featured-toc ol { padding-left: 18px; font-size: 13px; color: #6b7280; }
+    .featured-toc li { padding: 3px 0; }
+    .featured-cta { flex-shrink: 0; }
+    .btn-primary { display: inline-block; background: #2563eb; color: #fff; padding: 12px 28px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 14px; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .demo-card { background: #fff; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); overflow: hidden; display: flex; flex-direction: column; transition: box-shadow 0.2s; }
+    .demo-card:hover { box-shadow: 0 6px 24px rgba(0,0,0,0.13); }
+    .card-thumb { padding: 28px 24px 20px; }
+    .card-thumb .icon { font-size: 36px; margin-bottom: 12px; }
+    .card-thumb .badge { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 3px 8px; border-radius: 10px; background: #dbeafe; color: #1e40af; margin-bottom: 10px; }
+    .card-thumb h3 { font-size: 1rem; font-weight: 700; color: #111827; margin-bottom: 6px; }
+    .card-thumb p { font-size: 13px; color: #6b7280; }
+    .card-footer { padding: 16px 24px 20px; margin-top: auto; border-top: 1px solid #f3f4f6; display: flex; justify-content: space-between; align-items: center; }
+    .card-footer .meta { font-size: 12px; color: #9ca3af; }
+    .card-footer a { font-size: 13px; font-weight: 600; color: #2563eb; text-decoration: none; }
+    .card-footer a:hover { text-decoration: underline; }
+    .steps-preview { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; }
+    .step-pip { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6b7280; }
+    .step-pip .num { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #dbeafe; color: #2563eb; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+    footer { text-align: center; padding: 32px 16px; color: #9ca3af; font-size: 13px; border-top: 1px solid #e5e7eb; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } .featured-body { flex-direction: column; } }
+    @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } header h1 { font-size: 1.6rem; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Demo Gallery</h1>
+    <p class="tagline">See demo-gen in action — from first run to production release.</p>
+    <p class="back"><a href="../index.html">← Back to docs home</a></p>
+  </header>
+  <div class="page-body">
+
+    <div class="featured">
+      <p class="section-label">Featured walkthrough</p>
+      <div class="featured-card">
+        <div class="featured-thumb">
+          <div class="demo-icon">🎬</div>
+          <h2>Complete walkthrough</h2>
+          <p>Every feature covered in one demo — from install to production release. The fastest path to understanding the full pipeline.</p>
+          <div class="featured-meta">
+            <span>⏱ ~8 min read</span>
+            <span>✓ All features</span>
+            <span>✓ Production polish</span>
+          </div>
+        </div>
+        <div class="featured-body">
+          <div class="featured-toc">
+            <h3>What's covered</h3>
+            <ol>
+              <li>The problem demo-gen solves</li>
+              <li>Install and one-time setup</li>
+              <li>First run — one command</li>
+              <li>The six-stage pipeline explained</li>
+              <li>Adding real screenshots</li>
+              <li>Custom branding with design tokens</li>
+              <li>Production polish for customer releases</li>
+              <li>Using the /demo Claude Code skill</li>
+            </ol>
+          </div>
+          <div class="featured-cta">
+            <a class="btn-primary" href="whole-project.html">View walkthrough →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="section-label">Feature demos</p>
+    <div class="grid">
+
+      <div class="demo-card">
+        <div class="card-thumb">
+          <div class="icon">⚡</div>
+          <span class="badge">Getting Started</span>
+          <h3>Your first demo</h3>
+          <p>Install demo-gen, run one command, and get a polished HTML + MP4 output in minutes.</p>
+          <div class="steps-preview">
+            <div class="step-pip"><span class="num">1</span>Install demo-gen and dependencies</div>
+            <div class="step-pip"><span class="num">2</span>Run demo-gen generate</div>
+            <div class="step-pip"><span class="num">3</span>Open the HTML and MP4 output</div>
+            <div class="step-pip"><span class="num">4</span>Upgrade with real screenshots</div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <span class="meta">~3 min read</span>
+          <a href="features/first-demo.html">View demo →</a>
+        </div>
+      </div>
+
+      <div class="demo-card">
+        <div class="card-thumb">
+          <div class="icon">🎨</div>
+          <span class="badge">Branding</span>
+          <h3>Custom branding</h3>
+          <p>Apply your project's colors and brand voice so every demo looks like your product, not demo-gen's defaults.</p>
+          <div class="steps-preview">
+            <div class="step-pip"><span class="num">1</span>Create design_tokens.json</div>
+            <div class="step-pip"><span class="num">2</span>Write BRAND_VOICE.md</div>
+            <div class="step-pip"><span class="num">3</span>Pass --tokens and --brand-voice</div>
+            <div class="step-pip"><span class="num">4</span>See the brand reflected everywhere</div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <span class="meta">~3 min read</span>
+          <a href="features/branding.html">View demo →</a>
+        </div>
+      </div>
+
+      <div class="demo-card">
+        <div class="card-thumb">
+          <div class="icon">✨</div>
+          <span class="badge">Polish Levels</span>
+          <h3>Polish levels</h3>
+          <p>Compare draft, standard, and production side by side — choose the right level for CI previews, sprint demos, and customer releases.</p>
+          <div class="steps-preview">
+            <div class="step-pip"><span class="num">1</span>Compare screenshot rendering</div>
+            <div class="step-pip"><span class="num">2</span>Compare captions and structure</div>
+            <div class="step-pip"><span class="num">3</span>Compare takeaways sections</div>
+            <div class="step-pip"><span class="num">4</span>When to use each level</div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <span class="meta">~3 min read</span>
+          <a href="features/polish-levels.html">View demo →</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  <footer>
+    <strong>demo-gen</strong> — Ship demos as fast as you ship code. · 2026
+  </footer>
+</body>
+</html>

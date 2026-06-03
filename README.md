@@ -38,6 +38,14 @@ custom-llm/               # Route `claude` to Ollama / Gemini / OpenAI via claud
   network/                # Tailscale / SSH / Caddy options for remote Ollama
   deploy/                 # fly.io + AWS recipes for self-hosted Ollama
 
+demo-gen/                 # Python CLI invoked by the /demo skill
+  install.sh              # idempotent bootstrap: creates .venv, pip install -e '.[kokoro]'
+  demo_gen/               # Python package source
+  tests/                  # pytest suite
+  pyproject.toml
+  meta/                   # BRAND_VOICE.md / DESIGN_BRIEF.md / PRIVACY.md
+  help-docs/              # reference example output
+
 setup-symlinks.sh         # Claude CLI setup: symlink repo → ~/.claude (see below)
 setup-symlinks-desktop.sh # Claude Desktop setup (macOS): symlink repo → Desktop app (see below)
 ```
@@ -78,6 +86,8 @@ initialize the skills-plugin directory. After running, restart Claude Desktop fo
 appear.
 
 To run Claude Code against a non-Anthropic backend (Ollama, Gemini, OpenAI), see `custom-llm/`.
+
+The `/demo` skill delegates to a Python CLI, `demo-gen`, in `demo-gen/`. Bootstrap once with `bash demo-gen/install.sh` (creates `.venv` and `pip install -e '.[kokoro]'`; safe to re-run). See `docs/features/demo-gen.md`.
 
 ## Updating
 

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="demo-gen — help center for the local AI demo generator CLI">
+  <title>demo-gen — Help Center</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 15px; background: #f8f9fc; color: #111827; line-height: 1.6; }
+    header { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: #fff; padding: 64px 32px 56px; text-align: center; }
+    header h1 { font-size: 2.4rem; font-weight: 800; letter-spacing: -0.02em; }
+    header p { font-size: 1.1rem; opacity: 0.85; margin-top: 10px; }
+    .tagline { font-size: 1.15rem; font-weight: 500; margin-top: 16px; background: rgba(255,255,255,0.15); display: inline-block; padding: 6px 18px; border-radius: 20px; }
+    .sections { max-width: 960px; margin: 48px auto; padding: 0 24px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 24px; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.07); padding: 32px 28px; text-decoration: none; color: inherit; transition: box-shadow 0.2s, transform 0.15s; display: block; }
+    .card:hover { box-shadow: 0 8px 28px rgba(0,0,0,0.12); transform: translateY(-2px); }
+    .card-icon { font-size: 2.2rem; margin-bottom: 14px; }
+    .card h2 { font-size: 1.15rem; font-weight: 700; margin-bottom: 8px; color: #1e3a5f; }
+    .card p { font-size: 13px; color: #374151; }
+    .card .arrow { display: inline-block; margin-top: 16px; font-size: 13px; font-weight: 600; color: #2563eb; }
+    .pills { max-width: 960px; margin: 0 auto 48px; padding: 0 24px; display: flex; flex-wrap: wrap; gap: 10px; }
+    .pill { background: #dbeafe; color: #1e40af; border-radius: 20px; padding: 6px 16px; font-size: 12px; font-weight: 600; text-decoration: none; }
+    .pill:hover { background: #2563eb; color: #fff; }
+    footer { text-align: center; padding: 32px 16px; color: #9ca3af; font-size: 13px; border-top: 1px solid #e5e7eb; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>demo-gen</h1>
+    <p>Generate polished demo artifacts using local AI models.</p>
+    <span class="tagline">Ship demos as fast as you ship code.</span>
+  </header>
+
+  <div class="sections">
+    <a href="ui/index.html" class="card">
+      <div class="card-icon">📖</div>
+      <h2>User Guide</h2>
+      <p>Install demo-gen, run your first demo, customize branding, and understand all CLI options. No prior ML experience needed.</p>
+      <span class="arrow">Read the guide →</span>
+    </a>
+    <a href="api/index.html" class="card">
+      <div class="card-icon">⚙️</div>
+      <h2>API Reference</h2>
+      <p>Full CLI flag reference, design token schema, pipeline stage internals, and integration patterns for advanced use.</p>
+      <span class="arrow">View reference →</span>
+    </a>
+    <a href="demos/index.html" class="card">
+      <div class="card-icon">🎬</div>
+      <h2>Demo Gallery</h2>
+      <p>See demo-gen in action: walkthroughs of the CLI, design tokens, and full pipeline — each with a video and HTML script.</p>
+      <span class="arrow">Watch demos →</span>
+    </a>
+  </div>
+
+  <div class="pills">
+    <a href="ui/index.html#install" class="pill">Installation</a>
+    <a href="ui/index.html#first-demo" class="pill">First demo</a>
+    <a href="ui/index.html#branding" class="pill">Branding &amp; tokens</a>
+    <a href="ui/index.html#polish" class="pill">Polish levels</a>
+    <a href="ui/index.html#voice" class="pill">Voice selection</a>
+    <a href="ui/index.html#local-vs-cloud" class="pill">Local vs cloud</a>
+    <a href="api/index.html#generate" class="pill">generate command</a>
+    <a href="api/index.html#tokens-schema" class="pill">Token schema</a>
+    <a href="api/index.html#pipeline" class="pill">Pipeline stages</a>
+    <a href="ui/index.html#faq" class="pill">FAQ</a>
+  </div>
+
+  <footer>
+    <strong>demo-gen</strong> — Ship demos as fast as you ship code.
+  </footer>
+</body>
+</html>

@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="demo-gen — compare draft, standard, and production polish levels side by side">
+  <title>Polish Levels | demo-gen</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 15px; background: #f8f9fc; color: #111827; line-height: 1.6; }
+    header { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: #fff; padding: 48px 32px 40px; }
+    header .eyebrow { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.7; margin-bottom: 8px; }
+    header h1 { font-size: 2rem; font-weight: 800; }
+    header .tagline { opacity: 0.85; margin-top: 8px; }
+    .page-body { display: flex; max-width: 1200px; margin: 0 auto; padding: 32px 16px; gap: 28px; }
+    aside.sidebar-nav { width: 220px; flex-shrink: 0; position: sticky; top: 24px; align-self: flex-start; background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 20px 16px; }
+    .sidebar-nav h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; margin-bottom: 10px; }
+    .sidebar-nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; text-decoration: none; color: #374151; font-size: 13px; margin-bottom: 2px; }
+    .sidebar-nav a:hover, .sidebar-nav a.active { background: #dbeafe; color: #1e40af; }
+    .nav-num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #dbeafe; color: #2563eb; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+    .sidebar-nav a.active .nav-num { background: #2563eb; color: #fff; }
+    .main-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+    .summary-card { background: #fff; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 24px 28px; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 28px; scroll-margin-top: 24px; }
+    .step-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px; }
+    .step-num { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; background: #2563eb; color: #fff; font-size: 18px; font-weight: 700; }
+    .step-title { font-size: 1.1rem; font-weight: 600; color: #111827; padding-top: 10px; }
+    .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin: 16px 0; }
+    .level-card { border-radius: 10px; overflow: hidden; border: 1px solid #e5e7eb; }
+    .level-header { padding: 10px 14px; font-size: 12px; font-weight: 700; }
+    .level-header.draft { background: #f3f4f6; color: #374151; }
+    .level-header.standard { background: #dbeafe; color: #1e40af; }
+    .level-header.production { background: linear-gradient(90deg, #1e3a5f, #2563eb); color: #fff; }
+    .level-body { padding: 14px; background: #f8f9fc; font-size: 12px; }
+    .mock-placeholder { background: #e5e7eb; border-radius: 6px; height: 80px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 11px; margin-bottom: 8px; }
+    .mock-img { background: #c7d2fe; border-radius: 6px; height: 80px; display: flex; align-items: center; justify-content: center; color: #3730a3; font-size: 11px; margin-bottom: 8px; position: relative; }
+    .mock-img-highlight { background: #c7d2fe; border-radius: 6px; height: 80px; display: flex; align-items: center; justify-content: center; color: #3730a3; font-size: 11px; margin-bottom: 8px; position: relative; outline: 3px solid #ef4444; outline-offset: 2px; }
+    .mock-callout { position: absolute; top: -22px; left: 0; background: #ef4444; color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px; }
+    .plain-caption { color: #374151; font-size: 11px; }
+    .styled-caption { border-left: 3px solid #2563eb; background: #dbeafe; color: #1e40af; padding: 6px 10px; font-size: 11px; border-radius: 0 4px 4px 0; }
+    .takeaways-plain { color: #374151; font-size: 11px; }
+    .takeaways-plain li { padding-left: 12px; list-style: disc; margin-left: 10px; }
+    .takeaways-gradient { background: linear-gradient(135deg, #1e3a5f, #2563eb); color: #fff; border-radius: 6px; padding: 8px 10px; font-size: 11px; }
+    .takeaways-gradient li { padding-left: 14px; list-style: none; position: relative; }
+    .takeaways-gradient li::before { content: "✓"; position: absolute; left: 0; }
+    .badge { display: inline-block; border-radius: 12px; padding: 2px 8px; font-size: 11px; font-weight: 600; margin-left: 6px; }
+    .badge-green { background: #dcfce7; color: #166534; }
+    .badge-yellow { background: #fef9c3; color: #854d0e; }
+    .badge-blue { background: #dbeafe; color: #1e3a5f; }
+    .caption { border-left: 4px solid #2563eb; background: #dbeafe; color: #1e40af; padding: 10px 14px; border-radius: 0 6px 6px 0; font-size: 13px; margin-top: 12px; }
+    .mock-terminal { background: #0f172a; border-radius: 8px; padding: 14px 16px; color: #e5e7eb; font-family: "SF Mono", monospace; font-size: 12px; line-height: 1.7; margin: 14px 0; }
+    .mock-terminal .prompt { color: #60a5fa; }
+    .takeaways { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: #fff; border-radius: 16px; padding: 32px 36px; scroll-margin-top: 24px; }
+    .takeaways h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 16px; }
+    .takeaways ul { list-style: none; }
+    .takeaways li { padding: 6px 0 6px 28px; position: relative; opacity: 0.92; }
+    .takeaways li::before { content: "✓"; position: absolute; left: 0; font-weight: 700; }
+    footer { text-align: center; padding: 32px 16px; color: #9ca3af; font-size: 13px; border-top: 1px solid #e5e7eb; }
+    @media (max-width: 768px) { .page-body { flex-direction: column; } aside.sidebar-nav { width: 100%; position: static; } .three-col { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">Feature Demo</div>
+    <h1>Polish levels</h1>
+    <p class="tagline">Pick the right level for each context — from CI preview to customer release.</p>
+  </header>
+  <div class="page-body">
+    <aside class="sidebar-nav">
+      <h3>Steps</h3>
+      <a href="#step1"><span class="nav-num">1</span>Compare screenshots</a>
+      <a href="#step2"><span class="nav-num">2</span>Compare captions</a>
+      <a href="#step3"><span class="nav-num">3</span>Compare takeaways</a>
+      <a href="#step4"><span class="nav-num">4</span>When to use each</a>
+      <a href="#takeaways"><span class="nav-num">★</span>Takeaways</a>
+    </aside>
+    <main class="main-content">
+      <div class="summary-card">
+        <h2>About this demo</h2>
+        <p><code>--polish</code> controls the quality of every element: screenshots, captions, takeaways, video audio, and transitions. We step through the three levels side by side so you can choose the right one for your workflow.</p>
+      </div>
+
+      <section class="card" id="step1">
+        <div class="step-header">
+          <span class="step-num">1</span>
+          <p class="step-title">See how screenshots differ across polish levels</p>
+        </div>
+        <div class="three-col">
+          <div class="level-card">
+            <div class="level-header draft">draft <span class="badge badge-green">Fastest</span></div>
+            <div class="level-body">
+              <div class="mock-placeholder">[ placeholder mock ]</div>
+              <div class="plain-caption">No real screenshot — a placeholder div with label text. Fast to generate, no assets needed.</div>
+            </div>
+          </div>
+          <div class="level-card">
+            <div class="level-header standard">standard</div>
+            <div class="level-body">
+              <div class="mock-img">[ screenshot embedded ]</div>
+              <div class="plain-caption">Real <code>&lt;img&gt;</code> tag pointing to your screenshot. Embedded and copied to <code>assets/</code>.</div>
+            </div>
+          </div>
+          <div class="level-card">
+            <div class="level-header production">production</div>
+            <div class="level-body">
+              <div style="position:relative;margin-bottom:8px;padding-top:26px">
+                <div class="mock-img-highlight">[ screenshot + ring ]
+                  <div class="mock-callout">Key action</div>
+                </div>
+              </div>
+              <div class="plain-caption">Real screenshot + red highlight ring + callout label pointing to the key UI element.</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">Pass <code>--screenshot</code> flags to enable real screenshots at standard and production levels. With no screenshots, all levels use placeholder mocks.</div>
+      </section>
+
+      <section class="card" id="step2">
+        <div class="step-header">
+          <span class="step-num">2</span>
+          <p class="step-title">See how captions and structure differ</p>
+        </div>
+        <div class="three-col">
+          <div class="level-card">
+            <div class="level-header draft">draft</div>
+            <div class="level-body">
+              <p class="plain-caption">Plain text paragraph. No border, no background tint.</p>
+              <p class="plain-caption" style="margin-top:6px">Footer: absent.</p>
+              <p class="plain-caption" style="margin-top:6px">Nav observer: absent.</p>
+            </div>
+          </div>
+          <div class="level-card">
+            <div class="level-header standard">standard</div>
+            <div class="level-body">
+              <div class="styled-caption">Styled caption block with brand-primary left border and light background.</div>
+              <p class="plain-caption" style="margin-top:8px">Footer: product name only.</p>
+              <p class="plain-caption" style="margin-top:6px">Nav observer: absent.</p>
+            </div>
+          </div>
+          <div class="level-card">
+            <div class="level-header production">production</div>
+            <div class="level-body">
+              <div class="styled-caption" style="border-left-width:4px">Styled caption — same as standard but 4px border.</div>
+              <p class="plain-caption" style="margin-top:8px">Footer: product + tagline + year.</p>
+              <p class="plain-caption" style="margin-top:6px">Nav observer: ✓ active state tracks scroll.</p>
+            </div>
+          </div>
+        </div>
+        <div class="caption">The IntersectionObserver sidebar nav — where the active link updates as you scroll — only appears at production polish, keeping draft/standard output simple and fast to render.</div>
+      </section>
+
+      <section class="card" id="step3">
+        <div class="step-header">
+          <span class="step-num">3</span>
+          <p class="step-title">See how the takeaways section changes</p>
+        </div>
+        <div class="three-col">
+          <div class="level-card">
+            <div class="level-header draft">draft</div>
+            <div class="level-body">
+              <p class="plain-caption" style="font-style:italic;color:#9ca3af">Takeaways section: absent.</p>
+            </div>
+          </div>
+          <div class="level-card">
+            <div class="level-header standard">standard</div>
+            <div class="level-body">
+              <ul class="takeaways-plain">
+                <li>Plain list item one</li>
+                <li>Plain list item two</li>
+                <li>Plain list item three</li>
+              </ul>
+            </div>
+          </div>
+          <div class="level-card">
+            <div class="level-header production">production</div>
+            <div class="level-body">
+              <div class="takeaways-gradient">
+                <ul>
+                  <li>Gradient card, white text</li>
+                  <li>Checkmark bullets</li>
+                  <li>Brand colors applied</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">At production polish, the takeaways section becomes a full-bleed gradient card — the most visually prominent element on the page, designed to leave a lasting impression.</div>
+      </section>
+
+      <section class="card" id="step4">
+        <div class="step-header">
+          <span class="step-num">4</span>
+          <p class="step-title">Choose the right level for each workflow</p>
+        </div>
+        <div class="mock-terminal">
+          <span class="prompt">$ </span><span style="color:#e5e7eb"># CI pipeline: fast draft, HTML only</span><br>
+          demo-gen generate --polish draft --format html --output-dir ./ci-preview/<br><br>
+          <span class="prompt">$ </span><span style="color:#e5e7eb"># Sprint review: standard, both formats</span><br>
+          demo-gen generate --polish standard --format both --output-dir ./sprint-demo/<br><br>
+          <span class="prompt">$ </span><span style="color:#e5e7eb"># Release: production, real screenshots, best voice</span><br>
+          demo-gen generate --polish production --voice am_adam \<br>
+          &nbsp;&nbsp;--screenshot s1.png --screenshot s2.png \<br>
+          &nbsp;&nbsp;--format both --output-dir ./releases/v2.0/
+        </div>
+        <div class="caption">Use <code>draft</code> when you need a quick preview in under 10 seconds. Use <code>standard</code> for team review and sprint demos. Reserve <code>production</code> for anything customer-facing or recorded for permanent use.</div>
+      </section>
+
+      <section class="takeaways" id="takeaways">
+        <h2>Key Takeaways</h2>
+        <ul>
+          <li><code>draft</code> is the fastest — placeholder mocks, Piper TTS, no SFX, no takeaways section</li>
+          <li><code>standard</code> adds real screenshots, Kokoro TTS, styled captions, and a plain takeaways list</li>
+          <li><code>production</code> adds highlight rings, callout labels, gradient takeaways, IntersectionObserver nav, and the best Kokoro voice</li>
+          <li>All three levels produce fully valid HTML and MP4 — the difference is quality, not format</li>
+          <li>You can re-run with a higher polish level at any time — just reuse the same screenshots</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+  <footer>
+    <strong>demo-gen</strong> — Ship demos as fast as you ship code. · 2026
+  </footer>
+  <script>
+    const sections = document.querySelectorAll('section[id]');
+    const navLinks = document.querySelectorAll('.sidebar-nav a');
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          navLinks.forEach(a => a.classList.remove('active'));
+          const link = document.querySelector('.sidebar-nav a[href="#' + entry.target.id + '"]');
+          if (link) link.classList.add('active');
+        }
+      });
+    }, { threshold: 0.3 });
+    sections.forEach(s => observer.observe(s));
+  </script>
+</body>
+</html>

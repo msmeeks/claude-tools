@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="demo-gen API reference — CLI flags, design token schema, pipeline internals">
+  <title>API Reference | demo-gen</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 15px; background: #f8f9fc; color: #111827; line-height: 1.6; }
+    header { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: #fff; padding: 48px 32px 40px; }
+    header h1 { font-size: 1.9rem; font-weight: 800; }
+    header p { opacity: 0.85; margin-top: 6px; }
+    .page-body { display: flex; max-width: 1200px; margin: 0 auto; padding: 32px 16px; gap: 32px; }
+    aside.sidebar { width: 220px; flex-shrink: 0; position: sticky; top: 24px; align-self: flex-start; background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 20px 16px; }
+    .sidebar h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; margin-bottom: 8px; }
+    .sidebar a { display: block; padding: 7px 10px; border-radius: 7px; text-decoration: none; color: #374151; font-size: 13px; margin-bottom: 2px; }
+    .sidebar a:hover, .sidebar a.active { background: #dbeafe; color: #1e40af; }
+    .sidebar .section-divider { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #9ca3af; padding: 12px 10px 4px; }
+    main { flex: 1; min-width: 0; }
+    h2 { font-size: 1.35rem; font-weight: 700; color: #1e3a5f; margin: 40px 0 12px; padding-top: 8px; scroll-margin-top: 24px; }
+    h3 { font-size: 1.05rem; font-weight: 600; margin: 24px 0 8px; }
+    h4 { font-size: 0.92rem; font-weight: 600; color: #374151; margin: 18px 0 6px; }
+    p { margin-bottom: 14px; color: #374151; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 28px; margin-bottom: 28px; scroll-margin-top: 24px; }
+    code { background: #f3f4f6; border-radius: 5px; padding: 2px 7px; font-family: "SF Mono", "Fira Code", monospace; font-size: 13px; color: #1e3a5f; }
+    pre { background: #111827; color: #e5e7eb; border-radius: 10px; padding: 20px 22px; overflow-x: auto; margin: 14px 0; font-size: 13px; line-height: 1.7; }
+    pre code { background: none; color: inherit; padding: 0; }
+    .caption { border-left: 4px solid #2563eb; background: #dbeafe; color: #1e40af; padding: 10px 14px; border-radius: 0 6px 6px 0; font-size: 13px; margin: 14px 0; }
+    .warn { border-left: 4px solid #f59e0b; background: #fef3c7; color: #92400e; padding: 10px 14px; border-radius: 0 6px 6px 0; font-size: 13px; margin: 14px 0; }
+    .flag-table, .token-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0; }
+    .flag-table th, .token-table th { background: #f3f4f6; padding: 9px 12px; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb; }
+    .flag-table td, .token-table td { padding: 9px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+    .flag-table tr:last-child td, .token-table tr:last-child td { border-bottom: none; }
+    .required { color: #dc2626; font-weight: 700; font-size: 11px; }
+    .default { color: #6b7280; font-size: 12px; }
+    .stage-num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: #2563eb; color: #fff; font-size: 13px; font-weight: 700; flex-shrink: 0; margin-right: 10px; }
+    .stage { display: flex; align-items: flex-start; gap: 0; margin-bottom: 18px; }
+    .stage-body { flex: 1; }
+    .stage-body h4 { margin-top: 2px; }
+    footer { text-align: center; padding: 32px 16px; color: #9ca3af; font-size: 13px; border-top: 1px solid #e5e7eb; margin-top: 24px; }
+    @media (max-width: 768px) { .page-body { flex-direction: column; } aside.sidebar { width: 100%; position: static; } }
+  </style>
+</head>
+<body>
+<header>
+  <h1>API Reference</h1>
+  <p>CLI flags, design token schema, and pipeline internals.</p>
+</header>
+<div class="page-body">
+  <aside class="sidebar">
+    <div class="section-divider">Commands</div>
+    <a href="#generate">generate</a>
+    <a href="#list-voices">list-voices</a>
+    <a href="#list-models">list-models</a>
+    <a href="#download-models">download-models</a>
+    <div class="section-divider">Reference</div>
+    <a href="#tokens-schema">Token schema</a>
+    <a href="#pipeline">Pipeline stages</a>
+    <a href="#polish-matrix">Polish matrix</a>
+    <a href="#env-vars">Environment vars</a>
+  </aside>
+  <main>
+
+    <section class="card" id="generate">
+      <h2>demo-gen generate</h2>
+      <p>Generate a demo artifact — HTML script, MP4 video, or both.</p>
+      <pre><code>demo-gen generate [OPTIONS]</code></pre>
+      <table class="flag-table">
+        <thead><tr><th>Flag</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>--product</code></td><td>string</td><td><span class="required">required</span></td><td>Product name displayed in demos and HTML title</td></tr>
+          <tr><td><code>--feature</code></td><td>string</td><td><span class="required">required</span></td><td>Feature name; also used as the output filename slug</td></tr>
+          <tr><td><code>--brand-voice</code></td><td>path</td><td><span class="default">none</span></td><td>Path to <code>BRAND_VOICE.md</code>; read before script generation</td></tr>
+          <tr><td><code>--include-docs</code></td><td>path (multi)</td><td><span class="default">none</span></td><td>Additional doc files to include as context for script generation. Repeat for multiple files.</td></tr>
+          <tr><td><code>--screenshot</code></td><td>path (multi)</td><td><span class="default">none</span></td><td>Screenshot PNG/JPG paths. Repeat for multiple files. Order matches generated steps.</td></tr>
+          <tr><td><code>--recording</code></td><td>path (multi)</td><td><span class="default">none</span></td><td>Screen recording paths (MP4/MOV). demo-gen extracts a still at t=1s per recording.</td></tr>
+          <tr><td><code>--tokens</code></td><td>path</td><td><span class="default">built-in defaults</span></td><td>Path to a <code>design_tokens.json</code> file for per-project branding</td></tr>
+          <tr><td><code>--output-dir</code></td><td>path</td><td><code>./output</code></td><td>Directory to write output files. Created if absent.</td></tr>
+          <tr><td><code>--format</code></td><td>enum</td><td><code>both</code></td><td><code>html</code> | <code>mp4</code> | <code>both</code></td></tr>
+          <tr><td><code>--polish</code></td><td>enum</td><td><code>standard</code></td><td><code>draft</code> | <code>standard</code> | <code>production</code></td></tr>
+          <tr><td><code>--tone</code></td><td>enum</td><td><code>professional</code></td><td><code>professional</code> | <code>casual</code> | <code>energetic</code></td></tr>
+          <tr><td><code>--voice</code></td><td>enum</td><td><code>af_heart</code></td><td>TTS voice ID. Run <code>demo-gen list-voices</code> for all options.</td></tr>
+          <tr><td><code>--resolution</code></td><td>enum</td><td><code>1280x720</code></td><td><code>1280x720</code> | <code>1920x1080</code></td></tr>
+          <tr><td><code>--wpm</code></td><td>int</td><td><code>150</code></td><td>Target narration speed in words per minute (80–300)</td></tr>
+          <tr><td><code>--local</code> / <code>--cloud</code></td><td>flag</td><td><code>--local</code></td><td>Use local Ollama LLM (default) or Anthropic Claude API</td></tr>
+          <tr><td><code>--local-model</code></td><td>string</td><td><code>llama3.2</code></td><td>Ollama model name for local script generation</td></tr>
+          <tr><td><code>--scope</code></td><td>enum</td><td><code>feature</code></td><td><code>feature</code> | <code>whole</code> — controls script structure</td></tr>
+          <tr><td><code>--title</code></td><td>string</td><td><span class="default">LLM-generated</span></td><td>Override the demo title</td></tr>
+          <tr><td><code>-v</code> / <code>--verbose</code></td><td>flag</td><td><code>false</code></td><td>Enable debug logging to stderr</td></tr>
+        </tbody>
+      </table>
+      <h3>Example — full production demo</h3>
+      <pre><code>demo-gen generate \
+  --product "Acme Platform" \
+  --feature "Reports" \
+  --brand-voice ./BRAND_VOICE.md \
+  --include-docs ./docs/features/reports.md \
+  --screenshot screenshots/report-list.png \
+  --screenshot screenshots/report-builder.png \
+  --tokens ./acme-tokens.json \
+  --polish production \
+  --tone professional \
+  --voice am_adam \
+  --format both \
+  --output-dir ./help-docs/demos/features/</code></pre>
+      <h3>Example — fast draft for CI</h3>
+      <pre><code>demo-gen generate \
+  --product "My App" \
+  --feature "Auth" \
+  --polish draft \
+  --format html \
+  --local \
+  --output-dir ./ci-artifacts/</code></pre>
+    </section>
+
+    <section class="card" id="list-voices">
+      <h2>demo-gen list-voices</h2>
+      <p>Print all available TTS voice IDs.</p>
+      <pre><code>demo-gen list-voices</code></pre>
+      <p>Output example:</p>
+      <pre><code>Kokoro ONNX voices:
+  af_heart
+  af_bella
+  am_adam
+  am_michael
+
+Piper: Install piper-tts and run demo-gen download-models --tts-only</code></pre>
+    </section>
+
+    <section class="card" id="list-models">
+      <h2>demo-gen list-models</h2>
+      <p>Show download status for all AI model weights.</p>
+      <pre><code>demo-gen list-models</code></pre>
+      <p>Output example:</p>
+      <pre><code>Model status:
+  kokoro: ✓
+  kokoro_voices: ✓</code></pre>
+    </section>
+
+    <section class="card" id="download-models">
+      <h2>demo-gen download-models</h2>
+      <p>Download AI model weights to <code>~/.demo-gen/models/</code>.</p>
+      <pre><code>demo-gen download-models [--tts-only] [--force]</code></pre>
+      <table class="flag-table">
+        <thead><tr><th>Flag</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>--tts-only</code></td><td>Download TTS models only (Kokoro ONNX)</td></tr>
+          <tr><td><code>--force</code></td><td>Re-download even if already present; re-verifies SHA-256</td></tr>
+        </tbody>
+      </table>
+      <div class="caption">All downloads use HTTPS. SHA-256 checksums are verified against a pinned manifest before any model is loaded.</div>
+    </section>
+
+    <section class="card" id="tokens-schema">
+      <h2>Design token schema</h2>
+      <p>Pass a <code>design_tokens.json</code> file with <code>--tokens</code> to override any or all default colors. All keys are optional except the required set below.</p>
+      <h3>Required keys</h3>
+      <table class="token-table">
+        <thead><tr><th>Key</th><th>Type</th><th>Default</th><th>Used in</th></tr></thead>
+        <tbody>
+          <tr><td><code>brand_gradient_start</code></td><td>hex color</td><td><code>#1e3a5f</code></td><td>Header, title slides, takeaways</td></tr>
+          <tr><td><code>brand_gradient_end</code></td><td>hex color</td><td><code>#2563eb</code></td><td>Header, title slides, takeaways</td></tr>
+          <tr><td><code>brand_primary</code></td><td>hex color</td><td><code>#2563eb</code></td><td>Step circles, links, active nav, caption border</td></tr>
+          <tr><td><code>brand_primary_light</code></td><td>hex color</td><td><code>#dbeafe</code></td><td>Caption background, active nav background</td></tr>
+          <tr><td><code>brand_primary_dark</code></td><td>hex color</td><td><code>#1e40af</code></td><td>Caption text, dark accents</td></tr>
+          <tr><td><code>highlight_color</code></td><td>hex color</td><td><code>#ef4444</code></td><td>Screenshot annotation ring (production polish)</td></tr>
+          <tr><td><code>highlight_shadow</code></td><td>rgba string</td><td><code>rgba(239,68,68,0.12)</code></td><td>Annotation glow</td></tr>
+          <tr><td><code>page_bg</code></td><td>hex color</td><td><code>#f8f9fc</code></td><td>HTML page background</td></tr>
+          <tr><td><code>card_bg</code></td><td>hex color</td><td><code>#ffffff</code></td><td>Step card, sidebar background</td></tr>
+          <tr><td><code>body_text</code></td><td>hex color</td><td><code>#111827</code></td><td>Primary text, step headings</td></tr>
+          <tr><td><code>secondary_text</code></td><td>hex color</td><td><code>#374151</code></td><td>Captions, secondary content</td></tr>
+          <tr><td><code>app_shell_sidebar_bg</code></td><td>hex color</td><td><code>#111827</code></td><td>App mockup sidebar in placeholder mocks</td></tr>
+          <tr><td><code>caption_border_width</code></td><td>CSS length</td><td><code>4px</code></td><td>Caption block left border</td></tr>
+        </tbody>
+      </table>
+      <h3>Optional keys</h3>
+      <table class="token-table">
+        <thead><tr><th>Key</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>tagline</code></td><td>string</td><td>Product tagline shown in HTML footer and closing video slide</td></tr>
+          <tr><td><code>product_name</code></td><td>string</td><td>Product name override (normally passed via <code>--product</code>)</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card" id="pipeline">
+      <h2>Pipeline stages</h2>
+      <p>demo-gen runs six stages in sequence. All intermediate files live in a temporary directory that is deleted on completion (including on error).</p>
+      <div class="stage">
+        <span class="stage-num">1</span>
+        <div class="stage-body">
+          <h4>Script generation — <code>demo_gen/stages/script.py</code></h4>
+          <p>Calls Ollama (local) or Claude API (cloud) with a structured prompt and returns a <code>DemoScript</code> Pydantic object: title, tagline, executive summary, steps, takeaways, CTA. File contents passed via <code>--include-docs</code> are XML-delimited in the prompt to prevent prompt injection.</p>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-num">2</span>
+        <div class="stage-body">
+          <h4>Asset loading — <code>demo_gen/stages/assets.py</code></h4>
+          <p>Validates and loads all input screenshots and recordings. All paths are canonicalized, checked against an allowed extension list, and must resolve within the home directory or cwd. Recordings are frame-extracted with MoviePy. Images are letterboxed to the target resolution with Pillow.</p>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-num">3</span>
+        <div class="stage-body">
+          <h4>Voiceover synthesis — <code>demo_gen/stages/voice.py</code></h4>
+          <p>Synthesizes per-step audio from the talk track text. Backend is selected by polish level: <code>KokoroBackend</code> (standard/production), <code>PiperBackend</code> (draft, if installed), or <code>NullBackend</code> (silence). Output: one WAV per step at 24kHz.</p>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-num">4</span>
+        <div class="stage-body">
+          <h4>Slide composition — <code>demo_gen/stages/slides.py</code></h4>
+          <p>Renders title card, per-step slides, and closing card as PNG images using Pillow. All colors come from the design token dictionary. Screenshots are composited onto step slides at full resolution.</p>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-num">5</span>
+        <div class="stage-body">
+          <h4>Video assembly — <code>demo_gen/stages/video.py</code></h4>
+          <p>Converts each PNG slide to a video clip matching the audio duration, muxes with per-step WAV, concatenates all clips, then burns SRT subtitles. All <code>ffmpeg</code> calls use <code>shell=False</code> with explicit argument lists. SFX is generated inline via the ffmpeg <code>sine</code> source filter.</p>
+        </div>
+      </div>
+      <div class="stage">
+        <span class="stage-num">6</span>
+        <div class="stage-body">
+          <h4>HTML rendering — <code>demo_gen/stages/html.py</code></h4>
+          <p>Renders the canonical Variant-B HTML template via Jinja2 with <code>autoescape=True</code>. All AI-generated content is passed as render-time variables — never as template source — preventing SSTI. Design tokens are injected directly into CSS. Screenshots are copied to an <code>assets/</code> subdirectory alongside the HTML.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="polish-matrix">
+      <h2>Polish level matrix</h2>
+      <table class="flag-table">
+        <thead><tr><th>Feature</th><th>draft</th><th>standard</th><th>production</th></tr></thead>
+        <tbody>
+          <tr><td>Screenshots</td><td>Placeholder div mock</td><td>Real <code>&lt;img&gt;</code></td><td>Real + highlight ring + callout label</td></tr>
+          <tr><td>Caption style</td><td>Plain text</td><td>Styled <code>.caption</code> block</td><td>Styled + 4px accent border</td></tr>
+          <tr><td>Takeaways section</td><td>Absent</td><td>Plain <code>&lt;ul&gt;</code></td><td>Gradient card + checkmark bullets</td></tr>
+          <tr><td>IntersectionObserver nav</td><td>Absent</td><td>Absent</td><td>Present</td></tr>
+          <tr><td>HTML footer</td><td>Absent</td><td>Product name</td><td>Product name + tagline + year</td></tr>
+          <tr><td>TTS backend</td><td>Piper (fast)</td><td>Kokoro standard</td><td>Kokoro best voice</td></tr>
+          <tr><td>Video SFX</td><td>None</td><td>440Hz ding 80ms</td><td>C5+E5 chord 80ms</td></tr>
+          <tr><td>Video transitions</td><td>Cut</td><td>Fade 0.5s</td><td>Fade + slide 0.5s</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card" id="env-vars">
+      <h2>Environment variables</h2>
+      <table class="flag-table">
+        <thead><tr><th>Variable</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Required for <code>--cloud</code> mode. Never pass this as a CLI argument.</td></tr>
+          <tr><td><code>FFMPEG_BINARY</code></td><td>Override the ffmpeg binary path. Default: <code>ffmpeg</code> (resolved via PATH).</td></tr>
+        </tbody>
+      </table>
+      <div class="warn"><strong>Security note:</strong> Never commit <code>ANTHROPIC_API_KEY</code> to version control. Read it from your shell environment or a secrets manager.</div>
+    </section>
+
+  </main>
+</div>
+<footer>
+  <strong>demo-gen</strong> — Ship demos as fast as you ship code.
+</footer>
+<script>
+  const sections = document.querySelectorAll('.card[id]');
+  const links = document.querySelectorAll('.sidebar a');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(a => a.classList.remove('active'));
+        const a = document.querySelector('.sidebar a[href="#' + e.target.id + '"]');
+        if (a) a.classList.add('active');
+      }
+    });
+  }, { threshold: 0.2 });
+  sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>

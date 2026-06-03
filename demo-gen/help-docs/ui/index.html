@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="demo-gen user guide — install, run, and customize demo generation">
+  <title>User Guide | demo-gen</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 15px; background: #f8f9fc; color: #111827; line-height: 1.6; }
+    header { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: #fff; padding: 48px 32px 40px; }
+    header h1 { font-size: 1.9rem; font-weight: 800; }
+    header p { opacity: 0.85; margin-top: 6px; }
+    .page-body { display: flex; max-width: 1200px; margin: 0 auto; padding: 32px 16px; gap: 32px; }
+    aside.sidebar { width: 220px; flex-shrink: 0; position: sticky; top: 24px; align-self: flex-start; background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 20px 16px; }
+    .sidebar h3 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #9ca3af; margin-bottom: 10px; }
+    .sidebar a { display: block; padding: 7px 10px; border-radius: 7px; text-decoration: none; color: #374151; font-size: 13px; margin-bottom: 2px; }
+    .sidebar a:hover, .sidebar a.active { background: #dbeafe; color: #1e40af; }
+    main { flex: 1; min-width: 0; }
+    h2 { font-size: 1.35rem; font-weight: 700; color: #1e3a5f; margin: 40px 0 12px; padding-top: 8px; }
+    h3 { font-size: 1.05rem; font-weight: 600; margin: 28px 0 8px; }
+    p { margin-bottom: 14px; color: #374151; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 28px; margin-bottom: 24px; scroll-margin-top: 24px; }
+    .step-list { counter-reset: steps; list-style: none; }
+    .step-list li { counter-increment: steps; padding: 12px 0 12px 52px; position: relative; border-bottom: 1px solid #f3f4f6; }
+    .step-list li:last-child { border-bottom: none; }
+    .step-list li::before { content: counter(steps); position: absolute; left: 0; top: 8px; width: 34px; height: 34px; background: #2563eb; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; }
+    code { background: #f3f4f6; border-radius: 5px; padding: 2px 7px; font-family: "SF Mono", "Fira Code", monospace; font-size: 13px; color: #1e3a5f; }
+    pre { background: #111827; color: #e5e7eb; border-radius: 10px; padding: 20px 22px; overflow-x: auto; margin: 16px 0; font-size: 13px; line-height: 1.7; }
+    pre code { background: none; color: inherit; padding: 0; }
+    .caption { border-left: 4px solid #2563eb; background: #dbeafe; color: #1e40af; padding: 10px 14px; border-radius: 0 6px 6px 0; font-size: 13px; margin: 14px 0; }
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+    .badge-blue { background: #dbeafe; color: #1e40af; }
+    .badge-green { background: #dcfce7; color: #166534; }
+    .badge-yellow { background: #fef9c3; color: #854d0e; }
+    .option-table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0; }
+    .option-table th { background: #f3f4f6; padding: 8px 12px; text-align: left; font-weight: 600; border-bottom: 1px solid #e5e7eb; }
+    .option-table td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+    .option-table tr:last-child td { border-bottom: none; }
+    .faq-q { font-weight: 600; margin-bottom: 4px; }
+    .faq-a { color: #374151; margin-bottom: 18px; }
+    footer { text-align: center; padding: 32px 16px; color: #9ca3af; font-size: 13px; border-top: 1px solid #e5e7eb; margin-top: 24px; }
+    @media (max-width: 768px) { .page-body { flex-direction: column; } aside.sidebar { width: 100%; position: static; } }
+  </style>
+</head>
+<body>
+<header>
+  <h1>User Guide</h1>
+  <p>Install demo-gen, generate your first demo, and customize it for your project.</p>
+</header>
+<div class="page-body">
+  <aside class="sidebar">
+    <h3>Contents</h3>
+    <a href="#install">Installation</a>
+    <a href="#first-demo">First demo</a>
+    <a href="#screenshots">Add screenshots</a>
+    <a href="#branding">Branding &amp; tokens</a>
+    <a href="#polish">Polish levels</a>
+    <a href="#voice">Voice &amp; tone</a>
+    <a href="#local-vs-cloud">Local vs cloud</a>
+    <a href="#models">Download models</a>
+    <a href="#claude-code">Claude Code integration</a>
+    <a href="#faq">FAQ</a>
+  </aside>
+  <main>
+
+    <section class="card" id="install">
+      <h2>Installation</h2>
+      <p>demo-gen requires Python 3.9+ and <code>ffmpeg</code>.</p>
+      <h3>1. Install ffmpeg</h3>
+      <pre><code># macOS
+brew install ffmpeg
+
+# Ubuntu / Debian
+sudo apt-get install ffmpeg</code></pre>
+      <h3>2. Install demo-gen</h3>
+      <pre><code>pip install demo-gen</code></pre>
+      <p>Or from source:</p>
+      <pre><code>git clone https://github.com/your-org/demo-generator
+cd demo-generator
+pip install -e ".[dev]"</code></pre>
+      <h3>3. Install a local LLM (recommended)</h3>
+      <p>demo-gen uses <a href="https://ollama.com" target="_blank">Ollama</a> for local script generation by default. Install it, then pull a model:</p>
+      <pre><code>ollama pull llama3.2</code></pre>
+      <div class="caption">You can skip Ollama if you use <code>--cloud</code> mode with an Anthropic API key — but local is preferred for privacy.</div>
+      <h3>4. Download TTS models</h3>
+      <pre><code>demo-gen download-models --tts-only</code></pre>
+      <p>This downloads Kokoro ONNX voice weights (~90MB) to <code>~/.demo-gen/models/</code>. SHA-256 verified automatically.</p>
+    </section>
+
+    <section class="card" id="first-demo">
+      <h2>First demo</h2>
+      <p>Generate a standard-polish demo in two lines:</p>
+      <pre><code>demo-gen generate \
+  --product "My App" \
+  --feature "User Onboarding" \
+  --polish standard \
+  --format both \
+  --output-dir ./output</code></pre>
+      <p>demo-gen will:</p>
+      <ol class="step-list">
+        <li>Ask Ollama to write a structured demo script for "User Onboarding"</li>
+        <li>Synthesize a voiceover using Kokoro TTS</li>
+        <li>Compose step slides as PNG images with Pillow</li>
+        <li>Assemble slides + audio into an MP4 with ffmpeg</li>
+        <li>Render a self-contained HTML demo script</li>
+      </ol>
+      <p>Output in <code>./output/</code>:</p>
+      <pre><code>output/
+  user-onboarding.html   ← demo script (open in browser)
+  user-onboarding.mp4    ← video with voiceover and subtitles
+  user-onboarding.srt    ← subtitle file</code></pre>
+    </section>
+
+    <section class="card" id="screenshots">
+      <h2>Add screenshots</h2>
+      <p>Pass real screenshots and demo-gen will embed them in both the HTML and the video:</p>
+      <pre><code>demo-gen generate \
+  --product "My App" \
+  --feature "Dashboard" \
+  --screenshot screenshots/step1.png \
+  --screenshot screenshots/step2.png \
+  --screenshot screenshots/step3.png \
+  --polish production \
+  --format both \
+  --output-dir ./output</code></pre>
+      <p>With <code>--polish production</code>, demo-gen adds a red highlight annotation ring around the key UI element in each screenshot. To tell it where to draw the ring, pass a <code>callout_region</code> in a custom script — or let it place the ring automatically based on the LLM's judgment.</p>
+      <h3>Screen recordings</h3>
+      <p>You can also pass a screen recording and demo-gen will extract a still frame at the 1-second mark:</p>
+      <pre><code>demo-gen generate \
+  --product "My App" \
+  --feature "Task Flow" \
+  --recording recording.mp4 \
+  --format both \
+  --output-dir ./output</code></pre>
+    </section>
+
+    <section class="card" id="branding">
+      <h2>Branding &amp; tokens</h2>
+      <p>demo-gen uses a <strong>design token file</strong> to control all colors in generated HTML and video slides. Pass your own token file to match your product's brand:</p>
+      <pre><code>demo-gen generate \
+  --product "Acme Platform" \
+  --feature "Reports" \
+  --tokens ./acme-tokens.json \
+  --brand-voice ./BRAND_VOICE.md \
+  --format both \
+  --output-dir ./output</code></pre>
+      <h3>Token file format (<code>design_tokens.json</code>)</h3>
+      <pre><code>{
+  "brand_gradient_start": "#0f172a",
+  "brand_gradient_end": "#6366f1",
+  "brand_primary": "#6366f1",
+  "brand_primary_light": "#e0e7ff",
+  "brand_primary_dark": "#3730a3",
+  "highlight_color": "#f59e0b",
+  "highlight_shadow": "rgba(245,158,11,0.12)",
+  "page_bg": "#f8fafc",
+  "card_bg": "#ffffff",
+  "body_text": "#0f172a",
+  "secondary_text": "#475569",
+  "app_shell_sidebar_bg": "#0f172a",
+  "caption_border_width": "4px",
+  "tagline": "Your product tagline here."
+}</code></pre>
+      <div class="caption">Only provide the keys you want to override. Any missing keys fall back to demo-gen's defaults.</div>
+      <h3>Brand voice file (<code>BRAND_VOICE.md</code>)</h3>
+      <p>Create a <code>BRAND_VOICE.md</code> in your project root and pass it with <code>--brand-voice</code>. demo-gen reads it before writing any script and matches your voice, tone, and terminology. See the <a href="../demos/features/branding.html">branding demo</a> for an example.</p>
+    </section>
+
+    <section class="card" id="polish">
+      <h2>Polish levels</h2>
+      <p>Use <code>--polish</code> to control output quality and speed.</p>
+      <table class="option-table">
+        <thead><tr><th>Level</th><th>Best for</th><th>Screenshots</th><th>TTS</th><th>SFX</th><th>Speed</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>draft</code></td>
+            <td>Quick internal review, CI previews</td>
+            <td>Placeholder mock</td>
+            <td>Piper (fast)</td>
+            <td>None</td>
+            <td><span class="badge badge-green">Fastest</span></td>
+          </tr>
+          <tr>
+            <td><code>standard</code></td>
+            <td>Team review, sprint demos</td>
+            <td>Real <code>&lt;img&gt;</code></td>
+            <td>Kokoro</td>
+            <td>440Hz ding</td>
+            <td><span class="badge badge-yellow">Medium</span></td>
+          </tr>
+          <tr>
+            <td><code>production</code></td>
+            <td>Customer-facing, marketing, releases</td>
+            <td>Real + highlight ring + callout</td>
+            <td>Kokoro (best voice)</td>
+            <td>C5+E5 chord</td>
+            <td><span class="badge badge-blue">Slower</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card" id="voice">
+      <h2>Voice &amp; tone</h2>
+      <h3>Tone preset (<code>--tone</code>)</h3>
+      <p>Controls the writing style of the generated script.</p>
+      <table class="option-table">
+        <thead><tr><th>Preset</th><th>Style</th><th>Use when</th></tr></thead>
+        <tbody>
+          <tr><td><code>professional</code></td><td>Formal, ≤20 words per sentence, no contractions</td><td>External demos, sales, marketing</td></tr>
+          <tr><td><code>casual</code></td><td>Conversational, contractions, second-person "you"</td><td>Developer docs, internal tooling</td></tr>
+          <tr><td><code>energetic</code></td><td>Short sentences, action verbs, benefit-first</td><td>Product launches, conference demos</td></tr>
+        </tbody>
+      </table>
+      <h3>Voice preset (<code>--voice</code>)</h3>
+      <p>Selects the Kokoro ONNX voice for narration.</p>
+      <pre><code># List all available voices
+demo-gen list-voices</code></pre>
+      <table class="option-table">
+        <thead><tr><th>Voice ID</th><th>Character</th></tr></thead>
+        <tbody>
+          <tr><td><code>af_heart</code></td><td>American female — warm, clear (default)</td></tr>
+          <tr><td><code>af_bella</code></td><td>American female — bright, expressive</td></tr>
+          <tr><td><code>am_adam</code></td><td>American male — measured, authoritative</td></tr>
+          <tr><td><code>am_michael</code></td><td>American male — neutral, professional</td></tr>
+        </tbody>
+      </table>
+      <div class="caption">Voices require Kokoro ONNX models. Run <code>demo-gen download-models --tts-only</code> first.</div>
+    </section>
+
+    <section class="card" id="local-vs-cloud">
+      <h2>Local vs cloud</h2>
+      <p>demo-gen is <strong>local-first</strong>. By default, all processing runs on your machine — the script, the audio, the video assembly. Nothing leaves your network.</p>
+      <h3>Local mode (default)</h3>
+      <pre><code>demo-gen generate --product "My App" --feature "Login" --local</code></pre>
+      <p>Uses Ollama for script generation. Requires Ollama running locally with your chosen model pulled.</p>
+      <h3>Cloud mode</h3>
+      <pre><code>export ANTHROPIC_API_KEY=sk-ant-...
+demo-gen generate --product "My App" --feature "Login" --cloud</code></pre>
+      <p>Uses the Claude API for script generation. Before sending, demo-gen shows a pre-flight prompt listing every file it will transmit and asks for confirmation.</p>
+      <div class="caption">Screenshots are <strong>never</strong> sent to the API in cloud mode — only the text context files you explicitly list with <code>--include-docs</code>.</div>
+      <h3>Privacy</h3>
+      <p>See <a href="../../PRIVACY.md">PRIVACY.md</a> for the full data flow description. The short version: use <code>--local</code> if your screenshots contain production user data.</p>
+    </section>
+
+    <section class="card" id="models">
+      <h2>Manage models</h2>
+      <pre><code># Check what's downloaded
+demo-gen list-models
+
+# Download TTS models only
+demo-gen download-models --tts-only
+
+# Download all models
+demo-gen download-models
+
+# Re-download (e.g. to verify integrity)
+demo-gen download-models --force</code></pre>
+      <p>Models are stored at <code>~/.demo-gen/models/</code>. SHA-256 checksums are verified against a pinned manifest on every download and on every load.</p>
+    </section>
+
+    <section class="card" id="claude-code">
+      <h2>Claude Code integration</h2>
+      <p>If demo-gen is installed in your PATH, the <code>/demo</code> Claude Code skill automatically delegates to it:</p>
+      <pre><code>/demo feature-name</code></pre>
+      <p>This runs:</p>
+      <pre><code>demo-gen generate \
+  --feature feature-name \
+  --brand-voice ./BRAND_VOICE.md \
+  --polish standard \
+  --format both \
+  --output-dir help-docs/demos/</code></pre>
+      <p>If demo-gen is not installed, the skill falls back to its built-in ffmpeg/drawtext approach.</p>
+    </section>
+
+    <section class="card" id="faq">
+      <h2>FAQ</h2>
+      <p class="faq-q">I get "model not found" when running demo-gen.</p>
+      <p class="faq-a">Run <code>ollama pull llama3.2</code> first, or pass <code>--local-model &lt;model-name&gt;</code> to match whatever model you have. Use <code>ollama list</code> to see installed models.</p>
+      <p class="faq-q">The voiceover is silent / there's no audio in the MP4.</p>
+      <p class="faq-a">Run <code>demo-gen download-models --tts-only</code> to fetch the Kokoro ONNX weights. For <code>--polish draft</code>, demo-gen uses Piper or produces a silence track — install <code>piper-tts</code> for draft audio.</p>
+      <p class="faq-q">Can I use demo-gen with a custom ffmpeg path?</p>
+      <p class="faq-a">Yes. Set the environment variable <code>FFMPEG_BINARY=/path/to/ffmpeg</code> before running. Alternatively, ensure your custom ffmpeg is first in <code>$PATH</code>.</p>
+      <p class="faq-q">Does demo-gen work offline after setup?</p>
+      <p class="faq-a">Yes, completely. Once Ollama models and TTS weights are downloaded, no network access is required. All processing is local.</p>
+      <p class="faq-q">Can I run demo-gen in CI?</p>
+      <p class="faq-a">Yes. Use <code>--polish draft</code> for speed. Set <code>ANTHROPIC_API_KEY</code> and pass <code>--cloud</code> if you want Claude for scripting in CI (be mindful of what files you pass with <code>--include-docs</code>). The pre-flight consent prompt is skipped in non-interactive environments.</p>
+      <p class="faq-q">My design tokens are being ignored.</p>
+      <p class="faq-a">Verify the token file is valid JSON with an object at the top level. Run <code>cat your-tokens.json | python3 -m json.tool</code> to check. All required keys must be present (see <a href="../api/index.html#tokens-schema">token schema reference</a>).</p>
+    </section>
+
+  </main>
+</div>
+<footer>
+  <strong>demo-gen</strong> — Ship demos as fast as you ship code.
+</footer>
+<script>
+  const sections = document.querySelectorAll('section[id]');
+  const links = document.querySelectorAll('.sidebar a');
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(a => a.classList.remove('active'));
+        const a = document.querySelector('.sidebar a[href="#' + e.target.id + '"]');
+        if (a) a.classList.add('active');
+      }
+    });
+  }, { threshold: 0.3 });
+  sections.forEach(s => observer.observe(s));
+</script>
+</body>
+</html>
