@@ -15,7 +15,7 @@ def test_resolution_dimensions():
 
 def test_demo_config_defaults():
     config = DemoConfig(product="Test", feature="login")
-    assert config.local is True
+    assert config.local is False
     assert config.polish == PolishLevel.standard
     assert config.tone == TonePreset.professional
     assert config.wpm == 150
