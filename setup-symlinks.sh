@@ -48,6 +48,8 @@ link() {
   fi
 }
 
+mkdir -p "${CLAUDE_DIR}/skills" "${CLAUDE_DIR}/agents"
+
 echo "=== Linking skills ==="
 for skill_dir in "$REPO_DIR/skills"/*/; do
   skill_name="$(basename "$skill_dir")"
