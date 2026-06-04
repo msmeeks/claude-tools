@@ -93,4 +93,10 @@ if ! command -v ccr &>/dev/null; then
   exit 1
 fi
 
+# ccr code spawns `claude` with {env: {...process.env}} — it does NOT inject
+# ANTHROPIC_BASE_URL into the subprocess env (it passes it via --settings JSON
+# instead). Without this sentinel, the /opt/homebrew/bin/claude wrapper never
+# sees ANTHROPIC_BASE_URL and re-invokes claude-byom in an infinite loop.
+export CLAUDE_BYOM_ACTIVE=1
+
 exec ccr code "$@"
