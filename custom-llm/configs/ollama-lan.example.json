@@ -2,8 +2,8 @@
   "Providers": [
     {
       "name": "ollama",
-      "api_base_url": "http://LAN_IP_HERE:11434/v1",
-      "api_key": "",
+      "api_base_url": "http://LAN_IP_HERE:11434/v1/chat/completions",
+      "api_key": "ollama",
       "models": ["qwen2.5-coder:32b", "llama3.1:8b"]
     }
   ],

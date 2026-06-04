@@ -73,7 +73,7 @@ ollama pull qwen2.5-coder:32b
 
 Then set `LAN_IP_HERE` in `configs/ollama-lan.local.json` to the host's
 local IP (e.g. `192.168.1.42`). The `api_base_url` becomes
-`http://192.168.1.42:11434/v1`.
+`http://192.168.1.42:11434/v1/chat/completions`.
 
 ```bash
 ./claude-byom ollama-lan
@@ -91,7 +91,7 @@ Once deployed, set `configs/ollama-cloud.local.json`:
 {
   "Providers": [{
     "name":        "ollama",
-    "api_base_url": "https://your-domain.example.com/v1",
+    "api_base_url": "https://your-domain.example.com/v1/chat/completions",
     "api_key":     "<base64(ollama:YOUR_PASSWORD)>"
   }]
 }
@@ -139,7 +139,7 @@ See `network/tailscale-setup.md`.
 ### SSH tunnel
 
 No new infra. Forward port 11434 from the remote to localhost, then use
-`http://127.0.0.1:11434/v1` as the `api_base_url`.
+`http://127.0.0.1:11434/v1/chat/completions` as the `api_base_url`.
 
 ```bash
 REMOTE_HOST=my-vm.example.com bash network/ssh-tunnel.sh
