@@ -99,4 +99,9 @@ fi
 # sees ANTHROPIC_BASE_URL and re-invokes claude-byom in an infinite loop.
 export CLAUDE_BYOM_ACTIVE=1
 
+# Restart the CCR daemon so it picks up the new config.json we just wrote.
+# Without this, the persistent `ccr start` process keeps the old config in memory.
+ccr restart 2>/dev/null || true
+sleep 1
+
 exec ccr code "$@"
