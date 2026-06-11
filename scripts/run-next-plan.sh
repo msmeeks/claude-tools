@@ -197,7 +197,7 @@ while IFS= read -r plan_file; do
       break
       ;;
   esac
-done < <(grep -E '^\| \[' "$README" | sed 's/.*(\([^)]*\.md\)).*/\1/')
+done < <(grep -E '^\| \[' "$README" | grep -v '| done |' | sed 's/.*(\([^)]*\.md\)).*/\1/')
 
 if [[ -z "$SELECTED_FILE" ]]; then
   info "All plans done. Nothing to do."
