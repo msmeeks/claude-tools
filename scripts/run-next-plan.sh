@@ -23,8 +23,6 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" \
 PLANS_DIR="${REPO_ROOT}/meta/plans"
 README="${PLANS_DIR}/README.md"
 LOGS_DIR="${PLANS_DIR}/implementation-logs"
-TIMESTAMP="$(date +%Y%m%dT%H%M%S)"
-LOG_FILE="${LOGS_DIR}/run-next-plan-${TIMESTAMP}.log"
 
 # ── Flags ─────────────────────────────────────────────────────────────────────
 
@@ -130,7 +128,32 @@ while IFS= read -r plan_file; do
   fi
 done < <(grep -E '^\| \[' "$README" | sed 's/.*(\([^)]*\.md\)).*/\1/')
 
-# ── Phase 2: Plan Selection ───────────────────────────────────────────────────
+# ── Rate-limit helpers (defined once) ────────────────────────────────────────
+
+MAX_RETRIES=20
+RETRY_WAIT_DEFAULT=60
+
+is_rate_limited() {
+  local logfile="$1"
+  grep -qiE \
+    'rate.?limit|usage.?limit|too many requests|overloaded|429|quota.?exceed|slowdown' \
+    "$logfile" 2>/dev/null
+}
+
+parse_retry_after() {
+  local logfile="$1"
+  local val
+  val=$(grep -ioE '(retry[- ]after[: ]+([0-9]+)|try again in ([0-9]+))' "$logfile" 2>/dev/null \
+    | grep -oE '[0-9]+' | tail -1)
+  echo "${val:-$RETRY_WAIT_DEFAULT}"
+}
+
+# ── Phase 2-5: Loop over all pending plans ───────────────────────────────────
+
+while true; do
+
+TIMESTAMP="$(date +%Y%m%dT%H%M%S)"
+LOG_FILE="${LOGS_DIR}/run-next-plan-${TIMESTAMP}.log"
 
 SELECTED_FILE=""
 SELECTED_STATUS=""
@@ -244,27 +267,6 @@ echo ""
 cd "$REPO_ROOT"
 
 # ── Rate-limit retry loop ─────────────────────────────────────────────────────
-# Claude CLI outputs usage/rate-limit messages to stdout. We capture output,
-# tee it live, then inspect for limit signals and retry with backoff.
-
-MAX_RETRIES=20          # give up after this many rate-limit hits
-RETRY_WAIT_DEFAULT=60   # seconds to wait when no Retry-After header is found
-
-is_rate_limited() {
-  local logfile="$1"
-  grep -qiE \
-    'rate.?limit|usage.?limit|too many requests|overloaded|429|quota.?exceed|slowdown' \
-    "$logfile" 2>/dev/null
-}
-
-parse_retry_after() {
-  local logfile="$1"
-  # Look for "retry after N seconds" or "retry-after: N" patterns
-  local val
-  val=$(grep -ioE '(retry[- ]after[: ]+([0-9]+)|try again in ([0-9]+))' "$logfile" 2>/dev/null \
-    | grep -oE '[0-9]+' | tail -1)
-  echo "${val:-$RETRY_WAIT_DEFAULT}"
-}
 
 ATTEMPT=0
 while true; do
@@ -310,4 +312,11 @@ while true; do
   break
 done
 
-exit "$CLAUDE_EXIT"
+if [[ "$CLAUDE_EXIT" -ne 0 ]]; then
+  exit "$CLAUDE_EXIT"
+fi
+
+info "Plan complete. Looking for next plan..."
+echo ""
+
+done # end outer plan loop
