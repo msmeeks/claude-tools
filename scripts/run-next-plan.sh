@@ -320,8 +320,10 @@ while true; do
       break
     fi
     WAIT_SECS="$(parse_retry_after "$ATTEMPT_LOG")"
+    NOW="$(date '+%Y-%m-%d %H:%M:%S')"
+    RESUME_TIME="$(date -v "+${WAIT_SECS}S" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -d "+${WAIT_SECS} seconds" '+%Y-%m-%d %H:%M:%S')"
     echo ""
-    warn "Usage limit hit (attempt ${ATTEMPT}/${MAX_RETRIES}). Waiting ${WAIT_SECS}s before retry..."
+    warn "Usage limit hit (attempt ${ATTEMPT}/${MAX_RETRIES}). Now: ${NOW} | Delay: ${WAIT_SECS}s | Resume: ${RESUME_TIME}"
     sleep "$WAIT_SECS"
     info "Retrying..."
     echo ""
