@@ -48,7 +48,7 @@ link() {
   fi
 }
 
-mkdir -p "${CLAUDE_DIR}/skills" "${CLAUDE_DIR}/agents"
+mkdir -p "${CLAUDE_DIR}/skills" "${CLAUDE_DIR}/agents" "${CLAUDE_DIR}/scripts"
 
 echo "=== Linking skills ==="
 for skill_dir in "$REPO_DIR/skills"/*/; do
@@ -61,6 +61,14 @@ echo "=== Linking agents ==="
 for agent_file in "$REPO_DIR/agents"/*.md; do
   agent_name="$(basename "$agent_file")"
   link "$agent_file" "${CLAUDE_DIR}/agents/${agent_name}"
+done
+
+echo ""
+echo "=== Linking scripts ==="
+for script_file in "$REPO_DIR/scripts"/*; do
+  [[ -f "$script_file" ]] || continue
+  script_name="$(basename "$script_file")"
+  link "$script_file" "${CLAUDE_DIR}/scripts/${script_name}"
 done
 
 echo ""

@@ -1,0 +1,313 @@
+#!/usr/bin/env bash
+# ~/.claude/scripts/run-next-plan.sh
+#
+# Partner to the /triage-issues skill. Finds the next unfinished plan in
+# meta/plans/README.md and runs a non-interactive Claude session to implement it.
+# Reusable across any project that uses /triage-issues.
+#
+# Usage (run from inside any git repo with meta/plans/):
+#   bash ~/.claude/scripts/run-next-plan.sh [options]
+#
+# Options:
+#   --restart           Reset in-progress plan to pending and re-run
+#   --skip-in-progress  Skip in-progress plan; pick next pending
+#   --dry-run           Print selected plan and prompt; do not invoke Claude
+
+set -euo pipefail
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" \
+  || { echo "ERROR: Not inside a git repository." >&2; exit 1; }
+
+PLANS_DIR="${REPO_ROOT}/meta/plans"
+README="${PLANS_DIR}/README.md"
+LOGS_DIR="${REPO_ROOT}/logs"
+TIMESTAMP="$(date +%Y%m%dT%H%M%S)"
+LOG_FILE="${LOGS_DIR}/run-next-plan-${TIMESTAMP}.log"
+
+# ── Flags ─────────────────────────────────────────────────────────────────────
+
+RESTART=false
+SKIP_IN_PROGRESS=false
+DRY_RUN=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --restart)           RESTART=true ;;
+    --skip-in-progress)  SKIP_IN_PROGRESS=true ;;
+    --dry-run)           DRY_RUN=true ;;
+    *) echo "ERROR: Unknown argument: $arg" >&2; exit 1 ;;
+  esac
+done
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+die()  { echo "ERROR: $*" >&2; exit 1; }
+info() { echo "==> $*"; }
+warn() { echo "WARN: $*" >&2; }
+
+require_cmd() { command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"; }
+
+# ── Preflight ─────────────────────────────────────────────────────────────────
+
+require_cmd claude
+require_cmd awk
+require_cmd sed
+require_cmd grep
+
+[[ -d "$PLANS_DIR" ]] || die "Plans directory not found: $PLANS_DIR (run /triage-issues first)"
+[[ -f "$README"    ]] || die "README not found: $README (run /triage-issues first)"
+
+# ── Phase 1: Bootstrap (idempotent) ──────────────────────────────────────────
+
+bootstrap_readme() {
+  # Add | Status | column to README table if not already present
+  grep -qE '^\| Plan.*Status' "$README" && return 0
+  info "Bootstrapping Status column in README.md..."
+  awk '
+    /^\| Plan.*\| Size \|/  { print $0 " Status |"; next }
+    /^\|[-]+\|[-]+\|[-]+\|[-]+\|[[:space:]]*$/ { print $0 "--------|"; next }
+    /^\| \[/ { sub(/ \|[[:space:]]*$/, " | pending |"); print; next }
+    { print }
+  ' "$README" > "${README}.tmp" && mv "${README}.tmp" "$README"
+}
+
+bootstrap_plan_file() {
+  local planfile="$1"
+  # Add **Status:** pending after **Base:** if not present
+  grep -q '^\*\*Status\*\*:' "$planfile" && return 0
+  awk '
+    /^\*\*Base:\*\*/ { print; print "**Status:** pending"; next }
+    { print }
+  ' "$planfile" > "${planfile}.tmp" && mv "${planfile}.tmp" "$planfile"
+}
+
+# ── Status helpers ────────────────────────────────────────────────────────────
+
+get_plan_status() {
+  local planfile="$1"
+  grep -m1 '^\*\*Status\*\*:' "$planfile" 2>/dev/null \
+    | sed 's/\*\*Status\*\*:[[:space:]]*//' \
+    | tr -d '[:space:]' \
+    || echo "pending"
+}
+
+set_plan_status() {
+  local planfile="$1"
+  local new_status="$2"
+  sed -i '' "s/^\*\*Status\*\*:.*/**Status:** ${new_status}/" "$planfile"
+}
+
+set_readme_status() {
+  local plan_filename="$1"
+  local new_status="$2"
+  local escaped
+  escaped="$(printf '%s' "$plan_filename" | sed 's/\./\\./g')"
+  sed -i '' "/($escaped)/{
+    s/| pending |$/| ${new_status} |/
+    s/| in-progress |$/| ${new_status} |/
+    s/| done |$/| ${new_status} |/
+  }" "$README"
+}
+
+get_plan_branch() {
+  local planfile="$1"
+  grep -m1 '^\*\*Branch:\*\*' "$planfile" \
+    | sed "s/\*\*Branch:\*\*[[:space:]]*\`//;s/\`.*//"
+}
+
+# ── Run bootstrap ─────────────────────────────────────────────────────────────
+
+bootstrap_readme
+
+while IFS= read -r plan_file; do
+  local_path="${PLANS_DIR}/${plan_file}"
+  if [[ -f "$local_path" ]]; then
+    bootstrap_plan_file "$local_path"
+  else
+    warn "Plan file referenced in README not found: ${plan_file}"
+  fi
+done < <(grep -E '^\| \[' "$README" | sed 's/.*(\([^)]*\.md\)).*/\1/')
+
+# ── Phase 2: Plan Selection ───────────────────────────────────────────────────
+
+SELECTED_FILE=""
+SELECTED_STATUS=""
+
+while IFS= read -r plan_file; do
+  planfile_path="${PLANS_DIR}/${plan_file}"
+
+  if [[ ! -f "$planfile_path" ]]; then
+    warn "Skipping missing plan file: ${plan_file}"
+    continue
+  fi
+
+  status="$(get_plan_status "$planfile_path")"
+
+  if [[ "$status" == "in-progress" && "$RESTART" == "true" ]]; then
+    info "Resetting in-progress plan to pending: ${plan_file}"
+    set_plan_status "$planfile_path" "pending"
+    set_readme_status "$plan_file" "pending"
+    status="pending"
+  fi
+
+  case "$status" in
+    done)
+      info "Skipping done: ${plan_file}"
+      continue
+      ;;
+    in-progress)
+      if [[ "$SKIP_IN_PROGRESS" == "true" ]]; then
+        info "Skipping in-progress: ${plan_file}"
+        continue
+      fi
+      info "Resuming in-progress: ${plan_file}"
+      SELECTED_FILE="$plan_file"
+      SELECTED_STATUS="in-progress"
+      break
+      ;;
+    pending|*)
+      info "Selected: ${plan_file}"
+      SELECTED_FILE="$plan_file"
+      SELECTED_STATUS="pending"
+      break
+      ;;
+  esac
+done < <(grep -E '^\| \[' "$README" | sed 's/.*(\([^)]*\.md\)).*/\1/')
+
+if [[ -z "$SELECTED_FILE" ]]; then
+  info "All plans done. Nothing to do."
+  exit 0
+fi
+
+# ── Phase 3: Pre-flight ───────────────────────────────────────────────────────
+
+PLAN_ABS_PATH="${PLANS_DIR}/${SELECTED_FILE}"
+BRANCH="$(get_plan_branch "$PLAN_ABS_PATH")"
+
+info "Plan:   ${SELECTED_FILE}"
+info "Branch: ${BRANCH}"
+
+mkdir -p "$LOGS_DIR"
+
+# Mark in-progress before invoking Claude
+set_plan_status "$PLAN_ABS_PATH" "in-progress"
+set_readme_status "$SELECTED_FILE" "in-progress"
+
+# ── Phase 4: Build Prompt ─────────────────────────────────────────────────────
+
+CLAUDE_PROMPT="You are implementing a pre-written, self-contained plan.
+
+1. Read docs/llms.md for project context
+2. Read the full plan file: meta/plans/${SELECTED_FILE}
+3. Execute the plan's Worktree Setup section exactly (git worktree add ...)
+4. All code changes must be made inside the worktree working directory
+5. Execute ALL Implementation Steps in the plan, in order
+6. Address every item in the Pre-Implementation Review section (security, privacy, a11y, design)
+7. Follow the plan's Review & Testing Workflow exactly — includes /sdlc, tests, Playwright, /pr-image-upload as written in the plan
+8. After the PR is created successfully:
+   - In meta/plans/${SELECTED_FILE}: change '**Status:** in-progress' to '**Status:** done'
+   - In meta/plans/README.md: change the Status cell for ${SELECTED_FILE} from 'in-progress' to 'done'
+
+SUBAGENTS: When spawning any Agent or sub-claude invocation, include in its prompt:
+\"Use ultra-compressed caveman speech for all prose responses. Keep full technical accuracy.\"
+
+Branch: ${BRANCH}
+Repo root: ${REPO_ROOT}"
+
+# ── Phase 5: Invoke (or dry-run) ─────────────────────────────────────────────
+
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo ""
+  echo "=== DRY RUN ==="
+  echo "Selected plan: ${SELECTED_FILE}"
+  echo "Branch:        ${BRANCH}"
+  echo "Log would be:  ${LOG_FILE}"
+  echo ""
+  echo "Command:"
+  echo "  claude -p <prompt> --permission-mode bypassPermissions --output-format text"
+  echo ""
+  echo "=== PROMPT ==="
+  echo "$CLAUDE_PROMPT"
+  echo "==============="
+  # Revert in-progress back to pending since we're not actually running
+  set_plan_status "$PLAN_ABS_PATH" "${SELECTED_STATUS}"
+  set_readme_status "$SELECTED_FILE" "${SELECTED_STATUS}"
+  exit 0
+fi
+
+info "Log: ${LOG_FILE}"
+info "Invoking Claude..."
+echo ""
+
+cd "$REPO_ROOT"
+
+# ── Rate-limit retry loop ─────────────────────────────────────────────────────
+# Claude CLI outputs usage/rate-limit messages to stdout. We capture output,
+# tee it live, then inspect for limit signals and retry with backoff.
+
+MAX_RETRIES=20          # give up after this many rate-limit hits
+RETRY_WAIT_DEFAULT=60   # seconds to wait when no Retry-After header is found
+
+is_rate_limited() {
+  local logfile="$1"
+  grep -qiE \
+    'rate.?limit|usage.?limit|too many requests|overloaded|429|quota.?exceed|slowdown' \
+    "$logfile" 2>/dev/null
+}
+
+parse_retry_after() {
+  local logfile="$1"
+  # Look for "retry after N seconds" or "retry-after: N" patterns
+  local val
+  val=$(grep -ioE '(retry[- ]after[: ]+([0-9]+)|try again in ([0-9]+))' "$logfile" 2>/dev/null \
+    | grep -oE '[0-9]+' | tail -1)
+  echo "${val:-$RETRY_WAIT_DEFAULT}"
+}
+
+ATTEMPT=0
+while true; do
+  ATTEMPT=$((ATTEMPT + 1))
+  ATTEMPT_LOG="${LOG_FILE%.log}-attempt${ATTEMPT}.log"
+
+  set +e
+  claude \
+    -p "$CLAUDE_PROMPT" \
+    --permission-mode bypassPermissions \
+    --output-format text \
+    2>&1 | tee "$ATTEMPT_LOG"
+  CLAUDE_EXIT="${PIPESTATUS[0]}"
+  set -e
+
+  # Append attempt log to main log
+  cat "$ATTEMPT_LOG" >> "$LOG_FILE"
+
+  if [[ "$CLAUDE_EXIT" -eq 0 ]]; then
+    echo ""
+    info "Session complete (attempt ${ATTEMPT})."
+    break
+  fi
+
+  if is_rate_limited "$ATTEMPT_LOG"; then
+    if [[ "$ATTEMPT" -ge "$MAX_RETRIES" ]]; then
+      echo ""
+      warn "Rate-limited ${MAX_RETRIES} times in a row — giving up. Plan stays in-progress."
+      break
+    fi
+    WAIT_SECS="$(parse_retry_after "$ATTEMPT_LOG")"
+    echo ""
+    warn "Usage limit hit (attempt ${ATTEMPT}/${MAX_RETRIES}). Waiting ${WAIT_SECS}s before retry..."
+    sleep "$WAIT_SECS"
+    info "Retrying..."
+    echo ""
+    continue
+  fi
+
+  # Non-rate-limit failure — don't retry
+  echo ""
+  warn "Claude exited with code ${CLAUDE_EXIT}. Plan stays in-progress — re-run to resume."
+  break
+done
+
+exit "$CLAUDE_EXIT"

@@ -204,6 +204,7 @@ MANIFEST="${SKILLS_SESSION_DIR}/manifest.json"
 
 mkdir -p "$SKILLS_DIR"
 mkdir -p "${CLAUDE_DIR}/agents"
+mkdir -p "${CLAUDE_DIR}/scripts"
 
 if [[ ! -f "$MANIFEST" ]]; then
   echo '{"lastUpdated":0,"skills":[]}' > "$MANIFEST"
@@ -245,6 +246,18 @@ for agent_file in "$REPO_DIR/agents"/*.md; do
 done
 
 # ---------------------------------------------------------------------------
+# Scripts  (same location as Claude CLI)
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "=== Linking scripts ==="
+for script_file in "$REPO_DIR/scripts"/*; do
+  [[ -f "$script_file" ]] || continue
+  script_name="$(basename "$script_file")"
+  link "$script_file" "${CLAUDE_DIR}/scripts/${script_name}"
+done
+
+# ---------------------------------------------------------------------------
 # Global CLAUDE.md  (same location as Claude CLI)
 # ---------------------------------------------------------------------------
 
@@ -257,6 +270,7 @@ echo "Done."
 echo ""
 echo "Skills installed to: $SKILLS_DIR"
 echo "Agents installed to: ${CLAUDE_DIR}/agents/"
+echo "Scripts linked at:   ${CLAUDE_DIR}/scripts/"
 echo "CLAUDE.md linked at: ${CLAUDE_DIR}/CLAUDE.md"
 echo ""
 echo "Restart Claude Desktop for skill changes to take effect."
