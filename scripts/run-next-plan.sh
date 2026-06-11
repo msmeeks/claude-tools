@@ -22,7 +22,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" \
 
 PLANS_DIR="${REPO_ROOT}/meta/plans"
 README="${PLANS_DIR}/README.md"
-LOGS_DIR="${REPO_ROOT}/logs"
+LOGS_DIR="${PLANS_DIR}/implementation-logs"
 TIMESTAMP="$(date +%Y%m%dT%H%M%S)"
 LOG_FILE="${LOGS_DIR}/run-next-plan-${TIMESTAMP}.log"
 
