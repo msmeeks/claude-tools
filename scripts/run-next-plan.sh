@@ -136,23 +136,45 @@ RETRY_WAIT_DEFAULT=60
 is_rate_limited() {
   local logfile="$1"
   grep -qiE \
-    'rate.?limit|usage.?limit|too many requests|overloaded|429|quota.?exceed|slowdown' \
+    'session.?limit|rate.?limit|usage.?limit|too many requests|overloaded|429|quota.?exceed|slowdown' \
     "$logfile" 2>/dev/null
 }
 
 parse_retry_after() {
   local logfile="$1"
-  local val
-  val=$(grep -ioE '(retry[- ]after[: ]+([0-9]+)|try again in ([0-9]+))' "$logfile" 2>/dev/null \
+  local delay_val reset_time today target_timestamp reset_val
+
+  # 1. Look for standard numeric delay amounts (e.g., "retry after 60")
+  delay_val=$(grep -ioE '(retry[- ]after[: ]+([0-9]+)|try again in ([0-9]+))' "$logfile" 2>/dev/null \
     | grep -oE '[0-9]+' | tail -1)
-  echo "${val:-$RETRY_WAIT_DEFAULT}"
+
+  # 2. Look for a specific reset time (e.g., "6:30pm")
+  reset_time=$(grep -ioE 'resets [0-9]+:[0-9]+(am|pm)' "$logfile" 2>/dev/null | awk '{print $2}')
+
+  if [ -n "$reset_time" ]; then
+    # Grab today's date to give macOS date a complete timestamp context
+    today=$(date "+%Y-%m-%d")
+
+    # Parse the time using macOS/BSD flags (-j -f) under the NY timezone
+    target_timestamp=$(TZ="America/New_York" date -j -f "%Y-%m-%d %I:%M%p" "$today $reset_time" "+%s" 2>/dev/null)
+
+    if [ -n "$target_timestamp" ]; then
+      reset_val=$(( target_timestamp - $(date "+%s") ))
+
+      # If the reset time already passed today, assume it resets tomorrow (+86400 seconds)
+      [ "$reset_val" -lt 0 ] && reset_val=$(( reset_val + 86400 ))
+    fi
+  fi
+
+  # 3. Return the first non-null value found, otherwise use the default global
+  echo "${delay_val:-${reset_val:-$RETRY_WAIT_DEFAULT}}"
 }
 
 # ── Phase 2-5: Loop over all pending plans ───────────────────────────────────
 
 while true; do
 
-TIMESTAMP="$(date +%Y%m%dT%H%M%S)"
+TIMESTAMP="$(date +%Y_%m_%d_T%H_%M_%S)"
 LOG_FILE="${LOGS_DIR}/run-next-plan-${TIMESTAMP}.log"
 
 SELECTED_FILE=""
