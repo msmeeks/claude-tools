@@ -288,6 +288,11 @@ echo ""
 
 cd "$REPO_ROOT"
 
+IMPL_START_TIME="$(date +%s)"
+IMPL_START_HUMAN="$(date '+%Y-%m-%d %H:%M:%S')"
+info "Implementation started: ${IMPL_START_HUMAN}"
+echo ""
+
 # ── Rate-limit retry loop ─────────────────────────────────────────────────────
 
 ATTEMPT=0
@@ -320,6 +325,7 @@ while true; do
       break
     fi
     WAIT_SECS="$(parse_retry_after "$ATTEMPT_LOG")"
+    (( WAIT_SECS += 60 ))
     NOW="$(date '+%Y-%m-%d %H:%M:%S')"
     RESUME_TIME="$(date -v "+${WAIT_SECS}S" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -d "+${WAIT_SECS} seconds" '+%Y-%m-%d %H:%M:%S')"
     echo ""
@@ -335,6 +341,15 @@ while true; do
   warn "Claude exited with code ${CLAUDE_EXIT}. Plan stays in-progress — re-run to resume."
   break
 done
+
+IMPL_END_TIME="$(date +%s)"
+IMPL_END_HUMAN="$(date '+%Y-%m-%d %H:%M:%S')"
+IMPL_DURATION_SECS=$(( IMPL_END_TIME - IMPL_START_TIME ))
+IMPL_DURATION_MIN=$(( IMPL_DURATION_SECS / 60 ))
+IMPL_DURATION_SEC=$(( IMPL_DURATION_SECS % 60 ))
+echo ""
+info "Implementation ended:  ${IMPL_END_HUMAN}"
+info "Duration:              ${IMPL_DURATION_MIN}m ${IMPL_DURATION_SEC}s (${IMPL_DURATION_SECS}s total)"
 
 if [[ "$CLAUDE_EXIT" -ne 0 ]]; then
   exit "$CLAUDE_EXIT"
