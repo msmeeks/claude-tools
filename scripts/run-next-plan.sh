@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ~/.claude/scripts/run-next-plan.sh
 #
-# Partner to the /triage-issues skill. Finds the next unfinished plan in
+# Partner to /triage-issues and /triage-pr-comments. Finds the next unfinished plan in
 # meta/plans/README.md and runs a non-interactive Claude session to implement it.
-# Reusable across any project that uses /triage-issues.
+# Reusable across any project that uses /triage-issues or /triage-pr-comments.
 #
 # Usage (run from inside any git repo with meta/plans/):
 #   bash ~/.claude/scripts/run-next-plan.sh [options]
@@ -12,6 +12,9 @@
 #   --restart           Reset in-progress plan to pending and re-run
 #   --skip-in-progress  Skip in-progress plan; pick next pending
 #   --dry-run           Print selected plan and prompt; do not invoke Claude
+#   --issues            Only run issue workstream plans (skip PR-comment plans)
+#   --pr-comments       Only run PR comment response plans (skip issue plans)
+#                       Default (neither flag): run both, PR-comment plans first
 
 set -euo pipefail
 
@@ -29,12 +32,15 @@ LOGS_DIR="${PLANS_DIR}/implementation-logs"
 RESTART=false
 SKIP_IN_PROGRESS=false
 DRY_RUN=false
+KIND="both"
 
 for arg in "$@"; do
   case "$arg" in
     --restart)           RESTART=true ;;
     --skip-in-progress)  SKIP_IN_PROGRESS=true ;;
     --dry-run)           DRY_RUN=true ;;
+    --issues)            KIND="issues" ;;
+    --pr-comments)       KIND="pr-comments" ;;
     *) echo "ERROR: Unknown argument: $arg" >&2; exit 1 ;;
   esac
 done
@@ -54,8 +60,8 @@ require_cmd awk
 require_cmd sed
 require_cmd grep
 
-[[ -d "$PLANS_DIR" ]] || die "Plans directory not found: $PLANS_DIR (run /triage-issues first)"
-[[ -f "$README"    ]] || die "README not found: $README (run /triage-issues first)"
+[[ -d "$PLANS_DIR" ]] || die "Plans directory not found: $PLANS_DIR (run /triage-issues or /triage-pr-comments first)"
+[[ -f "$README"    ]] || die "README not found: $README (run /triage-issues or /triage-pr-comments first)"
 
 # ── Phase 1: Bootstrap (idempotent) ──────────────────────────────────────────
 
@@ -115,6 +121,62 @@ get_plan_branch() {
     | sed "s/\*\*Branch:\*\*[[:space:]]*\`//;s/\`.*//"
 }
 
+is_pr_comment_plan() {
+  [[ "$1" =~ ^pr-[0-9]+-comments\.md$ ]]
+}
+
+list_plan_files() {
+  # Args: $1=kind (both|issues|pr-comments), $2=exclude_done (true|false)
+  local kind="${1:-both}" exclude_done="${2:-false}"
+  local all pr_plans issue_plans
+
+  if [[ "$exclude_done" == "true" ]]; then
+    all=$(grep -E '^\| \[' "$README" | grep -v '| done |' | sed 's/.*(\([^)]*\.md\)).*/\1/')
+  else
+    all=$(grep -E '^\| \[' "$README" | sed 's/.*(\([^)]*\.md\)).*/\1/')
+  fi
+
+  case "$kind" in
+    pr-comments)
+      echo "$all" | grep -E '^pr-[0-9]+-comments\.md$' || true ;;
+    issues)
+      echo "$all" | grep -vE '^pr-[0-9]+-comments\.md$' || true ;;
+    both)
+      pr_plans=$(echo "$all"    | grep -E  '^pr-[0-9]+-comments\.md$' || true)
+      issue_plans=$(echo "$all" | grep -vE '^pr-[0-9]+-comments\.md$' || true)
+      printf '%s\n%s\n' "$pr_plans" "$issue_plans" | grep -v '^$' || true ;;
+  esac
+}
+
+get_repo_slug() {
+  gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true
+}
+
+post_reactions() {
+  local planfile="$1" repo="$2"
+  local reactions_line emoji ids id
+
+  reactions_line=$(grep -o '<!-- reactions:.*-->' "$planfile" 2>/dev/null || true)
+  [[ -z "$reactions_line" ]] && return 0
+
+  # Strip the HTML comment wrapper
+  reactions_line="${reactions_line#<!-- reactions: }"
+  reactions_line="${reactions_line% -->}"
+
+  for token in $reactions_line; do
+    emoji="${token%%=*}"
+    ids="${token#*=}"
+    IFS=',' read -ra id_arr <<< "$ids"
+    for id in "${id_arr[@]}"; do
+      id="${id// /}"
+      [[ -z "$id" ]] && continue
+      gh api "repos/${repo}/pulls/comments/${id}/reactions" \
+        -f "content=${emoji}" >/dev/null 2>&1 || true
+      info "Reacted :${emoji}: to comment ${id}"
+    done
+  done
+}
+
 # ── Run bootstrap ─────────────────────────────────────────────────────────────
 
 bootstrap_readme
@@ -126,7 +188,7 @@ while IFS= read -r plan_file; do
   else
     warn "Plan file referenced in README not found: ${plan_file}"
   fi
-done < <(grep -E '^\| \[' "$README" | sed 's/.*(\([^)]*\.md\)).*/\1/')
+done < <(list_plan_files "$KIND" false)
 
 # ── Rate-limit helpers (defined once) ────────────────────────────────────────
 
@@ -219,7 +281,7 @@ while IFS= read -r plan_file; do
       break
       ;;
   esac
-done < <(grep -E '^\| \[' "$README" | grep -v '| done |' | sed 's/.*(\([^)]*\.md\)).*/\1/')
+done < <(list_plan_files "$KIND" true)
 
 if [[ -z "$SELECTED_FILE" ]]; then
   info "All plans done. Nothing to do."
@@ -242,6 +304,27 @@ set_readme_status "$SELECTED_FILE" "in-progress"
 
 # ── Phase 4: Build Prompt ─────────────────────────────────────────────────────
 
+if is_pr_comment_plan "$SELECTED_FILE"; then
+CLAUDE_PROMPT="You are implementing a pre-written PR comment response plan.
+
+1. Read docs/llms.md for project context
+2. Read the full plan file: meta/plans/${SELECTED_FILE}
+3. Check the plan's Worktree section — only run \`git worktree add\` if that path does not already exist
+4. All code changes must be made inside the worktree working directory
+5. Execute ALL Implementation Steps in order
+6. Post all Conversation Responses to GitHub review threads exactly as specified in the plan
+7. Address every item in the Pre-Implementation Review section (security, privacy, a11y, design)
+8. Follow the plan's Review & Testing Workflow — /sdlc, Playwright smoke test, /pr-image-upload, re-request review
+9. After all comments are resolved and review re-requested:
+   - In meta/plans/${SELECTED_FILE}: change '**Status:** in-progress' to '**Status:** done'
+   - In meta/plans/README.md: change the Status cell for ${SELECTED_FILE} from 'in-progress' to 'done'
+
+SUBAGENTS: When spawning any Agent or sub-claude invocation, include in its prompt:
+\"Use ultra-compressed caveman speech for all prose responses. Keep full technical accuracy.\"
+
+Branch: ${BRANCH}
+Repo root: ${REPO_ROOT}"
+else
 CLAUDE_PROMPT="You are implementing a pre-written, self-contained plan.
 
 1. Read docs/llms.md for project context
@@ -260,6 +343,7 @@ SUBAGENTS: When spawning any Agent or sub-claude invocation, include in its prom
 
 Branch: ${BRANCH}
 Repo root: ${REPO_ROOT}"
+fi
 
 # ── Phase 5: Invoke (or dry-run) ─────────────────────────────────────────────
 
@@ -315,6 +399,12 @@ while true; do
   if [[ "$CLAUDE_EXIT" -eq 0 ]]; then
     echo ""
     info "Session complete (attempt ${ATTEMPT})."
+    if is_pr_comment_plan "$SELECTED_FILE"; then
+      REPO="$(get_repo_slug)"
+      if [[ -n "$REPO" ]]; then
+        post_reactions "$PLAN_ABS_PATH" "$REPO"
+      fi
+    fi
     break
   fi
 

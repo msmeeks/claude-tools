@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Partner to the /triage-issues skill. Finds the next unfinished plan in
+Partner to /triage-issues and /triage-pr-comments. Finds the next unfinished plan in
 meta/plans/README.md and runs a non-interactive Claude session to implement it.
 
 Usage (run from inside any git repo with meta/plans/):
@@ -10,6 +10,9 @@ Options:
     --restart           Reset in-progress plan to pending and re-run
     --skip-in-progress  Skip in-progress plan; pick next pending
     --dry-run           Print selected plan and prompt; do not invoke Claude
+    --issues            Only run issue workstream plans (skip PR-comment plans)
+    --pr-comments       Only run PR comment response plans (skip issue plans)
+                        Default (neither flag): run both, PR-comment plans first
 """
 
 import argparse
@@ -25,10 +28,16 @@ from pathlib import Path
 MAX_RETRIES = 20
 RETRY_WAIT_DEFAULT = 60
 
+PR_COMMENT_PLAN_RE = re.compile(r"^pr-\d+-comments\.md$")
+
 RATE_LIMIT_RE = re.compile(
     r"session.?limit|rate.?limit|usage.?limit|too many requests|overloaded|429|quota.?exceed|slowdown",
     re.IGNORECASE,
 )
+
+
+def is_pr_comment_plan(filename: str) -> bool:
+    return bool(PR_COMMENT_PLAN_RE.match(filename))
 
 
 def die(msg: str) -> None:
@@ -110,8 +119,10 @@ def get_plan_branch(planfile: Path) -> str:
     return ""
 
 
-def list_plan_files(readme: Path, exclude_done: bool = False) -> list[str]:
-    files = []
+def list_plan_files(
+    readme: Path, exclude_done: bool = False, kind: str = "both"
+) -> list[str]:
+    all_files = []
     for line in readme.read_text().splitlines():
         if not re.match(r"^\| \[", line):
             continue
@@ -119,8 +130,57 @@ def list_plan_files(readme: Path, exclude_done: bool = False) -> list[str]:
             continue
         m = re.search(r"\(([^)]*\.md)\)", line)
         if m:
-            files.append(m.group(1))
-    return files
+            all_files.append(m.group(1))
+
+    if kind == "pr-comments":
+        return [f for f in all_files if is_pr_comment_plan(f)]
+    if kind == "issues":
+        return [f for f in all_files if not is_pr_comment_plan(f)]
+    # "both": PR-comment plans first (unblock review cycles), then issue plans
+    pr = [f for f in all_files if is_pr_comment_plan(f)]
+    issues = [f for f in all_files if not is_pr_comment_plan(f)]
+    return pr + issues
+
+
+def parse_reaction_metadata(planfile: Path) -> dict[str, list[str]]:
+    """Parse <!-- reactions: rocket=ID,ID +1=ID --> from the plan file."""
+    m = re.search(r"<!-- reactions: (.+?) -->", planfile.read_text())
+    if not m:
+        return {}
+    result: dict[str, list[str]] = {}
+    for part in m.group(1).split():
+        key, _, raw_ids = part.partition("=")
+        if raw_ids:
+            result[key] = [i.strip() for i in raw_ids.split(",") if i.strip()]
+    return result
+
+
+def get_repo_slug() -> str:
+    r = subprocess.run(
+        ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
+        capture_output=True,
+        text=True,
+    )
+    return r.stdout.strip()
+
+
+def post_reactions(planfile: Path, repo: str) -> None:
+    reactions = parse_reaction_metadata(planfile)
+    if not reactions:
+        return
+    for emoji, ids in reactions.items():
+        for comment_id in ids:
+            subprocess.run(
+                [
+                    "gh",
+                    "api",
+                    f"repos/{repo}/pulls/comments/{comment_id}/reactions",
+                    "-f",
+                    f"content={emoji}",
+                ],
+                capture_output=True,
+            )
+            info(f"Reacted :{emoji}: to comment {comment_id}")
 
 
 def is_rate_limited(logfile: Path) -> bool:
@@ -176,6 +236,22 @@ def main() -> None:
         action="store_true",
         help="Print selected plan and prompt; do not invoke Claude",
     )
+    kind_group = parser.add_mutually_exclusive_group()
+    kind_group.add_argument(
+        "--issues",
+        dest="kind",
+        action="store_const",
+        const="issues",
+        help="Only run issue workstream plans (skip PR-comment plans)",
+    )
+    kind_group.add_argument(
+        "--pr-comments",
+        dest="kind",
+        action="store_const",
+        const="pr-comments",
+        help="Only run PR comment response plans (skip issue plans)",
+    )
+    parser.set_defaults(kind="both")
     args = parser.parse_args()
 
     result = subprocess.run(
@@ -190,14 +266,14 @@ def main() -> None:
     logs_dir = plans_dir / "implementation-logs"
 
     if not plans_dir.is_dir():
-        die(f"Plans directory not found: {plans_dir} (run /triage-issues first)")
+        die(f"Plans directory not found: {plans_dir} (run /triage-issues or /triage-pr-comments first)")
     if not readme.is_file():
-        die(f"README not found: {readme} (run /triage-issues first)")
+        die(f"README not found: {readme} (run /triage-issues or /triage-pr-comments first)")
     if not shutil.which("claude"):
         die("Required command not found: claude")
 
     bootstrap_readme(readme)
-    for plan_file in list_plan_files(readme):
+    for plan_file in list_plan_files(readme, kind=args.kind):
         local_path = plans_dir / plan_file
         if local_path.is_file():
             bootstrap_plan_file(local_path)
@@ -212,7 +288,7 @@ def main() -> None:
         selected_file = None
         selected_status = None
 
-        for plan_file in list_plan_files(readme, exclude_done=True):
+        for plan_file in list_plan_files(readme, exclude_done=True, kind=args.kind):
             planfile_path = plans_dir / plan_file
             if not planfile_path.is_file():
                 warn(f"Skipping missing plan file: {plan_file}")
@@ -258,7 +334,28 @@ def main() -> None:
         set_plan_status(plan_abs_path, "in-progress")
         set_readme_status(readme, selected_file, "in-progress")
 
-        claude_prompt = f"""You are implementing a pre-written, self-contained plan.
+        if is_pr_comment_plan(selected_file):
+            claude_prompt = f"""You are implementing a pre-written PR comment response plan.
+
+1. Read docs/llms.md for project context
+2. Read the full plan file: meta/plans/{selected_file}
+3. Check the plan's Worktree section — only run `git worktree add` if that path does not already exist
+4. All code changes must be made inside the worktree working directory
+5. Execute ALL Implementation Steps in order
+6. Post all Conversation Responses to GitHub review threads exactly as specified in the plan
+7. Address every item in the Pre-Implementation Review section (security, privacy, a11y, design)
+8. Follow the plan's Review & Testing Workflow — /sdlc, Playwright smoke test, /pr-image-upload, re-request review
+9. After all comments are resolved and review re-requested:
+   - In meta/plans/{selected_file}: change '**Status:** in-progress' to '**Status:** done'
+   - In meta/plans/README.md: change the Status cell for {selected_file} from 'in-progress' to 'done'
+
+SUBAGENTS: When spawning any Agent or sub-claude invocation, include in its prompt:
+"Use ultra-compressed caveman speech for all prose responses. Keep full technical accuracy."
+
+Branch: {branch}
+Repo root: {repo_root}"""
+        else:
+            claude_prompt = f"""You are implementing a pre-written, self-contained plan.
 
 1. Read docs/llms.md for project context
 2. Read the full plan file: meta/plans/{selected_file}
@@ -338,6 +435,10 @@ Repo root: {repo_root}"""
             if claude_exit == 0:
                 print()
                 info(f"Session complete (attempt {attempt}).")
+                if is_pr_comment_plan(selected_file):
+                    repo = get_repo_slug()
+                    if repo:
+                        post_reactions(plan_abs_path, repo)
                 break
 
             if is_rate_limited(attempt_log):

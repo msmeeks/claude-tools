@@ -16,6 +16,9 @@ it up and execute it end-to-end without additional context.
 /triage-issues review   — review existing meta/plans/*.md with /sdlc plan
 ```
 
+> **Sister skill:** `/triage-pr-comments` does the same for open PR reviewer comments —
+> one plan per PR, reusing existing branches/worktrees.
+
 ---
 
 ## Full Mode
