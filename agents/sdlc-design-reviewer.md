@@ -1,5 +1,5 @@
 ---
-name: design-reviewer
+name: sdlc-design-reviewer
 description: Reviews UI code for visual consistency, component reuse, and adherence to the project's design brief. Ensures consistent spacing, color tokens, typography, and layout patterns across all pages. Use for any UI/frontend change.
 model: sonnet
 tools:

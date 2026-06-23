@@ -1,5 +1,5 @@
 ---
-name: doc-writer
+name: sdlc-doc-writer
 description: Creates and updates project documentation. Maintains docs/features/<name>.md per feature and docs/llms.md index. Use at the start of planning (to read context) and after every non-trivial code change (to write/update docs). Always reads docs/llms.md first.
 model: sonnet
 tools:

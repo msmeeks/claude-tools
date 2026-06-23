@@ -1,6 +1,6 @@
 ---
-name: code-reviewer
-description: Reviews code changes for DRY/SOLID principles, third-party dependency justification, and overall correctness. Test coverage quality is handled by the test-reviewer agent. Use for any non-trivial code change. Run in parallel with other review agents.
+name: sdlc-code-reviewer
+description: Reviews code changes for DRY/SOLID principles, third-party dependency justification, and overall correctness. Test coverage quality is handled by the sdlc-test-reviewer agent. Use for any non-trivial code change. Run in parallel with other review agents.
 model: sonnet
 tools:
   - Read

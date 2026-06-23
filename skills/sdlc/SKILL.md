@@ -24,7 +24,7 @@ This skill manages the full review and QA pipeline for code changes. Always invo
 If `docs/` does not exist in the project root, dispatch first:
 
 ```
-Agent(doc-writer): The docs/ directory does not exist for this project. Create it with docs/llms.md, docs/overview.md, and docs/features/ stubs for each major feature area. Read the codebase to understand the project before writing.
+Agent(sdlc-doc-writer): The docs/ directory does not exist for this project. Create it with docs/llms.md, docs/overview.md, and docs/features/ stubs for each major feature area. Read the codebase to understand the project before writing.
 ```
 
 ## Phase 1: Planning (run before implementation)
@@ -32,19 +32,19 @@ Agent(doc-writer): The docs/ directory does not exist for this project. Create i
 **Step 1 — Read docs first.** Dispatch the doc-writer to load context before touching code:
 
 ```
-Agent(doc-writer): Read docs/llms.md and load the feature doc(s) relevant to [feature/task description]. Summarize what's documented, flag any gaps or outdated sections, and identify the key files and patterns I should know before implementing.
+Agent(sdlc-doc-writer): Read docs/llms.md and load the feature doc(s) relevant to [feature/task description]. Summarize what's documented, flag any gaps or outdated sections, and identify the key files and patterns I should know before implementing.
 ```
 
 **Step 2 — Dispatch planning reviews in parallel** (after reading doc summary):
 
 ```
-Agent(security-reviewer): Analyze threat model for the planned feature. What attack surfaces does this introduce? What auth/authz patterns are needed?
+Agent(sdlc-security-reviewer): Analyze threat model for the planned feature. What attack surfaces does this introduce? What auth/authz patterns are needed?
 
-Agent(privacy-reviewer): Review the data design. What PII will be collected/stored? What consent flows are needed? What retention/deletion policies apply?
+Agent(sdlc-privacy-reviewer): Review the data design. What PII will be collected/stored? What consent flows are needed? What retention/deletion policies apply?
 
-Agent(accessibility-reviewer): Review the planned UI. What WCAG 2.2 AA requirements apply? What keyboard/screen reader patterns are needed?
+Agent(sdlc-accessibility-reviewer): Review the planned UI. What WCAG 2.2 AA requirements apply? What keyboard/screen reader patterns are needed?
 
-Agent(design-reviewer): Review the planned UI against the design brief. What existing components should be reused? What new patterns need to be defined?
+Agent(sdlc-design-reviewer): Review the planned UI against the design brief. What existing components should be reused? What new patterns need to be defined?
 ```
 
 Address all findings before writing implementation code.
@@ -63,19 +63,19 @@ Follow these rules during implementation:
 Dispatch all seven review agents **in parallel**:
 
 ```
-Agent(code-reviewer): Review [files changed] for DRY/SOLID, correctness, and third-party usage.
+Agent(sdlc-code-reviewer): Review [files changed] for DRY/SOLID, correctness, and third-party usage.
 
-Agent(style-reviewer): Review [files changed] for naming, comment quality, idiomatic constructs, and linting compliance.
+Agent(sdlc-style-reviewer): Review [files changed] for naming, comment quality, idiomatic constructs, and linting compliance.
 
-Agent(security-reviewer): Review [files changed] for OWASP Top 10, auth/authz, injection risks, and dependency CVEs.
+Agent(sdlc-security-reviewer): Review [files changed] for OWASP Top 10, auth/authz, injection risks, and dependency CVEs.
 
-Agent(privacy-reviewer): Review [files changed] for GDPR compliance, PII handling, and data minimization.
+Agent(sdlc-privacy-reviewer): Review [files changed] for GDPR compliance, PII handling, and data minimization.
 
-Agent(accessibility-reviewer): Review [files changed] for WCAG 2.2 AA compliance.
+Agent(sdlc-accessibility-reviewer): Review [files changed] for WCAG 2.2 AA compliance.
 
-Agent(design-reviewer): Review [files changed] for design brief adherence and component consistency.
+Agent(sdlc-design-reviewer): Review [files changed] for design brief adherence and component consistency.
 
-Agent(test-reviewer): Review [files changed] for test quality: genuine-value assertions, edge cases, branch coverage, line coverage (target 90%+), frontend+backend unit-test parity, and boundary cases for conditionals and range comparisons.
+Agent(sdlc-test-reviewer): Review [files changed] for test quality: genuine-value assertions, edge cases, branch coverage, line coverage (target 90%+), frontend+backend unit-test parity, and boundary cases for conditionals and range comparisons.
 ```
 
 Fix all Critical/Blocker issues. Fix Major issues unless there is a documented reason not to. Minor issues may be deferred to a follow-up.
@@ -85,9 +85,9 @@ Fix all Critical/Blocker issues. Fix Major issues unless there is a documented r
 Run QA and documentation update **in parallel** after all review fixes are applied:
 
 ```
-Agent(qa-engineer): Run automated tests, lint, API smoke tests, and regression check for [feature description].
+Agent(sdlc-qa-engineer): Run automated tests, lint, API smoke tests, and regression check for [feature description].
 
-Agent(doc-writer): Update documentation for [feature changed]. Create or update the relevant docs/features/<name>.md, and update docs/llms.md if any new doc files were created.
+Agent(sdlc-doc-writer): Update documentation for [feature changed]. Create or update the relevant docs/features/<name>.md, and update docs/llms.md if any new doc files were created.
 ```
 
 QA must **PASS** before marking the task complete. Any QA failure must be fixed and QA re-run. Documentation must be updated before the task is marked done.

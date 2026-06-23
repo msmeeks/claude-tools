@@ -1,5 +1,5 @@
 ---
-name: privacy-reviewer
+name: sdlc-privacy-reviewer
 description: Reviews code for GDPR-level privacy compliance: data minimization, PII handling, consent flows, retention, data subject rights, and privacy best practices. Use for any change that touches user data, analytics, logging, or storage.
 model: sonnet
 tools:

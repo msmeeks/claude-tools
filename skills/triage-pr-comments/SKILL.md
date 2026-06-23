@@ -150,19 +150,19 @@ and whether any comment references a file outside the PR's current diff.
 For each PR with new comments, dispatch four planning-review agents **in parallel**:
 
 ```
-Agent(security-reviewer): Review planned comment responses for PR #<N> (<title>).
+Agent(sdlc-security-reviewer): Review planned comment responses for PR #<N> (<title>).
 Files affected: <list>. Reviewer requests: <summary>.
 Identify OWASP Top 10 risks, auth/authz gaps, injection vectors, CVE-exposed deps.
 
-Agent(privacy-reviewer): Review planned comment responses for PR #<N>.
+Agent(sdlc-privacy-reviewer): Review planned comment responses for PR #<N>.
 Files affected: <list>. Reviewer requests: <summary>.
 Flag PII handling, consent flows, data minimization, retention concerns.
 
-Agent(accessibility-reviewer): Review planned UI comment responses for PR #<N>.
+Agent(sdlc-accessibility-reviewer): Review planned UI comment responses for PR #<N>.
 Files affected: <list>. Reviewer requests: <summary>.
 Flag WCAG 2.2 AA issues: keyboard nav, color contrast, ARIA, focus management.
 
-Agent(design-reviewer): Review planned comment responses for PR #<N> against meta/DESIGN_BRIEF.md.
+Agent(sdlc-design-reviewer): Review planned comment responses for PR #<N> against meta/DESIGN_BRIEF.md.
 Files affected: <list>. Reviewer requests: <summary>.
 Flag component reuse opportunities and design consistency risks.
 ```

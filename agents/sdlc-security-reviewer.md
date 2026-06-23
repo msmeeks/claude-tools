@@ -1,5 +1,5 @@
 ---
-name: security-reviewer
+name: sdlc-security-reviewer
 description: Reviews code changes for security vulnerabilities including OWASP Top 10, CVE exposure, authentication/authorization gaps, injection risks, data exposure, and third-party library security. Use for any code change touching auth, data access, APIs, or dependencies.
 model: sonnet
 tools:

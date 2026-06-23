@@ -1,5 +1,5 @@
 ---
-name: test-reviewer
+name: sdlc-test-reviewer
 description: Reviews test suites for genuine value, edge cases, branch coverage, line coverage (target 90%+), frontend and backend unit-test parity, and boundary cases for conditionals and range comparisons. Use for any non-trivial code change. Run in parallel with other review agents.
 model: sonnet
 tools:

@@ -66,19 +66,19 @@ Name each group with a branch slug: `fix/<slug>`, `feat/<slug>`, `refactor/<slug
 For each group, dispatch four planning-review agents **in parallel**:
 
 ```
-Agent(security-reviewer): Review the planned changes for group "<name>".
+Agent(sdlc-security-reviewer): Review the planned changes for group "<name>".
 Files affected: <list>. Intent: <one-line summary>.
 Identify OWASP Top 10 risks, auth/authz gaps, injection vectors, CVE-exposed deps.
 
-Agent(privacy-reviewer): Review planned changes for group "<name>".
+Agent(sdlc-privacy-reviewer): Review planned changes for group "<name>".
 Files affected: <list>. Intent: <one-line summary>.
 Flag PII handling, consent flows, data minimization, retention concerns.
 
-Agent(accessibility-reviewer): Review planned UI changes for group "<name>".
+Agent(sdlc-accessibility-reviewer): Review planned UI changes for group "<name>".
 Files affected: <list>. Intent: <one-line summary>.
 Flag WCAG 2.2 AA issues: keyboard nav, color contrast, ARIA, focus management.
 
-Agent(design-reviewer): Review planned changes for group "<name>" against meta/DESIGN_BRIEF.md.
+Agent(sdlc-design-reviewer): Review planned changes for group "<name>" against meta/DESIGN_BRIEF.md.
 Files affected: <list>. Intent: <one-line summary>.
 Flag component reuse opportunities and design consistency risks.
 ```

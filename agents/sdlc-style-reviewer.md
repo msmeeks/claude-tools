@@ -1,5 +1,5 @@
 ---
-name: style-reviewer
+name: sdlc-style-reviewer
 description: Reviews code for style and formatting consistency: naming conventions, comment quality, idiomatic language constructs, and linting compliance. Runs the project linter and reports issues. Use in parallel with other review agents.
 model: sonnet
 tools:

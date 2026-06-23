@@ -1,6 +1,6 @@
 ---
-name: qa-engineer
-description: Performs quality assurance: runs automated tests, performs manual API and UI smoke testing, and conducts chaos/edge-case testing. Test suite quality review is handled by the test-reviewer agent. Use as the final step after all code changes and reviews.
+name: sdlc-qa-engineer
+description: Performs quality assurance: runs automated tests, performs manual API and UI smoke testing, and conducts chaos/edge-case testing. Test suite quality review is handled by the sdlc-test-reviewer agent. Use as the final step after all code changes and reviews.
 model: sonnet
 tools:
   - Read

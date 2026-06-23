@@ -1,5 +1,5 @@
 ---
-name: accessibility-reviewer
+name: sdlc-accessibility-reviewer
 description: Reviews UI code for WCAG 2.2 AA compliance: keyboard navigation, color contrast, semantic HTML, ARIA usage, screen reader support, and focus management. Use for any UI/frontend change.
 model: sonnet
 tools:
