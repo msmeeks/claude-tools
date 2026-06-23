@@ -1,0 +1,38 @@
+{
+  "version": 3,
+  "lines": [
+    [
+      { "id": "1", "type": "current-working-dir", "color": "yellow", "rawValue": true },
+      { "id": "3", "type": "git-branch", "color": "magenta" },
+      { "id": "5", "type": "context-percentage", "color": "cyan", "merge": true },
+      { "id": "5b", "type": "custom-text", "customText": " (", "color": "cyan", "rawValue": true, "merge": true },
+      { "id": "5c", "type": "context-length", "color": "cyan", "rawValue": true, "merge": true },
+      { "id": "5d", "type": "custom-text", "customText": " tok)", "color": "cyan", "rawValue": true },
+      { "id": "7", "type": "session-clock", "color": "blue" },
+      { "id": "9", "type": "session-cost", "color": "green" },
+      { "id": "11", "type": "session-usage", "color": "brightBlue", "metadata": { "display": "progress" } },
+      { "id": "13", "type": "weekly-usage", "color": "brightMagenta", "metadata": { "display": "progress" } }
+    ],
+    [],
+    []
+  ],
+  "flexMode": "full-minus-40",
+  "compactThreshold": 60,
+  "colorLevel": 3,
+  "defaultSeparator": " | ",
+  "inheritSeparatorColors": false,
+  "globalBold": false,
+  "gitCacheTtlSeconds": 5,
+  "minimalistMode": false,
+  "powerline": {
+    "enabled": false,
+    "separators": [""],
+    "separatorInvertBackground": [false],
+    "startCaps": [],
+    "endCaps": []
+  },
+  "installation": {
+    "method": "pinned",
+    "installedVersion": "2.2.22"
+  }
+}

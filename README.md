@@ -46,6 +46,10 @@ demo-gen/                 # Python CLI invoked by the /demo skill
   meta/                   # BRAND_VOICE.md / DESIGN_BRIEF.md / PRIVACY.md
   help-docs/              # reference example output
 
+statusline/                # ccstatusline config (Session/Weekly usage %, context tokens, etc.)
+  ccstatusline-settings.json
+  install.sh              # installs ccstatusline, symlinks config, points Claude Code at it
+
 setup-symlinks.sh         # Claude CLI setup: symlink repo → ~/.claude (see below)
 setup-symlinks-desktop.sh # Claude Desktop setup (macOS): symlink repo → Desktop app (see below)
 ```
@@ -97,6 +101,19 @@ git pull        # pull latest
 # restart Claude Desktop after pulling to pick up skill changes
 git add -A && git commit -m "..." && git push   # push your edits
 ```
+
+## Status line
+
+```bash
+bash statusline/install.sh
+```
+
+Installs [ccstatusline](https://github.com/sirmalloc/ccstatusline) (pinned version), symlinks
+`statusline/ccstatusline-settings.json` to `~/.config/ccstatusline/settings.json`, and sets
+`statusLine.command` in `~/.claude/settings.json` to `ccstatusline`. Edit
+`statusline/ccstatusline-settings.json` to change widgets/colors — changes are live immediately
+via the symlink. Re-run the script after bumping `CCSTATUSLINE_VERSION` in `install.sh` to
+upgrade.
 
 ## Adding a new skill
 
