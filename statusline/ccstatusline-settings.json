@@ -10,8 +10,8 @@
       { "id": "5d", "type": "custom-text", "customText": " tok)", "color": "cyan", "rawValue": true },
       { "id": "7", "type": "session-clock", "color": "blue" },
       { "id": "9", "type": "session-cost", "color": "green" },
-      { "id": "11", "type": "session-usage", "color": "brightBlue", "metadata": { "display": "progress" } },
-      { "id": "13", "type": "weekly-usage", "color": "brightMagenta", "metadata": { "display": "progress" } }
+      { "id": "11", "type": "session-usage", "color": "brightBlue" },
+      { "id": "13", "type": "weekly-usage", "color": "brightMagenta" }
     ],
     [],
     []
