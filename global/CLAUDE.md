@@ -4,6 +4,13 @@
 
 **MANDATORY:** Before writing, editing, or creating any code file, you MUST invoke the Skill tool with `skill='sdlc'`. This is not optional. Do not write a single line of implementation code until `/sdlc` has been run for the current task. Run it before implementation starts (planning phase) and again after code is written for review.
 
+## Skill disambiguation
+
+- `/qa` invoked *during a conversation about bugs/features* → conversational QA session that files GitHub issues
+- `/qa` (or `/sdlc qa`) invoked *after code changes are written* → the `sdlc` skill's QA phase, which dispatches `sdlc-qa-engineer` to run tests/lint/smoke checks
+- `/triage` → evaluates a single issue/PR and marks it `ready-for-agent`/`ready-for-human`/etc.
+- `/triage-issues` → bulk-groups already-`ready-for-agent` issues into `meta/plans/` workstreams (downstream of `/triage`, not an alternative to it)
+
 ## Context & Token Efficiency
 
 Every project must have a `.claudeignore` at its root. If one is absent, create it as part of the first planning operation. It should block:
@@ -86,7 +93,7 @@ Every project under `~/Code/` must have a `docs/` directory. If it doesn't exist
 
 **Before planning, reviewing code, or responding to any prompt about the codebase:** read `docs/llms.md` first, then the relevant feature doc(s). The docs are a maintained reference that identifies likely source files, key patterns, and architectural boundaries — use them to narrow your code search before reading code directly. Code is always the authoritative source of truth, but docs dramatically reduce the search space.
 
-At the start of every planning operation: read `docs/llms.md`, then only the relevant feature doc(s). After every non-trivial change, run `doc-writer` to update the feature doc and `docs/llms.md`.
+At the start of every planning operation: read `docs/llms.md`, then only the relevant feature doc(s). After every non-trivial change, run `sdlc-doc-writer` to update the feature doc and `docs/llms.md`.
 
 ## QA
 
