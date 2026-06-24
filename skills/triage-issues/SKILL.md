@@ -91,7 +91,7 @@ the plan file. If all four agents return no findings, omit that section entirely
 Write one `meta/plans/<slug>.md` per group using the **Standard Plan Template** below.
 
 Then write (or update) `meta/plans/README.md` using the **README Template** below. Row order
-must match the **Suggested Order** list — `run-next-plan.sh` picks plans top-to-bottom.
+must match the **Suggested Order** list — `run-next-plan.py` picks plans top-to-bottom.
 
 #### README Template
 
@@ -119,7 +119,7 @@ must match the **Suggested Order** list — `run-next-plan.sh` picks plans top-t
 **Rules:**
 - `Status` column is required; always set to `pending` for new plans.
 - Rows must be ordered by suggested execution sequence (bugs first, then features, XL plans last).
-- The `| Plan |` cell must use `[filename.md](filename.md)` link syntax so `run-next-plan.sh` can parse it.
+- The `| Plan |` cell must use `[filename.md](filename.md)` link syntax so `run-next-plan.py` can parse it.
 - Size values: `S` (1–3 files), `M` (4–8 files), `L` (9–15 files), `XL` (16+ files or new infra).
 
 ---
