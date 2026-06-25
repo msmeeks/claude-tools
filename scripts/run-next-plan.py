@@ -13,6 +13,12 @@ Options:
     --issues            Only run issue workstream plans (skip PR-comment plans)
     --pr-comments       Only run PR comment response plans (skip issue plans)
                         Default (neither flag): run both, PR-comment plans first
+    --integration-branch BRANCH
+                        Shared branch all plan PRs in this batch target and merge into.
+                        Created from the default branch if missing. Default: integration/batch
+                        Each plan branches off the latest integration branch (pulled before
+                        every plan), merges back into it on QA pass, then its PR branch and
+                        worktree are deleted. Merge conflicts are resolved per-PR as needed.
 """
 
 import argparse
@@ -24,6 +30,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import IO
 
 MAX_RETRIES = 20
 RETRY_WAIT_DEFAULT = 60
@@ -35,6 +42,15 @@ RATE_LIMIT_RE = re.compile(
     re.IGNORECASE,
 )
 
+_log_fh: "IO[str] | None" = None
+
+
+def _log(line: str) -> None:
+    if _log_fh is not None:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        _log_fh.write(f"[{ts}] {line}\n")
+        _log_fh.flush()
+
 
 def is_pr_comment_plan(filename: str) -> bool:
     return bool(PR_COMMENT_PLAN_RE.match(filename))
@@ -42,15 +58,18 @@ def is_pr_comment_plan(filename: str) -> bool:
 
 def die(msg: str) -> None:
     print(f"ERROR: {msg}", file=sys.stderr)
+    _log(f"ERROR: {msg}")
     sys.exit(1)
 
 
 def info(msg: str) -> None:
     print(f"==> {msg}")
+    _log(f"==> {msg}")
 
 
 def warn(msg: str) -> None:
     print(f"WARN: {msg}", file=sys.stderr)
+    _log(f"WARN: {msg}")
 
 
 def bootstrap_readme(readme: Path) -> None:
@@ -155,6 +174,68 @@ def parse_reaction_metadata(planfile: Path) -> dict[str, list[str]]:
     return result
 
 
+def get_default_branch() -> str:
+    r = subprocess.run(
+        ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    if r.returncode == 0:
+        return r.stdout.strip().rsplit("/", 1)[-1]
+    return "main"
+
+
+def ensure_integration_branch(integration_branch: str) -> None:
+    """Make sure the integration branch exists locally and on origin, and is up to date."""
+    subprocess.run(["git", "fetch", "origin"], check=False)
+
+    remote_exists = subprocess.run(
+        ["git", "rev-parse", "--verify", f"refs/remotes/origin/{integration_branch}"],
+        capture_output=True,
+    ).returncode == 0
+    local_exists = subprocess.run(
+        ["git", "rev-parse", "--verify", f"refs/heads/{integration_branch}"],
+        capture_output=True,
+    ).returncode == 0
+
+    if not remote_exists and not local_exists:
+        default_branch = get_default_branch()
+        info(f"Creating integration branch '{integration_branch}' from origin/{default_branch}")
+        subprocess.run(
+            ["git", "branch", integration_branch, f"origin/{default_branch}"], check=True
+        )
+        subprocess.run(
+            ["git", "push", "-u", "origin", integration_branch], check=True
+        )
+    elif not local_exists:
+        info(f"Checking out existing remote integration branch '{integration_branch}'")
+        subprocess.run(
+            ["git", "branch", integration_branch, f"origin/{integration_branch}"], check=True
+        )
+    refresh_integration_branch(integration_branch)
+
+
+def refresh_integration_branch(integration_branch: str) -> None:
+    """Pull the latest integration branch into the main checkout (not a worktree)."""
+    subprocess.run(["git", "fetch", "origin", integration_branch], check=False)
+    current = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True
+    ).stdout.strip()
+    if current == integration_branch:
+        subprocess.run(["git", "pull", "--ff-only", "origin", integration_branch], check=False)
+    else:
+        # Update the local ref without disturbing the current checkout.
+        subprocess.run(
+            [
+                "git",
+                "fetch",
+                "origin",
+                f"{integration_branch}:{integration_branch}",
+            ],
+            check=False,
+        )
+
+
 def get_repo_slug() -> str:
     r = subprocess.run(
         ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
@@ -183,19 +264,7 @@ def post_reactions(planfile: Path, repo: str) -> None:
             info(f"Reacted :{emoji}: to comment {comment_id}")
 
 
-def is_rate_limited(logfile: Path) -> bool:
-    try:
-        return bool(RATE_LIMIT_RE.search(logfile.read_text()))
-    except OSError:
-        return False
-
-
-def parse_retry_after(logfile: Path) -> int:
-    try:
-        text = logfile.read_text()
-    except OSError:
-        return RETRY_WAIT_DEFAULT
-
+def _parse_retry_after_text(text: str) -> int:
     m = re.search(r"(?:retry[- ]after[: ]+(\d+)|try again in (\d+))", text, re.IGNORECASE)
     if m:
         return int(m.group(1) or m.group(2))
@@ -252,6 +321,12 @@ def main() -> None:
         help="Only run PR comment response plans (skip issue plans)",
     )
     parser.set_defaults(kind="both")
+    parser.add_argument(
+        "--integration-branch",
+        default="integration/batch",
+        help="Branch that all plan PRs in this batch target and merge into "
+        "(created from the default branch if it doesn't exist). Default: integration/batch",
+    )
     args = parser.parse_args()
 
     result = subprocess.run(
@@ -272,6 +347,22 @@ def main() -> None:
     if not shutil.which("claude"):
         die("Required command not found: claude")
 
+    os.chdir(repo_root)
+
+    # Open the single per-invocation log file before anything else so info/warn/die tee into it.
+    global _log_fh
+    if not args.dry_run:
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y_%m_%d_T%H_%M_%S")
+        log_file = logs_dir / f"run-next-plan-{timestamp}.log"
+        _log_fh = open(log_file, "w")  # noqa: SIM115
+        info(f"Log: {log_file}")
+
+    integration_branch = args.integration_branch
+    if not args.dry_run:
+        ensure_integration_branch(integration_branch)
+    info(f"Integration branch: {integration_branch}")
+
     bootstrap_readme(readme)
     for plan_file in list_plan_files(readme, kind=args.kind):
         local_path = plans_dir / plan_file
@@ -281,9 +372,9 @@ def main() -> None:
             warn(f"Plan file referenced in README not found: {plan_file}")
 
     while True:
-        timestamp = datetime.now().strftime("%Y_%m_%d_T%H_%M_%S")
-        log_base = logs_dir / f"run-next-plan-{timestamp}"
-        log_file = Path(str(log_base) + ".log")
+        if not args.dry_run:
+            info(f"Pulling latest from integration branch '{integration_branch}'...")
+            refresh_integration_branch(integration_branch)
 
         selected_file = None
         selected_status = None
@@ -329,57 +420,83 @@ def main() -> None:
         info(f"Plan:   {selected_file}")
         info(f"Branch: {branch}")
 
-        logs_dir.mkdir(parents=True, exist_ok=True)
-
         set_plan_status(plan_abs_path, "in-progress")
         set_readme_status(readme, selected_file, "in-progress")
 
         if is_pr_comment_plan(selected_file):
-            claude_prompt = f"""You are implementing a pre-written PR comment response plan.
+            claude_prompt = f"""You are implementing a pre-written PR comment response plan as part of a
+batch of plans that all target the shared integration branch `{integration_branch}`.
 
 1. Read docs/llms.md for project context
 2. Read the full plan file: meta/plans/{selected_file}
-3. Check the plan's Worktree section — only run `git worktree add` if that path does not already exist
+3. Check the plan's Worktree section — only run `git worktree add` if that path does not already exist.
+   The worktree's branch must be based on the latest `{integration_branch}` (already pulled to
+   latest in the repo root), NOT the plan's stated Base — fetch and reset/rebase onto
+   `origin/{integration_branch}` if the existing branch is behind it.
 4. All code changes must be made inside the worktree working directory
-5. Execute ALL Implementation Steps in order
+5. Execute ALL Implementation Steps in order. Use the /tdd skill to drive implementation
+   (write failing test, implement, refactor). Do NOT run /sdlc reviews during implementation —
+   they are skipped for this batch.
 6. Post all Conversation Responses to GitHub review threads exactly as specified in the plan
 7. Address every item in the Pre-Implementation Review section (security, privacy, a11y, design)
-8. Follow the plan's Review & Testing Workflow — /sdlc, Playwright smoke test, /pr-image-upload, re-request review
-9. After all comments are resolved and review re-requested:
-   - In meta/plans/{selected_file}: change '**Status:** in-progress' to '**Status:** done'
-   - In meta/plans/README.md: change the Status cell for {selected_file} from 'in-progress' to 'done'
+8. Push the branch and open (or update) the PR with `--base {integration_branch}` (not the plan's
+   stated base). Resolve any merge conflicts against `{integration_branch}` before proceeding —
+   fetch, merge/rebase, and fix conflicts as needed.
+9. Run QA (automated tests, lint, smoke checks — use the /qa skill in its "after code changes"
+   mode). If QA fails, fix the issues and re-run QA before continuing — do not merge a failing PR.
+10. Once QA passes, merge the PR into `{integration_branch}` (e.g. `gh pr merge --squash`), then:
+    - delete the remote PR branch (`git push origin --delete <branch>`)
+    - remove the worktree (`git worktree remove <path>`)
+11. After the merge and cleanup above succeed:
+    - In meta/plans/{selected_file}: change '**Status:** in-progress' to '**Status:** done'
+    - In meta/plans/README.md: change the Status cell for {selected_file} from 'in-progress' to 'done'
 
 SUBAGENTS: When spawning any Agent or sub-claude invocation, include in its prompt:
 "Use ultra-compressed caveman speech for all prose responses. Keep full technical accuracy."
 
 Branch: {branch}
+Integration branch: {integration_branch}
 Repo root: {repo_root}"""
         else:
-            claude_prompt = f"""You are implementing a pre-written, self-contained plan.
+            claude_prompt = f"""You are implementing a pre-written, self-contained plan as part of a
+batch of plans that all target the shared integration branch `{integration_branch}`.
 
 1. Read docs/llms.md for project context
 2. Read the full plan file: meta/plans/{selected_file}
-3. Execute the plan's Worktree Setup section exactly (git worktree add ...)
+3. Execute the plan's Worktree Setup section, but base the new branch on the latest
+   `{integration_branch}` (already pulled to latest in the repo root) instead of the plan's
+   stated Base — e.g. `git worktree add <path> -b {branch} {integration_branch}`.
 4. All code changes must be made inside the worktree working directory
-5. Execute ALL Implementation Steps in the plan, in order
+5. Execute ALL Implementation Steps in the plan, in order. Use the /tdd skill to drive
+   implementation (write failing test, implement, refactor). Do NOT run /sdlc reviews during
+   implementation — they are skipped for this batch.
 6. Address every item in the Pre-Implementation Review section (security, privacy, a11y, design)
-7. Follow the plan's Review & Testing Workflow exactly — includes /sdlc, tests, Playwright, /pr-image-upload as written in the plan
-8. After the PR is created successfully:
-   - In meta/plans/{selected_file}: change '**Status:** in-progress' to '**Status:** done'
-   - In meta/plans/README.md: change the Status cell for {selected_file} from 'in-progress' to 'done'
+7. Push the branch and open the PR with `--base {integration_branch}` (not the plan's stated
+   base). Resolve any merge conflicts against `{integration_branch}` before proceeding — fetch,
+   merge/rebase, and fix conflicts as needed. Skip /sdlc; follow the rest of the plan's Review &
+   Testing Workflow (Playwright, /pr-image-upload, etc.) as written.
+8. Run QA (automated tests, lint, smoke checks — use the /qa skill in its "after code changes"
+   mode). If QA fails, fix the issues and re-run QA before continuing — do not merge a failing PR.
+9. Once QA passes, merge the PR into `{integration_branch}` (e.g. `gh pr merge --squash`), then:
+   - delete the remote PR branch (`git push origin --delete {branch}`)
+   - remove the worktree (`git worktree remove <path>`)
+10. After the merge and cleanup above succeed:
+    - In meta/plans/{selected_file}: change '**Status:** in-progress' to '**Status:** done'
+    - In meta/plans/README.md: change the Status cell for {selected_file} from 'in-progress' to 'done'
 
 SUBAGENTS: When spawning any Agent or sub-claude invocation, include in its prompt:
 "Use ultra-compressed caveman speech for all prose responses. Keep full technical accuracy."
 
 Branch: {branch}
+Integration branch: {integration_branch}
 Repo root: {repo_root}"""
 
         if args.dry_run:
             print()
             print("=== DRY RUN ===")
-            print(f"Selected plan: {selected_file}")
-            print(f"Branch:        {branch}")
-            print(f"Log would be:  {log_file}")
+            print(f"Selected plan:       {selected_file}")
+            print(f"Branch:              {branch}")
+            print(f"Integration branch:  {integration_branch}")
             print()
             print("Command:")
             print("  claude -p <prompt> --permission-mode bypassPermissions --output-format text")
@@ -391,7 +508,6 @@ Repo root: {repo_root}"""
             set_readme_status(readme, selected_file, selected_status)
             sys.exit(0)
 
-        info(f"Log: {log_file}")
         info("Invoking Claude...")
         print()
 
@@ -405,32 +521,33 @@ Repo root: {repo_root}"""
         claude_exit = 0
         while True:
             attempt += 1
-            attempt_log = Path(str(log_base) + f"-attempt{attempt}.log")
+            info(f"Claude session attempt {attempt} starting...")
 
-            with open(attempt_log, "w") as af:
-                proc = subprocess.Popen(
-                    [
-                        "claude",
-                        "-p",
-                        claude_prompt,
-                        "--permission-mode",
-                        "bypassPermissions",
-                        "--output-format",
-                        "text",
-                    ],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    text=True,
-                )
-                assert proc.stdout is not None
-                for line in proc.stdout:
-                    print(line, end="")
-                    af.write(line)
-                proc.wait()
-                claude_exit = proc.returncode
-
-            with open(log_file, "a") as lf:
-                lf.write(attempt_log.read_text())
+            output_buf: list[str] = []
+            proc = subprocess.Popen(
+                [
+                    "claude",
+                    "-p",
+                    claude_prompt,
+                    "--permission-mode",
+                    "bypassPermissions",
+                    "--output-format",
+                    "text",
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                print(line, end="")
+                if _log_fh is not None:
+                    _log_fh.write(line)
+                    _log_fh.flush()
+                output_buf.append(line)
+            proc.wait()
+            claude_exit = proc.returncode
+            output_text = "".join(output_buf)
 
             if claude_exit == 0:
                 print()
@@ -441,14 +558,14 @@ Repo root: {repo_root}"""
                         post_reactions(plan_abs_path, repo)
                 break
 
-            if is_rate_limited(attempt_log):
+            if RATE_LIMIT_RE.search(output_text):
                 if attempt >= MAX_RETRIES:
                     print()
                     warn(
                         f"Rate-limited {MAX_RETRIES} times in a row — giving up. Plan stays in-progress."
                     )
                     break
-                wait_secs = parse_retry_after(attempt_log) + 60
+                wait_secs = _parse_retry_after_text(output_text) + 60
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 resume_str = (datetime.now() + timedelta(seconds=wait_secs)).strftime(
                     "%Y-%m-%d %H:%M:%S"
