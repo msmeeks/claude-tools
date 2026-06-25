@@ -1,13 +1,13 @@
 # Global Development Standards
 
-## SDLC Workflow
+## TDD Workflow
 
-**MANDATORY:** Before writing, editing, or creating any code file, you MUST invoke the Skill tool with `skill='sdlc'`. This is not optional. Do not write a single line of implementation code until `/sdlc` has been run for the current task. Run it before implementation starts (planning phase) and again after code is written for review.
+**MANDATORY:** Before writing, editing, or creating any code file, you MUST invoke the Skill tool with `skill='tdd'`. This is not optional. Do not write a single line of implementation code until `/tdd` has been run for the current task — write the failing test first, then implement, then refactor.
 
 ## Skill disambiguation
 
 - `/qa` invoked *during a conversation about bugs/features* → conversational QA session that files GitHub issues
-- `/qa` (or `/sdlc qa`) invoked *after code changes are written* → the `sdlc` skill's QA phase, which dispatches `sdlc-qa-engineer` to run tests/lint/smoke checks
+- `/qa` invoked *after code changes are written* → run automated tests/lint/smoke checks
 - `/triage` → evaluates a single issue/PR and marks it `ready-for-agent`/`ready-for-human`/etc.
 - `/triage-issues` → bulk-groups already-`ready-for-agent` issues into `meta/plans/` workstreams (downstream of `/triage`, not an alternative to it)
 

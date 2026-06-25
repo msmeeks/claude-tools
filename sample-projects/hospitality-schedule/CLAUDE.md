@@ -1,11 +1,10 @@
 # hospitality-scheduled — Project Instructions
 
-## Planning & SDLC
+## Planning & TDD
 
 **MANDATORY:** Before writing, editing, or creating any code file, you MUST invoke the Skill tool
-with `skill='sdlc'`. Do not write a single line of implementation code until `/sdlc` has been run
-for the current task. Run it before implementation starts (planning phase) and again after code is
-written for post-implementation review.
+with `skill='tdd'`. Do not write a single line of implementation code until `/tdd` has been run
+for the current task — write failing test first, then implement, then refactor.
 
 For documentation: read `docs/llms.md` first, then only the relevant feature doc(s).
 After every non-trivial change run `doc-writer` to update the feature doc and `docs/llms.md`.
