@@ -27,7 +27,9 @@ file per cluster to `meta/plans/`.
 ### Step 1 — Bootstrap
 
 1. Read `docs/llms.md`. If it doesn't exist, stop and tell the user to run `/sdlc` first.
-2. Ensure `meta/plans/` directory exists (`mkdir -p meta/plans`).
+2. Ensure `meta/plans/` directory exists (`mkdir -p meta/plans`). Check whether
+   `meta/plans/prd.json` already exists — if so, its `plans` entries must be preserved/merged
+   in Step 7, not overwritten.
 
 ### Step 2 — Fetch Open Issues
 
@@ -111,45 +113,26 @@ If all four agents return no findings, omit that section.
 
 Write one `meta/plans/<slug>.md` per cluster using the **Standard Plan Template** below.
 
-Then write (or update) `meta/plans/README.md` using the **README Template** below.
-Row order must match the **Suggested Order** — `run-next-plan.py` picks plans top-to-bottom.
+Then write (or update) `meta/plans/prd.json` — the plan index that `run-next-plan.py` reads:
 
-#### README Template
+1. Read `meta/plans/prd.json` if it exists; parse as JSON.
+2. For each cluster, build a plan entry: `{"file": "<slug>.md", "issues": [N, M, ...], "size": "S|M|L|XL", "status": "pending", "attempts": 0, "blocked_by": []}`.
+3. Merge: if an entry with the same `file` already exists, preserve its `status` and `attempts`; overwrite all other fields. If no entry exists, add it as-is.
+4. Populate each entry's `blocked_by` array from the dependency analysis in Step 5 — list the `file` values of clusters that must merge first.
+5. Set the top-level `integration_branch` field to `"integration/batch"` if not already set.
+6. Write the merged object back to `meta/plans/prd.json`.
 
-```markdown
-# <Project> — Implementation Plans
+**No `meta/plans/README.md` is written or updated by this skill.**
 
-<One sentence: how many clusters, how many issues, where to start.>
-
-| Plan | Cluster | Issues | Size | Status |
-|------|---------|--------|------|--------|
-| [<slug>.md](<slug>.md) | `<slug>` | #N[, #M] | S/M/L/XL | pending |
-
-## Suggested Order
-
-1. **`<cluster>`** — <one-line rationale, e.g. "unblocks all other features">
-2. **`<cluster>`** + **`<cluster>`** — Can run in parallel (no shared files)
-...
-
-## Cross-cutting Notes
-
-- <Files touched by multiple clusters — coordinate order>
-- <DB migration numbering, shared config, etc.>
-```
-
-**Rules:**
-- `Status` always starts as `pending`.
-- Rows ordered: bug fixes first, then features, then large refactors.
-- `| Plan |` cell must use `[filename.md](filename.md)` so `run-next-plan.py` can parse it.
-- Size: `S` (1–3 files), `M` (4–8 files), `L` (9–15 files), `XL` (16+ files or new infra).
+Size key: `S` (1–3 files), `M` (4–8 files), `L` (9–15 files), `XL` (16+ files or new infra).
 
 ---
 
 ## Review Mode (`/plan-iteration review [plan-name]`)
 
-1. List `meta/plans/*.md` (skip `README.md`). If a plan name is given, review only that one.
+1. List `meta/plans/*.md`. If a plan name is given, review only that one.
 2. For each plan, dispatch the same four planning-review agents as Step 6 (series by default; parallel with `--parallel`),
-   using the plan's **Files to Modify** table and **Context** section as input.
+   using the plan's **Implementation Notes** and **Context** sections as input.
 3. Print a per-plan findings summary. Suggest edits but do not auto-modify plan files.
 
 ---
@@ -160,26 +143,13 @@ Row order must match the **Suggested Order** — `run-next-plan.py` picks plans 
 # Plan: <Title>
 
 **Issues:** #N[, #M...]
-**Cluster:** `<type>/<slug>`
-**Base:** `main`
-**Status:** pending
-[**Priority:** <note> | **Prerequisite:** <note — e.g. "complete <cluster> first">]
+[**Prerequisite:** <note — e.g. "complete feat/auth first">]
 
 ---
 
-## Worktree Setup
+## Goal
 
-```bash
-# Run from the repo root
-git worktree add .claude/worktrees/<slug> -b <cluster>
-```
-
-**Working directory:** `.claude/worktrees/<slug>`
-
-When the work is merged:
-```bash
-git worktree remove .claude/worktrees/<slug>
-```
+[One sentence: the user-facing outcome when this plan is complete.]
 
 ---
 
@@ -189,41 +159,33 @@ git worktree remove .claude/worktrees/<slug>
 
 ---
 
-## Files to Modify
+## Implementation Notes
+
+### Files to Modify
 
 | File | Change |
 |------|--------|
 | `path/to/file` | What changes and why |
 
----
-
-## Implementation Steps
+### Steps
 
 [Numbered steps. Reference existing functions/components by file path. Describe the approach
 clearly enough that a fresh session can execute without re-exploring the codebase.]
 
 ---
 
-## Pre-Implementation Review
+## Acceptance Criteria
 
-[Security / privacy / a11y / design findings from the /sdlc plan agents.
-Omit this section entirely if all agents returned no findings.]
+- [ ] Criterion 1 (user-observable behaviour)
+- [ ] Criterion 2
+- [ ] Criterion 3
 
 ---
 
-## Review & Testing
+## Pre-Implementation Review
 
-### 1. Run /sdlc
-```
-/sdlc
-```
-Address all findings before marking done.
-
-### 2. Verify
-Run the relevant tests and smoke-check the affected UI or API surface:
-- [ ] Automated tests pass
-- [ ] <specific manual check>
-- [ ] <specific manual check>
+[Security / privacy / a11y / design findings from the /sdlc plan agents.
+Omit this section entirely if all four agents returned no findings.]
 ````
 
 ---
