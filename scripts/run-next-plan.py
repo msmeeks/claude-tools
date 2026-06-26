@@ -44,6 +44,7 @@ from typing import IO, Literal
 
 MAX_RETRIES = 20
 RETRY_WAIT_DEFAULT = 60
+ESCALATION_THRESHOLD = 3
 
 PLAN_FILE_RE = re.compile(r"^[\w.-]+\.md$")
 VALID_STATUSES = {"pending", "in-progress", "done", "stalled"}
@@ -615,7 +616,7 @@ def main() -> None:
             plans = data["plans"]
             selected = _find_plan_entry(data, selected["file"])
 
-            if selected["attempts"] >= MAX_ATTEMPTS and selected["status"] != "done":
+            if selected["attempts"] > MAX_ATTEMPTS and selected["status"] != "done":
                 mark_stalled(prd_path, selected["file"])
                 warn(
                     f"Plan {selected['file']} exceeded {MAX_ATTEMPTS} attempts — marked stalled."
@@ -632,6 +633,11 @@ def main() -> None:
             "--output-format",
             "text",
         ]
+
+        if selected["attempts"] >= MAX_ATTEMPTS:
+            claude_cmd += ["--model", "opus", "--effort", "max"]
+        elif selected["attempts"] >= ESCALATION_THRESHOLD:
+            claude_cmd += ["--model", "sonnet", "--effort", "high"]
 
         dockerfile = repo_root / "meta" / "ralph.dockerfile"
         docker_mode = dockerfile.is_file()
