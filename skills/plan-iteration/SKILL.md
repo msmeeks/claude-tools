@@ -126,6 +126,53 @@ Then write (or update) `meta/plans/prd.json` — the plan index that `run-next-p
 
 Size key: `S` (1–3 files), `M` (4–8 files), `L` (9–15 files), `XL` (16+ files or new infra).
 
+### Step 8 — Create Integration Branch and Draft PR
+
+1. Resolve the default branch:
+   ```bash
+   git symbolic-ref refs/remotes/origin/HEAD | sed 's|refs/remotes/origin/||'
+   ```
+
+2. Generate a unique integration branch name:
+   `integration/YYYY-MM-DD-<primary-slug>`
+   where `YYYY-MM-DD` is today's date and `<primary-slug>` is derived from the first
+   cluster's name (e.g., `feat/auth-billing` → `auth-billing`). Sanitize to lowercase
+   alphanumeric and hyphens only.
+
+3. Create the branch from the default branch and push:
+   ```bash
+   git checkout -b <integration_branch> origin/<default_branch>
+   git push -u origin <integration_branch>
+   ```
+
+4. Detect the smoke test command (check in order, stop at first match):
+   - `package.json` → `scripts["test:smoke"]`, then `scripts["test"]`
+   - `Makefile` → `smoke` target, then `test` target (`grep -m1 "^smoke:\|^test:" Makefile`)
+   - `pyproject.toml` → `[tool.pytest.ini_options]` present → `python3 -m pytest`
+   If none found, set `smoke_test` to `null` and warn the user to populate it manually
+   in `prd.json` before running `/close-iteration`.
+
+5. Open a draft PR:
+   ```bash
+   gh pr create --draft \
+     --base <default_branch> \
+     --head <integration_branch> \
+     --title "Iteration: <comma-separated cluster titles>" \
+     --body "$(cat <<'EOF'
+   ## Plans
+   <bulleted list of plan file names with their linked issue numbers>
+
+   ## All Issues
+   <bulleted list of every #N from all plan entries>
+   EOF
+   )"
+   ```
+
+6. Update `prd.json` with the new fields (merge into the existing object):
+   - `integration_branch`: the generated branch name
+   - `smoke_test`: the detected command string, or `null`
+   - `feature_branches`: `[]`
+
 ---
 
 ## Review Mode (`/plan-iteration review [plan-name]`)
