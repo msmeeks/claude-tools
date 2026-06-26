@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Partner to /triage-issues and /triage-pr-comments. Finds the next unfinished plan in
+Partner to /plan-iteration and /triage-pr-comments. Finds the next unfinished plan in
 meta/plans/README.md and runs a non-interactive Claude session to implement it.
 
 Usage (run from inside any git repo with meta/plans/):
@@ -341,9 +341,9 @@ def main() -> None:
     logs_dir = plans_dir / "implementation-logs"
 
     if not plans_dir.is_dir():
-        die(f"Plans directory not found: {plans_dir} (run /triage-issues or /triage-pr-comments first)")
+        die(f"Plans directory not found: {plans_dir} (run /plan-iteration or /triage-pr-comments first)")
     if not readme.is_file():
-        die(f"README not found: {readme} (run /triage-issues or /triage-pr-comments first)")
+        die(f"README not found: {readme} (run /plan-iteration or /triage-pr-comments first)")
     if not shutil.which("claude"):
         die("Required command not found: claude")
 

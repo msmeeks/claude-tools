@@ -9,7 +9,7 @@
 - `/qa` invoked *during a conversation about bugs/features* → conversational QA session that files GitHub issues
 - `/qa` invoked *after code changes are written* → run automated tests/lint/smoke checks
 - `/triage` → evaluates a single issue/PR and marks it `ready-for-agent`/`ready-for-human`/etc.
-- `/triage-issues` → bulk-groups already-`ready-for-agent` issues into `meta/plans/` workstreams (downstream of `/triage`, not an alternative to it)
+- `/plan-iteration` → backlog grooming entry point: triages each issue via `/triage`, groups `ready-for-agent` issues into logical clusters, writes plan files to `meta/plans/`
 
 ## Context & Token Efficiency
 
