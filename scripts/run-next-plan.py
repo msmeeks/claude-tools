@@ -22,11 +22,14 @@ Options:
 """
 
 import argparse
+import fcntl
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -36,6 +39,9 @@ MAX_RETRIES = 20
 RETRY_WAIT_DEFAULT = 60
 
 PR_COMMENT_PLAN_RE = re.compile(r"^pr-\d+-comments\.md$")
+PLAN_FILE_RE = re.compile(r"^[\w.-]+\.md$")
+VALID_STATUSES = {"pending", "in-progress", "done", "stalled"}
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
 RATE_LIMIT_RE = re.compile(
     r"session.?limit|rate.?limit|usage.?limit|too many requests|overloaded|429|quota.?exceed|slowdown",
@@ -128,6 +134,125 @@ def set_readme_status(readme: Path, plan_filename: str, new_status: str) -> None
 
     text = re.sub(rf"^.*\({escaped}\).*$", replacer, readme.read_text(), flags=re.MULTILINE)
     readme.write_text(text)
+
+
+def _validate_prd_schema(data: object) -> dict:
+    if not isinstance(data, dict):
+        die("prd.json must contain a JSON object at the top level.")
+    integration_branch = data.get("integration_branch")
+    if not isinstance(integration_branch, str) or not integration_branch:
+        die("prd.json: 'integration_branch' must be a non-empty string.")
+    plans = data.get("plans")
+    if not isinstance(plans, list):
+        die("prd.json: 'plans' must be a list.")
+    for entry in plans:
+        if not isinstance(entry, dict):
+            die("prd.json: each plan entry must be an object.")
+        file_value = entry.get("file")
+        if not isinstance(file_value, str) or not PLAN_FILE_RE.match(file_value):
+            die(f"prd.json: invalid 'file' value: {file_value!r}")
+        status = entry.get("status")
+        if status not in VALID_STATUSES:
+            die(f"prd.json: invalid 'status' value: {status!r}")
+        attempts = entry.get("attempts")
+        if not isinstance(attempts, int) or isinstance(attempts, bool) or attempts < 0:
+            die(f"prd.json: 'attempts' must be a non-negative int, got: {attempts!r}")
+        blocked_by = entry.get("blocked_by")
+        if not isinstance(blocked_by, list) or not all(
+            isinstance(b, str) for b in blocked_by
+        ):
+            die(f"prd.json: 'blocked_by' must be a list of strings, got: {blocked_by!r}")
+    return data
+
+
+def load_prd(path: Path) -> dict:
+    try:
+        raw = path.read_text()
+    except OSError as e:
+        die(f"Failed to read prd.json at {path}: {e}")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        die(f"prd.json at {path} is not valid JSON: {e}")
+    return _validate_prd_schema(data)
+
+
+def save_prd(path: Path, data: dict) -> None:
+    fd, tmp_path = tempfile.mkstemp(dir=path.parent, prefix=".prd-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+        os.replace(tmp_path, path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        raise
+
+
+def _resolve_plan_path(plans_dir: Path, plan_file: str) -> Path:
+    plans_dir_resolved = plans_dir.resolve()
+    resolved = (plans_dir / plan_file).resolve()
+    if resolved != plans_dir_resolved and plans_dir_resolved not in resolved.parents:
+        die(f"Refusing to access path outside plans_dir: {plan_file}")
+    return resolved
+
+
+def _strip_unsafe_chars(text: str) -> str:
+    text = ANSI_ESCAPE_RE.sub("", text)
+    return "".join(c for c in text if c.isprintable())
+
+
+def _with_prd_lock(prd_path: Path, mutate) -> None:
+    lock_path = prd_path.parent / "prd.json.lock"
+    with open(lock_path, "w") as lock_fh:
+        fcntl.flock(lock_fh, fcntl.LOCK_EX)
+        try:
+            data = load_prd(prd_path)
+            mutate(data)
+            save_prd(prd_path, data)
+        finally:
+            fcntl.flock(lock_fh, fcntl.LOCK_UN)
+
+
+def _find_plan_entry(data: dict, plan_file: str) -> dict:
+    for entry in data["plans"]:
+        if entry["file"] == plan_file:
+            return entry
+    die(f"No plan entry found for file: {plan_file}")
+
+
+def increment_attempts(path: Path, plan_file: str) -> None:
+    plans_dir = path.parent
+    _resolve_plan_path(plans_dir, plan_file)
+
+    def mutate(data: dict) -> None:
+        entry = _find_plan_entry(data, plan_file)
+        entry["attempts"] += 1
+
+    _with_prd_lock(path, mutate)
+
+
+def set_status(path: Path, plan_file: str, status: str) -> None:
+    if status not in VALID_STATUSES:
+        die(f"Invalid status value: {status!r}")
+    plans_dir = path.parent
+    _resolve_plan_path(plans_dir, plan_file)
+
+    def mutate(data: dict) -> None:
+        entry = _find_plan_entry(data, plan_file)
+        entry["status"] = status
+
+    _with_prd_lock(path, mutate)
+
+
+def mark_stalled(path: Path, plan_file: str) -> None:
+    set_status(path, plan_file, "stalled")
+    safe_name = _strip_unsafe_chars(plan_file)
+    message = f"WARN: Plan marked stalled: {safe_name}"
+    print(message, file=sys.stderr)
+    if _log_fh is not None:
+        _log(f"WARN: Plan marked stalled: {safe_name}")
 
 
 def get_plan_branch(planfile: Path) -> str:
