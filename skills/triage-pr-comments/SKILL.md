@@ -1,6 +1,6 @@
 ---
 name: triage-pr-comments
-description: Triage comments on open GitHub PRs and write a response plan per PR to meta/plans/. Each plan uses the PR's existing branch and worktree, groups all reviewer comments into concrete implementation steps, runs /sdlc plan review, and updates meta/plans/README.md. Supports iterative review cycles — re-running adds new comments to existing plans and skips already-addressed ones. Use when asked to respond to PR feedback, address review comments, triage PR comments, action reviewer requests, or plan PR responses.
+description: Triage comments on open GitHub PRs and write a response plan per PR to meta/plans/, indexed in meta/plans/prd.json. Each plan uses the PR's existing branch and worktree, groups all reviewer comments into concrete implementation steps, and runs /sdlc plan review. Supports iterative review cycles — re-running adds new comments to existing plans and skips already-addressed ones. Use when asked to respond to PR feedback, address review comments, triage PR comments, action reviewer requests, or plan PR responses.
 ---
 
 # Triage PR Comments
@@ -102,8 +102,8 @@ New reviewer comments arrived since last triage. Update the existing plan:
 - Append new rows to the appropriate Reviewer Comment tables (categorise as in Step 3)
 - Update the `<!-- reactions: ... -->` metadata line to include the new comment IDs
 - Add 👀 reactions to all new comment IDs (Step 2d below)
-- If the plan's `**Status:**` is `done`, reset it to `pending` and update the README
-  Status cell to `pending` (new comments re-open the work)
+- If the plan's `meta/plans/prd.json` entry has `status: "done"`, reset `status` to
+  `"pending"` and `attempts` to `0` (new comments re-open the work)
 - Leave existing rows and comment IDs unchanged
 
 **Case 4 — Plan exists, some 👀 comments now have 🚀 (addressed outside the runner):**
@@ -175,35 +175,19 @@ Omit that section if all four agents return no findings.
 Write one `meta/plans/pr-<number>-comments.md` per PR using the **Standard Plan Template**
 below. The filename `pr-<N>-comments.md` is the stable identifier across all iterative rounds.
 
-Then write (or update) `meta/plans/README.md` using the **README Template** below.
-PR-comment plans appear in a dedicated **PR Response Plans** table, separate from issue plans.
-Order: PRs closest to merge-ready first (fewest open comments, no blocking reviews).
+Then write (or update) `meta/plans/prd.json` — the same plan index `/triage-issues` and
+`run-next-plan.py` read:
 
-#### README Template (PR Response Plans section)
+1. Read `meta/plans/prd.json` if it exists; parse as JSON.
+2. For each PR with new/updated comments, build a plan entry: `{"file": "pr-<N>-comments.md", "type": "pr-comments", "pr": N, "size": "S|M|L", "status": "pending", "attempts": 0, "blocked_by": []}`.
+3. Merge: if an entry with the same `file` already exists, preserve its existing `status`
+   and `attempts` values and overwrite all other fields. If no entry exists for that `file`,
+   add it as-is (`status: "pending"`, `attempts: 0`).
+4. `blocked_by` is `[]` by default for PR-comment plans — they neither block nor are blocked
+   by issue plans unless a cross-cutting note makes a dependency explicit.
+5. Write the merged object back to `meta/plans/prd.json`.
 
-Append or update this section in `meta/plans/README.md`:
-
-```markdown
-## PR Response Plans
-
-Plans for addressing reviewer comments on open pull requests.
-
-| Plan | PR | Branch | Open Comments | Size | Status |
-|------|----|--------|---------------|------|--------|
-| [pr-<N>-comments.md](pr-<N>-comments.md) | #N <title> | `<branch>` | <count> | S/M/L | pending |
-
-### Suggested Order
-
-1. **PR #N** — <one-line rationale, e.g. "2 nits, already approved, just needs push">
-2. **PR #M** — <rationale>
-...
-```
-
-**Rules:**
-- `Status` is always `pending` for new plans.
-- Size: `S` (1–3 files or comment-only), `M` (4–8 files), `L` (9+ files or substantial refactor).
-- Never merge a PR-comment plan row with an issue-workstream row.
-- The `| Plan |` cell must use `[filename.md](filename.md)` link syntax.
+**No `meta/plans/README.md` is written or updated by this skill.**
 
 ---
 
@@ -222,30 +206,7 @@ Plans for addressing reviewer comments on open pull requests.
 # Plan: PR #<N> — Address Review Comments
 
 **PR:** #<N> <title>
-**Branch:** `<headRefName>`
-**Base:** `<baseRefName>`
-**Status:** pending
 **Open comments:** <count> (<code-change: N, test-change: N, question: N, style: N>)
-
----
-
-## Worktree
-
-This PR already has an associated branch. Create a worktree only if one does not yet exist:
-
-```bash
-# From the repo root — only needed if worktree is missing
-git worktree add .claude/worktrees/<slug> <headRefName>
-```
-
-**Working directory:** `.claude/worktrees/<slug>`
-
-If a worktree already exists at that path, use it directly — do not create a new one.
-
-When the PR merges:
-```bash
-git worktree remove .claude/worktrees/<slug>
-```
 
 ---
 
@@ -307,57 +268,6 @@ execute without re-exploring the codebase.]
 
 [Security / privacy / a11y / design findings from the /sdlc plan agents.
 Omit this section entirely if all agents returned no findings.]
-
----
-
-## Review & Testing Workflow
-
-### 1. Implement Changes
-Follow Implementation Steps above. After each logical group of changes:
-```bash
-git add -p && git commit -m "<description>"
-```
-
-### 2. Post Conversation Responses
-For each thread in **Conversation Responses Needed**, post the planned reply:
-```bash
-gh api repos/{owner}/{repo}/pulls/comments/<comment-id>/replies \
-  -f body="<planned response text>"
-```
-
-### 3. Run /sdlc
-```
-/sdlc
-```
-Address all findings (lint, security, a11y) before pushing.
-
-### 4. Push & Re-request Review
-```bash
-git push origin <headRefName>
-gh pr review <N> --request-changes  # clear if needed
-```
-
-### 5. Playwright Smoke Test on Dev
-Navigate to the dev environment URL and verify the changed behaviour.
-Capture a screenshot with `browser_take_screenshot` after each visual check.
-
-### 6. Upload Screenshots & Update PR
-```
-/pr-image-upload
-```
-Paste returned `![caption](url)` tags into a PR comment summarising what was addressed.
-
----
-
-## Verification Checklist
-
-- [ ] All **Code Changes** rows implemented and committed
-- [ ] All **Test Changes** rows implemented
-- [ ] All **Conversation Responses** posted to GitHub threads
-- [ ] `/sdlc` review complete — all findings addressed
-- [ ] Dev environment smoke test passed *(screenshot)*
-- [ ] Screenshots uploaded via `/pr-image-upload`
-- [ ] Re-review requested from original reviewers
 
 <!-- reactions: rocket=<comma-separated comment IDs for code/test/style/doc changes> +1=<comma-separated comment IDs for conversation responses> -->
 ````
