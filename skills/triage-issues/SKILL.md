@@ -1,6 +1,6 @@
 ---
 name: triage-issues
-description: Triage open GitHub issues, group into PR-sized workstreams, and write a plan file per group to meta/plans/. Each plan includes worktree setup, /sdlc plan review findings, implementation steps, Playwright testing on the dev branch, and /pr-image-upload checklist. Also runs /sdlc plan on existing plans when invoked as /triage-issues review. Use when asked to triage issues, group issues into plans, plan the backlog, create workstream plans, or review existing plans.
+description: Triage open GitHub issues, group into PR-sized workstreams, and write a plan file per group to meta/plans/, indexed in meta/plans/prd.json. Each plan includes /sdlc plan review findings and implementation steps. Also runs /sdlc plan on existing plans when invoked as /triage-issues review. Use when asked to triage issues, group issues into plans, plan the backlog, create workstream plans, or review existing plans.
 ---
 
 # Triage Issues
@@ -27,7 +27,9 @@ it up and execute it end-to-end without additional context.
 
 1. Read `docs/llms.md`. If it doesn't exist, stop and tell the user to run `/sdlc` first to
    initialise the docs directory.
-2. Ensure `meta/plans/` directory exists (`mkdir -p meta/plans`).
+2. Ensure `meta/plans/` directory exists (`mkdir -p meta/plans`). Check whether
+   `meta/plans/prd.json` already exists — if so, its `plans` entries must be preserved/merged
+   in Step 6, not overwritten.
 
 ### Step 2 — Fetch Open Issues
 
@@ -90,37 +92,21 @@ the plan file. If all four agents return no findings, omit that section entirely
 
 Write one `meta/plans/<slug>.md` per group using the **Standard Plan Template** below.
 
-Then write (or update) `meta/plans/README.md` using the **README Template** below. Row order
-must match the **Suggested Order** list — `run-next-plan.py` picks plans top-to-bottom.
+Then write (or update) `meta/plans/prd.json` — the plan index that `run-next-plan.py` reads:
 
-#### README Template
+1. Read `meta/plans/prd.json` if it exists; parse as JSON.
+2. For each group produced in Steps 3–5, build a plan entry: `{"file": "<slug>.md", "issues": [N, M, ...], "size": "S|M|L|XL", "status": "pending", "attempts": 0, "blocked_by": []}`.
+3. Merge: if an entry with the same `file` already exists in `prd.json`, preserve its existing
+   `status` and `attempts` values and overwrite all other fields with the freshly computed ones.
+   If no entry exists for that `file`, add the new entry as-is (`status: "pending"`,
+   `attempts: 0`).
+4. Populate each entry's `blocked_by` array from the file-overlap/dependency analysis in
+   Step 4 — list the `file` values of plans that must merge first.
+5. Set the top-level `integration_branch` field to `"integration/batch"` if it is not already
+   set.
+6. Write the merged object back to `meta/plans/prd.json`.
 
-```markdown
-# <Project> — Implementation Plans
-
-<One sentence: how many workstreams, how many issues, where to start.>
-
-| Plan | Branch | Issues | Size | Status |
-|------|--------|--------|------|--------|
-| [<slug>.md](<slug>.md) | `<branch>` | #N[, #M] | S/M/L/XL | pending |
-
-## Suggested Order
-
-1. **`<branch>`** — <one-line rationale, e.g. "unblocks all other features">
-2. **`<branch>`** + **`<branch>`** — Can run in parallel (no file overlap)
-...
-
-## Cross-cutting Notes
-
-- <Any files touched by multiple plans — merge conflict risk>
-- <DB migration numbering, shared config, etc.>
-```
-
-**Rules:**
-- `Status` column is required; always set to `pending` for new plans.
-- Rows must be ordered by suggested execution sequence (bugs first, then features, XL plans last).
-- The `| Plan |` cell must use `[filename.md](filename.md)` link syntax so `run-next-plan.py` can parse it.
-- Size values: `S` (1–3 files), `M` (4–8 files), `L` (9–15 files), `XL` (16+ files or new infra).
+**No `meta/plans/README.md` is written or updated by this skill.**
 
 ---
 
@@ -140,26 +126,12 @@ must match the **Suggested Order** list — `run-next-plan.py` picks plans top-t
 # Plan: <Title>
 
 **Issues:** #N[, #M...]
-**Branch:** `<type>/<slug>`
-**Base:** `staging`
-**Status:** pending
-[**Priority:** <note> | **Prerequisite:** <note — e.g. "branch off staging after #N merges">]
 
 ---
 
-## Worktree Setup
+## Goal
 
-```bash
-# Run from the repo root
-git worktree add .claude/worktrees/hospitality-<slug> -b <branch>
-```
-
-**Working directory:** `.claude/worktrees/hospitality-<slug>`
-
-When the PR merges:
-```bash
-git worktree remove .claude/worktrees/hospitality-<slug>
-```
+[One sentence: the user-facing outcome when this plan is complete.]
 
 ---
 
@@ -169,70 +141,33 @@ git worktree remove .claude/worktrees/hospitality-<slug>
 
 ---
 
-## Files to Modify
+## Implementation Notes
+
+### Files to Modify
 
 | File | Change |
 |------|--------|
 | `path/to/file` | What changes and why |
 
+### Steps
+
+[Numbered steps. Reference existing functions/components. Describe approach clearly enough
+for a fresh Claude session to execute without re-exploring the codebase.]
+
 ---
 
-## Implementation Steps
+## Acceptance Criteria
 
-[Numbered steps. Reference existing functions/components by file path. Describe the approach
-clearly enough that a fresh session can execute without re-exploring the codebase.]
+- [ ] Criterion 1 (user-observable behaviour)
+- [ ] Criterion 2
+- [ ] Criterion 3
 
 ---
 
 ## Pre-Implementation Review
 
 [Security / privacy / a11y / design findings from the /sdlc plan agents.
-Omit this section entirely if all agents returned no findings.]
-
----
-
-## Review & Testing Workflow
-
-### 1. Run /sdlc
-```
-/sdlc
-```
-Includes lint and ruff. Address all findings before pushing.
-
-### 2. Push Branch & Open PR
-```bash
-git push -u origin <branch>
-gh pr create --base staging --title "<title>" --body "Closes #N"
-gh pr edit --add-label deploy
-```
-
-### 3. Resolve Merge Conflicts & Deployment Issues
-```bash
-git fetch origin && git merge origin/staging   # use rebase if noted in Prerequisite above
-```
-- Wait for the dev environment to be healthy:
-  `curl https://hospitality-api-dev-<slug>.fly.dev/api/v1/health`
-- If deploy fails, check Fly.io logs before testing:
-  `flyctl logs -a hospitality-api-dev-<slug>`
-
-### 4. Test on Dev Environment Using Playwright
-Navigate to `https://hospitality-app-dev-<slug>.fly.dev` and run through the checklist below.
-Capture a screenshot with `browser_take_screenshot` after each visual check.
-
-### 5. Upload Screenshots & Update PR
-```
-/pr-image-upload
-```
-Paste the returned `![caption](url)` tags into the PR description or a follow-up comment.
-
----
-
-## Verification Checklist
-
-- [ ] `/sdlc` review complete — all findings addressed (includes lint + ruff)
-- [ ] <specific check> *(screenshot)*
-- [ ] <specific check>
-- [ ] Screenshots uploaded to PR via `/pr-image-upload`
+Omit this section entirely if all four agents returned no findings.]
 ````
 
 ---
