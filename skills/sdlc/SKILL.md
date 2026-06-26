@@ -10,14 +10,15 @@ This skill manages the full review and QA pipeline for code changes. Always invo
 ## Usage
 
 ```
-/sdlc [phase]
+/sdlc [phase] [--parallel]
 ```
 
-- `/sdlc` — full pipeline (all phases)
+- `/sdlc` — full pipeline (all phases), agents run **in series**
 - `/sdlc plan` — planning/design phase only (docs + security + privacy + a11y + design)
 - `/sdlc review` — code + style + security + privacy + a11y + design + test reviews only
 - `/sdlc qa` — QA phase only
 - `/sdlc docs` — documentation update only (run after changes, before merging)
+- `--parallel` — dispatch review agents in parallel instead of series (faster, but findings may be redundant)
 
 ## Phase 0: Doc bootstrap (first time in a project)
 
@@ -35,14 +36,20 @@ Agent(sdlc-doc-writer): The docs/ directory does not exist for this project. Cre
 Agent(sdlc-doc-writer): Read docs/llms.md and load the feature doc(s) relevant to [feature/task description]. Summarize what's documented, flag any gaps or outdated sections, and identify the key files and patterns I should know before implementing.
 ```
 
-**Step 2 — Dispatch planning reviews in parallel** (after reading doc summary):
+**Step 2 — Dispatch planning reviews in series** (after reading doc summary). Run each agent and wait for its result before dispatching the next. With `--parallel`, dispatch all four simultaneously:
 
 ```
 Agent(sdlc-security-reviewer): Analyze threat model for the planned feature. What attack surfaces does this introduce? What auth/authz patterns are needed?
 
+[wait for result, then:]
+
 Agent(sdlc-privacy-reviewer): Review the data design. What PII will be collected/stored? What consent flows are needed? What retention/deletion policies apply?
 
+[wait for result, then:]
+
 Agent(sdlc-accessibility-reviewer): Review the planned UI. What WCAG 2.2 AA requirements apply? What keyboard/screen reader patterns are needed?
+
+[wait for result, then:]
 
 Agent(sdlc-design-reviewer): Review the planned UI against the design brief. What existing components should be reused? What new patterns need to be defined?
 ```
@@ -60,20 +67,32 @@ Follow these rules during implementation:
 
 ## Phase 3: Review (run after implementation, before QA)
 
-Dispatch all seven review agents **in parallel**:
+Dispatch the seven review agents **in series** — wait for each result before starting the next. With `--parallel`, dispatch all seven simultaneously.
 
 ```
 Agent(sdlc-code-reviewer): Review [files changed] for DRY/SOLID, correctness, and third-party usage.
 
+[wait, then:]
+
 Agent(sdlc-style-reviewer): Review [files changed] for naming, comment quality, idiomatic constructs, and linting compliance.
+
+[wait, then:]
 
 Agent(sdlc-security-reviewer): Review [files changed] for OWASP Top 10, auth/authz, injection risks, and dependency CVEs.
 
+[wait, then:]
+
 Agent(sdlc-privacy-reviewer): Review [files changed] for GDPR compliance, PII handling, and data minimization.
+
+[wait, then:]
 
 Agent(sdlc-accessibility-reviewer): Review [files changed] for WCAG 2.2 AA compliance.
 
+[wait, then:]
+
 Agent(sdlc-design-reviewer): Review [files changed] for design brief adherence and component consistency.
+
+[wait, then:]
 
 Agent(sdlc-test-reviewer): Review [files changed] for test quality: genuine-value assertions, edge cases, branch coverage, line coverage (target 90%+), frontend+backend unit-test parity, and boundary cases for conditionals and range comparisons.
 ```
@@ -82,10 +101,12 @@ Fix all Critical/Blocker issues. Fix Major issues unless there is a documented r
 
 ## Phase 4: QA + Documentation
 
-Run QA and documentation update **in parallel** after all review fixes are applied:
+Run QA and documentation update **in series** after all review fixes are applied. With `--parallel`, dispatch both simultaneously.
 
 ```
 Agent(sdlc-qa-engineer): Run automated tests, lint, API smoke tests, and regression check for [feature description].
+
+[wait, then:]
 
 Agent(sdlc-doc-writer): Update documentation for [feature changed]. Create or update the relevant docs/features/<name>.md, and update docs/llms.md if any new doc files were created.
 ```
@@ -121,7 +142,7 @@ Before any UI work, verify `meta/DESIGN_BRIEF.md` exists. If not, create the `me
 - [ ] Planning reviews done (security, privacy, a11y, design)
 - [ ] Implementation follows DRY/SOLID, minimal deps, TDD
 - [ ] Linter clean throughout
-- [ ] All 7 review agents run in parallel
+- [ ] All 7 review agents run (series by default; `--parallel` if speed needed)
 - [ ] All Critical/Blocker findings fixed
 - [ ] QA agent run and PASS
 - [ ] Doc update done (feature doc + llms.md)
