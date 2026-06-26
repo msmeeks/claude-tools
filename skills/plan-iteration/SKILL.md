@@ -12,8 +12,9 @@ file per cluster to `meta/plans/`.
 ## Usage
 
 ```
-/plan-iteration          — full mode: triage → group → /sdlc plan review → write plans
-/plan-iteration review   — re-run /sdlc plan review on existing meta/plans/*.md
+/plan-iteration            — full mode: triage → group → /sdlc plan review → write plans
+/plan-iteration review     — re-run /sdlc plan review on existing meta/plans/*.md
+/plan-iteration --parallel — same as full mode but dispatches review agents in parallel
 ```
 
 > **Sister skill:** `/triage-pr-comments` does the same for open PR reviewer comments —
@@ -58,7 +59,7 @@ After triage, print a summary table: pool of `ready-for-agent` issues and skippe
 ### Step 4 — Explore Codebase
 
 Group pool issues by likely domain area (auth, scheduling, data-layer, admin-ui, etc.),
-then dispatch up to 3 Explore agents **in parallel** — one per domain area — to find:
+then dispatch up to 3 Explore agents **in series** — one per domain area — to find:
 - Existing components/functions to reuse
 - File-level overlap between issues
 - Key patterns the implementation should follow
@@ -83,7 +84,7 @@ Name each cluster with a descriptive slug: `feat/<area>`, `fix/<area>`, `refacto
 
 ### Step 6 — /sdlc Plan Review Per Cluster
 
-For each cluster, dispatch four planning-review agents **in parallel**:
+For each cluster, dispatch four planning-review agents **in series** — wait for each result before starting the next. With `--parallel`, dispatch all four simultaneously:
 
 ```
 Agent(sdlc-security-reviewer): Review planned changes for cluster "<name>".
@@ -147,7 +148,7 @@ Row order must match the **Suggested Order** — `run-next-plan.py` picks plans 
 ## Review Mode (`/plan-iteration review [plan-name]`)
 
 1. List `meta/plans/*.md` (skip `README.md`). If a plan name is given, review only that one.
-2. For each plan, dispatch the same four planning-review agents as Step 6,
+2. For each plan, dispatch the same four planning-review agents as Step 6 (series by default; parallel with `--parallel`),
    using the plan's **Files to Modify** table and **Context** section as input.
 3. Print a per-plan findings summary. Suggest edits but do not auto-modify plan files.
 
