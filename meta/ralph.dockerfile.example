@@ -1,0 +1,18 @@
+# Example Docker sandbox for the Ralph loop (scripts/run-next-plan.py).
+# Copy this file to meta/ralph.dockerfile in your repo to opt in.
+#
+# SECURITY NOTE: the repo is bind-mounted read-write at /workspace, including
+# .git/hooks/ — a process inside the container can still modify host-side git
+# hooks. This is accepted as a known limitation for personal/developer use.
+# For untrusted code, mount individual subdirectories and exclude .git/ instead.
+#
+# Do not pass secrets via Docker build args (e.g. ARG) — build output and
+# `docker history` can leak them. Credentials are injected at `docker run`
+# time via `-e KEY` (value inherited from the host env, never logged or
+# placed in argv).
+
+FROM node:20-slim
+
+RUN npm install -g @anthropic-ai/claude-code
+
+WORKDIR /workspace

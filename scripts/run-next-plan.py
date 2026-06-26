@@ -17,6 +17,10 @@ Options:
     --integration-branch BRANCH
                         Shared branch all plan PRs in this batch target and merge into.
                         Created from the default branch if missing. Default: integration/batch
+
+Docker sandbox (optional): if the target repo has meta/ralph.dockerfile, Claude
+runs inside a container built from it instead of directly on the host. See
+meta/ralph.dockerfile.example for a template and the bind-mount security note.
 """
 
 import argparse
@@ -311,6 +315,80 @@ Integration branch: {integration_branch}
 Repo root: {repo_root}"""
 
 
+_IMAGE_TAG_SAFE_RE = re.compile(r"[^a-zA-Z0-9_.-]")
+
+
+def get_image_tag(repo_slug: str) -> str:
+    sanitized = _IMAGE_TAG_SAFE_RE.sub("-", repo_slug.replace("/", "-"))
+    return f"ralph-{sanitized[:128]}:latest"
+
+
+def build_run_command(
+    repo_root: Path,
+    dockerfile: Path,
+    env: dict,
+    claude_argv: list[str],
+    skip_build: bool = False,
+) -> list[str]:
+    if not dockerfile.exists():
+        return claude_argv
+
+    if os.path.islink(dockerfile):
+        die(f"Refusing to use symlinked dockerfile: {dockerfile}")
+
+    repo_root_resolved = repo_root.resolve()
+    dockerfile_resolved = dockerfile.resolve()
+    if repo_root_resolved not in dockerfile_resolved.parents and dockerfile_resolved != repo_root_resolved:
+        die(f"Dockerfile must live inside repo_root: {dockerfile}")
+
+    repo_slug = env.get("repo_slug", repo_root.name)
+    image_tag = get_image_tag(repo_slug)
+
+    if not skip_build:
+        needs_build = True
+        inspect_result = subprocess.run(
+            ["docker", "inspect", "--format", "{{.Created}}", image_tag],
+            capture_output=True,
+            text=True,
+        )
+        if inspect_result.returncode == 0:
+            try:
+                from datetime import datetime as _dt
+
+                created_str = inspect_result.stdout.strip()
+                created = _dt.fromisoformat(created_str.replace("Z", "+00:00"))
+                image_created_ts = created.timestamp()
+                if dockerfile_resolved.stat().st_mtime <= image_created_ts:
+                    needs_build = False
+            except (ValueError, OSError):
+                needs_build = True
+
+        if needs_build:
+            subprocess.run(
+                ["docker", "build", "-f", str(dockerfile_resolved), "-t", image_tag, str(repo_root_resolved)],
+                check=True,
+            )
+
+    return [
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        f"{repo_root_resolved}:/workspace",
+        "-w",
+        "/workspace",
+        "-e",
+        "ANTHROPIC_API_KEY",
+        "-e",
+        "GITHUB_TOKEN",
+        "-e",
+        "GIT_AUTHOR_NAME",
+        "-e",
+        "GIT_AUTHOR_EMAIL",
+        image_tag,
+    ] + claude_argv
+
+
 def _format_blocked_by_graph(plans: list[dict]) -> str:
     status_by_file = {p["file"]: p["status"] for p in plans}
     lines = []
@@ -425,6 +503,17 @@ def main() -> None:
             "text",
         ]
 
+        dockerfile = repo_root / "meta" / "ralph.dockerfile"
+        docker_mode = dockerfile.is_file()
+        if docker_mode:
+            claude_cmd = build_run_command(
+                repo_root=repo_root,
+                dockerfile=dockerfile,
+                env={"repo_slug": repo_root.name},
+                claude_argv=claude_cmd,
+                skip_build=args.dry_run,
+            )
+
         if args.dry_run:
             print()
             print("=== DRY RUN ===")
@@ -432,6 +521,7 @@ def main() -> None:
             print(f"Selected plan:       {selected['file']}")
             print(f"Attempts:            {selected['attempts']}")
             print(f"Integration branch:  {integration_branch}")
+            print(f"Docker mode:         {'YES' if docker_mode else 'NO'}")
             print()
             print("blocked_by graph:")
             print(_format_blocked_by_graph(plans))
