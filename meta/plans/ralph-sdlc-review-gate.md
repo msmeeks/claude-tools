@@ -3,8 +3,9 @@
 **Issues:** (none yet — this plan adds behavior to the orchestration loop)
 **Branch:** `feat/ralph-sdlc-review-gate`
 **Base:** `main`
+**Status:** done
 **Prerequisite:** Branch off `main` after `feat/ralph-orchestration-loop` (#3) merges.
-**Status:** pending
+**Status:** done
 
 ---
 
@@ -26,7 +27,7 @@ git worktree remove .claude/worktrees/claude-tools-sdlc-gate
 
 ## Context
 
-When `run-next-plan.py` finds no more pending plans, instead of exiting it should run a full `/sdlc` review diffing the integration branch against the default branch. Findings are auto-filed as GitHub issues, then `/triage-issues` groups them into new `meta/plans/` workstreams. The loop then continues with the new plans.
+When `run-next-plan.py` finds no more pending plans, instead of exiting it should run a full `/sdlc` review diffing the integration branch against the default branch. Findings are auto-filed as GitHub issues, then `/plan-iteration` groups them into new `meta/plans/` workstreams. The loop then continues with the new plans.
 
 A `sdlc_review_status` top-level field in `prd.json` permanently gates the review so it never runs more than once per prd lifecycle — preventing recursion regardless of how many triage batches follow.
 
@@ -113,10 +114,10 @@ Default when field is absent: treat as `"pending"` (backwards-compatible).
    issue_numbers = parse_issue_numbers(output)
    ```
 
-   c. **Run `/triage-issues` with immutability guard**:
+   c. **Run `/plan-iteration` with immutability guard**:
    ```python
    prompt = f"""
-   Run /triage-issues on the newly filed issues: {issue_numbers}.
+   Run /plan-iteration on the newly filed issues: {issue_numbers}.
    
    IMMUTABILITY CONSTRAINTS — you must not violate these:
    - Never modify any existing entry in meta/plans/prd.json (any entry with a non-null status field is immutable).

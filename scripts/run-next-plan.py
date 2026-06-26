@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Ralph Wiggum loop orchestrator. Partner to /triage-issues. Each iteration, reads
+Ralph Wiggum loop orchestrator. Partner to /plan-iteration. Each iteration, reads
 meta/plans/prd.json + meta/plans/progress.md and runs a non-interactive Claude
 session that freely chooses the highest-priority unblocked plan to implement.
 The Python layer only tracks attempts, detects stall/stop conditions, and
@@ -522,7 +522,7 @@ def main() -> None:
     logs_dir = plans_dir / "implementation-logs"
 
     if not prd_path.is_file():
-        die(f"prd.json not found: {prd_path} (run /triage-issues first)")
+        die(f"prd.json not found: {prd_path} (run /plan-iteration first)")
     if not shutil.which("claude"):
         die("Required command not found: claude")
 
