@@ -421,10 +421,68 @@ def build_run_command(
 
 
 ISSUE_NUMBER_RE = re.compile(r"^ISSUE:\s*#?(\d+)$", re.MULTILINE)
+PLAN_ISSUE_RE = re.compile(r"#(\d+)")
 
 
 def parse_issue_numbers(output: str) -> list[str]:
     return [f"#{m.group(1)}" for m in ISSUE_NUMBER_RE.finditer(output)]
+
+
+def extract_plan_issue_numbers(plan_path: Path) -> list[int]:
+    """Return issue numbers from the **Issues:** line of a plan file."""
+    try:
+        for line in plan_path.read_text().splitlines():
+            if line.startswith("**Issues:**"):
+                return [int(m.group(1)) for m in PLAN_ISSUE_RE.finditer(line)]
+    except OSError:
+        pass
+    return []
+
+
+def sync_pr_closes(prd_path: Path, plans_dir: Path, integration_branch: str) -> None:
+    """Add missing 'Closes #N' entries to the integration branch PR body."""
+    data = load_prd(prd_path)
+    issue_nums: list[int] = []
+    for entry in data["plans"]:
+        if entry["status"] == "done":
+            plan_path = plans_dir / entry["file"]
+            issue_nums.extend(extract_plan_issue_numbers(plan_path))
+    if not issue_nums:
+        return
+
+    r = subprocess.run(
+        ["gh", "pr", "list", "--head", integration_branch, "--json", "number,body", "--limit", "1"],
+        capture_output=True,
+        text=True,
+    )
+    if r.returncode != 0 or not r.stdout.strip():
+        warn(f"sync_pr_closes: no open PR found for {integration_branch} — skipping")
+        return
+    prs = json.loads(r.stdout)
+    if not prs:
+        warn(f"sync_pr_closes: no open PR found for {integration_branch} — skipping")
+        return
+
+    pr_number = prs[0]["number"]
+    body = prs[0].get("body") or ""
+    body_lower = body.lower()
+
+    new_closes = [
+        f"Closes #{n}"
+        for n in sorted(set(issue_nums))
+        if f"closes #{n}" not in body_lower
+    ]
+    if not new_closes:
+        info("sync_pr_closes: PR body already up to date")
+        return
+
+    if "## Closes" in body:
+        new_body = body.rstrip() + "\n" + "\n".join(new_closes) + "\n"
+    else:
+        new_body = body.rstrip() + "\n\n## Closes\n\n" + "\n".join(new_closes) + "\n"
+
+    subprocess.run(["gh", "pr", "edit", str(pr_number), "--body", new_body], check=True)
+    info(f"sync_pr_closes: PR #{pr_number} updated with {len(new_closes)} new Closes entries")
 
 
 def get_default_branch() -> str:
@@ -604,9 +662,11 @@ def main() -> None:
                     print("=== DRY RUN ===")
                     print("SDLC review gate would run (sdlc_review_status != 'complete').")
                     sys.exit(0)
+                sync_pr_closes(prd_path, plans_dir, integration_branch)
                 info("All plans done or stalled. Running SDLC review gate...")
                 run_sdlc_review_gate(prd_path, repo_root)
                 continue
+            sync_pr_closes(prd_path, plans_dir, integration_branch)
             info("All plans done or stalled. SDLC review already complete.")
             sys.exit(0)
 
@@ -753,6 +813,7 @@ def main() -> None:
 
         if outcome == "complete":
             info("Claude signaled all plans complete.")
+            sync_pr_closes(prd_path, plans_dir, integration_branch)
             data = load_prd(prd_path)
             if get_sdlc_review_status(data) != "complete":
                 info("Running SDLC review gate...")
@@ -766,6 +827,7 @@ def main() -> None:
 
         # outcome == "ok" or exhausted rate-limit retries: re-evaluate prd.json next loop.
         data = load_prd(prd_path)
+        sync_pr_closes(prd_path, plans_dir, integration_branch)
         if all(p["status"] in ("done", "stalled") for p in data["plans"]):
             if get_sdlc_review_status(data) != "complete":
                 info("All plans done or stalled. Running SDLC review gate...")
