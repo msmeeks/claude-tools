@@ -16,6 +16,7 @@ save_prd = run_next_plan.save_prd
 increment_attempts = run_next_plan.increment_attempts
 set_status = run_next_plan.set_status
 mark_stalled = run_next_plan.mark_stalled
+resolve_integration_branch = run_next_plan.resolve_integration_branch
 
 
 def _valid_prd():
@@ -231,3 +232,17 @@ def test_load_prd_raises_systemexit_not_typeerror_on_malformed_json(tmp_path):
 
     with pytest.raises(SystemExit):
         load_prd(prd_path)
+
+
+def test_resolve_integration_branch_uses_prd_json_value_when_no_cli_override():
+    data = _valid_prd()
+    data["integration_branch"] = "integration/2026-06-26-esv"
+
+    assert resolve_integration_branch(data, cli_override=None) == "integration/2026-06-26-esv"
+
+
+def test_resolve_integration_branch_cli_override_wins_over_prd_json():
+    data = _valid_prd()
+    data["integration_branch"] = "integration/2026-06-26-esv"
+
+    assert resolve_integration_branch(data, cli_override="integration/explicit") == "integration/explicit"

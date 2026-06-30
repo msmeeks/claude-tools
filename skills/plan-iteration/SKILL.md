@@ -119,8 +119,7 @@ Then write (or update) `meta/plans/prd.json` — the plan index that `run-next-p
 2. For each cluster, build a plan entry: `{"file": "<slug>.md", "issues": [N, M, ...], "size": "S|M|L|XL", "status": "pending", "attempts": 0, "blocked_by": []}`.
 3. Merge: if an entry with the same `file` already exists, preserve its `status` and `attempts`; overwrite all other fields. If no entry exists, add it as-is.
 4. Populate each entry's `blocked_by` array from the dependency analysis in Step 5 — list the `file` values of clusters that must merge first.
-5. Set the top-level `integration_branch` field to `"integration/batch"` if not already set.
-6. Write the merged object back to `meta/plans/prd.json`.
+5. Write the merged object back to `meta/plans/prd.json`. (`integration_branch` is set by Step 8 below, once the real date-slugged branch name exists — don't stamp a placeholder here.)
 
 **No `meta/plans/README.md` is written or updated by this skill.**
 

@@ -15,8 +15,7 @@ Options:
     --dry-run           Print selected plan, blocked_by graph, attempts, and
                         the full Claude command; do not invoke Claude
     --integration-branch BRANCH
-                        Shared branch all plan PRs in this batch target and merge into.
-                        Created from the default branch if missing. Default: integration/batch
+                        Override prd.json's integration_branch (authoritative by default).
 
 Docker sandbox (optional): if the target repo has meta/ralph.dockerfile, Claude
 runs inside a container built from it instead of directly on the host. See
@@ -142,6 +141,13 @@ def _validate_prd_schema(data: object) -> dict:
 
 def get_sdlc_review_status(data: dict) -> str:
     return data.get("sdlc_review_status", "pending")
+
+
+def resolve_integration_branch(data: dict, cli_override: str | None) -> str:
+    """prd.json's integration_branch is authoritative; --integration-branch overrides it."""
+    if cli_override is not None:
+        return cli_override
+    return data["integration_branch"]
 
 
 def load_prd(path: Path) -> dict:
@@ -507,7 +513,7 @@ def invoke_claude(prompt: str, repo_root: Path) -> str:
 
 def run_docs_phase(prd_path: Path, repo_root: Path) -> None:
     data = load_prd(prd_path)
-    integration_branch = data.get("integration_branch", "integration/batch")
+    integration_branch = data["integration_branch"]
     default_branch = get_default_branch()
 
     docs_prompt = f"""The integration branch {integration_branch} has completed all plans and SDLC review.
@@ -598,8 +604,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--integration-branch",
-        default="integration/batch",
-        help="Shared branch all plan PRs in this batch target and merge into. Default: integration/batch",
+        default=None,
+        help="Override the integration_branch from prd.json. Default: read from prd.json (authoritative).",
     )
     args = parser.parse_args()
 
@@ -631,7 +637,7 @@ def main() -> None:
         _log_fh = open(log_file, "w")  # noqa: SIM115
         info(f"Log: {log_file}")
 
-    integration_branch = args.integration_branch
+    integration_branch = resolve_integration_branch(load_prd(prd_path), args.integration_branch)
     info(f"Integration branch: {integration_branch}")
 
     while True:
@@ -813,13 +819,17 @@ def main() -> None:
 
         if outcome == "complete":
             info("Claude signaled all plans complete.")
-            sync_pr_closes(prd_path, plans_dir, integration_branch)
             data = load_prd(prd_path)
-            if get_sdlc_review_status(data) != "complete":
-                info("Running SDLC review gate...")
-                run_sdlc_review_gate(prd_path, repo_root)
-                continue
-            sys.exit(0)
+            if not all(p["status"] in ("done", "stalled") for p in data["plans"]):
+                warn("COMPLETE sigil detected but prd.json shows incomplete plans — ignoring sigil, continuing loop.")
+                outcome = "ok"
+            else:
+                sync_pr_closes(prd_path, plans_dir, integration_branch)
+                if get_sdlc_review_status(data) != "complete":
+                    info("Running SDLC review gate...")
+                    run_sdlc_review_gate(prd_path, repo_root)
+                    continue
+                sys.exit(0)
 
         if outcome == "error":
             warn(f"Claude exited with code {claude_exit}. Plan stays in-progress — re-run to resume.")
