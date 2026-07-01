@@ -24,5 +24,8 @@
       "attempts": 0,
       "blocked_by": ["feat-wenyan-handoff-rollout.md"]
     }
-  ]
+  ],
+  "integration_branch": "integration/2026-07-01-wenyan-handoff-poc",
+  "smoke_test": null,
+  "feature_branches": []
 }
