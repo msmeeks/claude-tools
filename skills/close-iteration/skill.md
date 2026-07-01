@@ -93,7 +93,42 @@ Print a warning table and ask for explicit confirmation before proceeding:
 
 ---
 
-## Step 4 — SDLC Findings Review
+## Step 4 — Remove meta/plans/ on the integration branch
+
+Do this before the SDLC Findings Review and PR-promotion steps, so the removal commit
+rides through the same diff-based review as the rest of the iteration's work instead of
+landing as an unreviewed change.
+
+```bash
+git switch <integration_branch>
+git fetch origin
+git pull origin <integration_branch>
+git status
+git rm -r meta/plans/
+git commit -m "chore: remove iteration plans from <integration_branch>
+
+Plans are preserved in git history on <integration_branch>."
+git push origin <integration_branch>
+git switch <default_branch> || git switch -c <default_branch> --track origin/<default_branch>
+```
+
+Fetching/pulling the integration branch immediately before committing avoids a
+non-fast-forward push if the branch moved since the Step 2d `git fetch`. The `git status`
+check right before `git rm` confirms the working tree is clean, catching any leftover local
+changes before they get swept into this commit. If `git push` is rejected (non-fast-forward),
+never force-push — re-run this step from the `git fetch` line so the new commit is built on
+top of the branch's current tip. Switching back to the default branch afterward ensures Step
+9d's local branch deletion isn't blocked by the integration branch being currently checked
+out; the fallback creates a local tracking branch if one doesn't already exist.
+
+Race window: there is a gap between this step's push and the merge in Step 8. If the PR was
+reviewed against a specific commit before this step ran, the push here changes the tip that
+Step 8 will actually merge — keep that gap short and re-check the PR diff if it's been a
+while.
+
+---
+
+## Step 5 — SDLC Findings Review
 
 Read `meta/sdlc-review-findings.md`. For each finding section:
 
@@ -110,7 +145,7 @@ If gaps exist, surface them and ask the user to confirm before continuing.
 
 ---
 
-## Step 5 — PRD Issue Coverage Check
+## Step 6 — PRD Issue Coverage Check
 
 Fetch all open issues with the `PRD` label:
 ```bash
@@ -130,7 +165,7 @@ the specific gap (which child issue is open, which plan is not done, what scope 
 
 ---
 
-## Step 6 — Issue Linking and PR Promotion
+## Step 7 — Issue Linking and PR Promotion
 
 Compile the full `Closes` list from all `prd.json.plans[*].issues` arrays.
 
@@ -151,54 +186,30 @@ gh pr ready <pr-number>
 
 ---
 
-## Step 6a — Remove meta/plans/ on the integration branch
-
-Do this before merging, so the removal rides along as part of the normal PR merge in
-Step 7 rather than requiring a separate direct push to the default branch afterward.
-
-```bash
-git switch <integration_branch>
-git fetch origin
-git pull origin <integration_branch>
-git rm -r meta/plans/
-git commit -m "chore: remove iteration plans before merging <integration_branch>
-
-Plans are preserved in git history on <integration_branch>."
-git push origin <integration_branch>
-git switch <default_branch>
-```
-
-Fetching/pulling the integration branch immediately before committing avoids a
-non-fast-forward push if the branch moved since the Step 2d `git fetch`. Switching back
-to the default branch afterward ensures Step 8b's local branch deletion isn't blocked by
-the integration branch being currently checked out.
-
----
-
-## Step 7 — Merge
+## Step 8 — Merge
 
 ```bash
 gh pr merge <pr-number> --merge --delete-branch
 ```
 
 `--merge` preserves the full integration branch commit history, including the
-`meta/plans/` removal commit from Step 6a. `--delete-branch` removes the remote
+`meta/plans/` removal commit from Step 4. `--delete-branch` removes the remote
 integration branch automatically.
 
 ---
 
-## Step 8 — Post-Merge Cleanup
+## Step 9 — Post-Merge Cleanup
 
 Run all sub-steps in order.
 
-### 8a — Close PRD issues
+### 9a — Close PRD issues
 
-For each PRD issue that passed all three checks in Step 5:
+For each PRD issue that passed all three checks in Step 6:
 ```bash
 gh issue close <N> --comment "Closed by iteration <integration_branch>. All scoped work merged in PR #<pr-number>."
 ```
 
-### 8b — Clean up worktrees and branches
+### 9b — Clean up worktrees and branches
 
 Read `prd.json.feature_branches`. For each branch:
 1. Find its worktree: `git worktree list --porcelain` → match path → `git worktree remove <path> --force`
@@ -210,22 +221,25 @@ Read `prd.json.feature_branches`. For each branch:
 Also enumerate `git worktree list --porcelain` for any remaining worktree whose branch
 matches `integration_branch` and remove it.
 
-Delete the local integration branch if it still exists locally (it was already switched off
-in Step 6a and is fully merged via Step 7, so this succeeds without `-D`):
-```bash
-git branch -d <integration_branch>
-```
-
-### 8c — Final pull
+### 9c — Final pull
 
 ```bash
 git switch <default_branch>
 git pull origin <default_branch>
 ```
 
+### 9d — Delete local integration branch
+
+Delete the local integration branch if it still exists locally. It was already switched off
+in Step 4 and is fully merged via Step 8, and 9c has just pulled the merge commit into the
+local default branch, so this succeeds without `-D`:
+```bash
+git branch -d <integration_branch>
+```
+
 ---
 
-## Step 9 — Print Closing Report
+## Step 10 — Print Closing Report
 
 ```
 === Iteration Closed ===

@@ -81,11 +81,13 @@ complete, findings addressed, no merge conflicts, smoke test passes), surfaces s
 warnings for confirmation, checks PRD issue coverage, then promotes and merges the
 integration PR, closes linked issues, and deletes branches/worktrees.
 
-`meta/plans/` is removed as part of Step 6a, committed and pushed directly on the
-integration branch *before* the PR is merged (Step 7) — this lets the removal ride along
-in the normal merge commit instead of requiring a separate direct push to the default
-branch afterward. Post-merge cleanup (Step 8) only closes PRD issues, deletes
-branches/worktrees, and pulls the default branch; it no longer touches `meta/plans/`.
+`meta/plans/` is removed as part of Step 4, committed and pushed on the integration branch
+*before* the SDLC findings review and PR-promotion steps and *before* the PR is merged
+(Step 8) — this lets the removal commit pass through the same diff-based review as the
+rest of the iteration's work, and ride along in the normal merge commit instead of
+requiring a separate direct push to the default branch afterward. Post-merge cleanup
+(Step 9) only closes PRD issues, deletes branches/worktrees, and pulls the default branch
+before deleting the local integration branch; it no longer touches `meta/plans/`.
 
 ### Adding a new skill
 
