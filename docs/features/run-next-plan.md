@@ -1,0 +1,100 @@
+# Run Next Plan (Ralph Wiggum loop)
+
+## Summary
+
+`scripts/run-next-plan.py` is a non-interactive orchestrator that drives an iteration's `meta/plans/` to completion. It repeatedly invokes a headless Claude session, letting Claude pick and implement the highest-priority unblocked plan, until every plan is `done`/`stalled` and a final SDLC review gate has passed. It's the "run" partner to `/plan-iteration`'s "plan" step.
+
+## Users / Use Cases
+
+- **Developer** — kicks off `python3 ~/.claude/scripts/run-next-plan.py` after `/plan-iteration` has written `meta/plans/prd.json`, then lets it run unattended (optionally overnight) through an entire iteration's plans.
+- **Worker** — N/A (this script is itself the automation; there is no separate worker role).
+
+## Technologies
+
+- **Python 3 stdlib only** (`argparse`, `fcntl`, `json`, `subprocess`, `re`, `tempfile`, `pathlib`) — no third-party dependencies, matches the repo's minimal-dependency preference
+- **`claude` CLI** — invoked headlessly via `claude -p - --permission-mode bypassPermissions --output-format text`, prompt piped over stdin
+- **`gh` CLI** — used to file SDLC finding issues and sync `Closes #N` entries on the integration branch's PR
+- **Docker** (optional) — sandboxes the Claude session when `meta/ralph.dockerfile` is present
+- **`fcntl` file locking** — guards concurrent writes to `prd.json` across attempt-increment/status-set operations
+
+## Technical Overview
+
+The script treats `meta/plans/prd.json` as the single source of truth for plan state (`pending`/`in-progress`/`done`/`stalled`, `attempts`, `blocked_by`) and delegates all prioritization and implementation intelligence to Claude via a constructed prompt — the Python layer only does bookkeeping: selecting *some* eligible (non-terminal) plan as a starting point, incrementing attempt counters, detecting stalls, retrying through rate limits, and escalating model/effort on repeated failures. Once every plan reaches a terminal state, the script gates on an `sdlc_review_status` field in `prd.json` before declaring the iteration truly finished, running a full `/sdlc` review, filing findings as GitHub issues, and triaging them into new plans (which re-enters the loop) or halting for human input.
+
+## Key Files
+
+| File | Purpose |
+|---|---|
+| `scripts/run-next-plan.py` | The orchestrator itself |
+| `meta/plans/prd.json` | Plan registry: `integration_branch`, `plans[]` (file/status/attempts/blocked_by), `sdlc_review_status`, `sdlc_finding_issues`, `feature_branches`, `smoke_test` |
+| `meta/plans/progress.md` | Human-readable log Claude appends to after each completed plan |
+| `meta/plans/implementation-logs/run-next-plan-*.log` | Per-invocation log (gitignored); scrubs credentials before writing |
+| `meta/plans/implementation-logs/run-next-plan-*-triage.log` | Per-issue triage outcome log written by the SDLC review gate |
+| `meta/ralph.dockerfile` | Optional sandbox Dockerfile; if present, Claude runs inside a built container instead of on the host |
+| `meta/ralph.dockerfile.example` | Template for the above, with a bind-mount security note |
+| `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_docker_sandbox.py` | Test suite; run via `cd scripts && python3 -m pytest` |
+| `skills/close-iteration/skill.md` | Step 2b reads this script's `sdlc_review_status` values (`pending`/`complete`/`needs-human`) from `prd.json` as a hard-blocker check before promoting/merging the iteration |
+
+## Technical Detail
+
+### Plan loop and attempt tracking
+
+Each pass through the `while True:` loop re-reads `prd.json`, selects a non-terminal plan (`select_next_plan` only screens out fully-`done`/`stalled` plans and fully-circular `blocked_by` graphs — actual priority/dependency judgment is left to Claude, which is instructed to respect `blocked_by` unless it can verify a dependency is already satisfied by reading the plan files), increments that plan's `attempts` counter under an `fcntl` lock, and invokes Claude with a fixed prompt. Plan file content is explicitly framed as untrusted document text in every prompt, not as instructions to follow.
+
+### Stall detection and model escalation
+
+`MAX_ATTEMPTS = 5`. A plan whose `attempts` exceeds 5 without reaching `done` is marked `stalled` (`mark_stalled`) and skipped from then on. Model/effort escalates by attempt count on the *current* invocation:
+
+| Attempts so far | Claude invocation |
+|---|---|
+| 1–2 | default model/effort |
+| 3–4 (`ESCALATION_THRESHOLD = 3`) | `--model sonnet --effort high` |
+| 5 (`MAX_ATTEMPTS`) | `--model opus --effort max` |
+
+### Rate-limit retries
+
+Combined stdout/stderr from each Claude invocation is classified by `scan_output` as `complete` (COMPLETE sigil found), `rate_limit` (regex match on phrases like "rate limit", "429", "usage limit", "overloaded"), `error` (non-zero exit), or `ok`. On `rate_limit`, the script parses a retry delay from the output text (explicit "retry after N" / "try again in N", or a "resets H:MMam/pm" time in America/New_York, falling back to `RETRY_WAIT_DEFAULT = 60`s, plus a flat 60s buffer), sleeps, and retries the same attempt — up to `MAX_RETRIES = 20` times before giving up and leaving the plan `in-progress` for a future run to resume.
+
+### Docker sandbox
+
+If `meta/ralph.dockerfile` exists in the repo root, `build_run_command` wraps the `claude` invocation in `docker run` instead of running it directly. It refuses a symlinked dockerfile, rebuilds the image (`ralph-<sanitized-repo-slug>:latest`) only if the dockerfile is newer than the last build, and mounts the repo root at `/workspace` with `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `GIT_AUTHOR_NAME`, and `GIT_AUTHOR_EMAIL` passed through as environment variables.
+
+### SDLC review gate
+
+Once `select_next_plan` finds no eligible plans (or Claude emits the `<promise>COMPLETE</promise>` sigil and `prd.json` confirms all plans are terminal), the script checks `prd.json`'s `sdlc_review_status`:
+
+- **`pending`** (default, and the only non-terminal value): runs `run_sdlc_review_gate`, which invokes Claude three times in sequence:
+  1. Full `/sdlc` review of the diff between the integration branch and the default branch; findings are written to `meta/sdlc-review-findings.md` as `## <title>` + body blocks (no GitHub issues yet).
+  2. Files each finding as a GitHub issue via `gh issue create`, labeled `sdlc-finding`, printing each new issue number as `ISSUE: #N`.
+  3. For every filed issue, runs the real `/triage` skill non-interactively — self-answering any grilling-style open questions with a stated recommendation and rationale instead of pausing for user input — then applies `/triage`'s normal state machine. If, after self-answering, the issue still has more than a couple of unresolved material open questions, or the work is architecturally significant / crosses many subsystems / is roughly XL-sized (per `/plan-iteration`'s size key), the issue is deliberately marked `needs-info` (not `ready-for-agent`) with a comment capturing the open questions, rather than being auto-approved. Every issue that does reach `ready-for-agent` is clustered (à la `/plan-iteration` Step 5) into new `meta/plans/<slug>.md` plan files appended to `prd.json`, without opening a new integration branch or PR.
+
+  The triage step logs one line per issue to `meta/plans/implementation-logs/run-next-plan-*-triage.log` and finishes by printing `HUMAN_IN_LOOP_REQUIRED: true` or `false`. If the marker is missing entirely, the script fails safe and treats it as `true`.
+
+  `prd.json`'s `sdlc_review_status` is then set to **`needs-human`** if any issue was flagged `needs-info` for low confidence, or **`complete`** if every issue was confidently resolved to `ready-for-agent` or `wontfix`. `sdlc_finding_issues` records the filed issue numbers. `save_prd` additionally refuses to ever revert `sdlc_review_status` from a terminal value (`complete`/`needs-human`) back to `pending`, so the gate cannot silently re-run once resolved.
+
+- **`complete`**: the docs phase runs (`run_docs_phase`: `/sdlc-doc-writer` scoped to the iteration's changed files, then `/help-docs` and `/demo` for new/changed features, committed to the integration branch), then the script exits 0 — the iteration is genuinely finished.
+
+- **`needs-human`**: the script does **not** re-run the gate or claim completion. It calls `_die_needs_human()`, which exits 1 with a message pointing at the most recent `run-next-plan-*-triage.log` and instructing a human to resolve the flagged `needs-info` issue(s) via a normal `/triage` pass; `run-next-plan.py` will resume automatically once `sdlc_review_status` is manually/externally updated to `complete`.
+
+If new plans were created by the triage step, the loop simply `continue`s and picks them up like any other pending plan on the next pass.
+
+### `/close-iteration` integration
+
+`/close-iteration`'s Step 2b hard-blocker check reads `prd.json`'s `sdlc_review_status` directly to decide whether an iteration is eligible to promote/merge: `pending` or `needs-human` block the merge (the latter requiring human triage resolution first), only `complete` clears this check.
+
+### CLI options
+
+| Flag | Effect |
+|---|---|
+| `--restart` | Resets any `in-progress` plan(s) back to `pending` before selecting |
+| `--skip-in-progress` | Treats `in-progress` plan(s) as `pending` for selection purposes only (local view, not persisted) |
+| `--dry-run` | Prints the selected plan, `blocked_by` graph, attempts, Docker mode, and full Claude command/prompt without invoking Claude or writing logs |
+| `--integration-branch BRANCH` | Overrides `prd.json`'s `integration_branch` (which is otherwise authoritative) |
+
+### PR `Closes #N` sync
+
+After every plan-selection pass (success, stall, or gate completion), `sync_pr_closes` scans `done` plans' `**Issues:**` lines for issue numbers and appends any missing `Closes #N` entries to the integration branch's open PR body via `gh pr edit`, so the PR always reflects which issues its merged plans close.
+
+### Tests
+
+Run from `scripts/`: `python3 -m pytest`. Suite is split across `test_orchestration.py` (loop/attempt/escalation behavior), `test_prd_data_layer.py` (schema validation, locking, status transitions), `test_sdlc_gate.py` (review-gate prompt construction and status transitions, including the `needs-human` path), and `test_docker_sandbox.py` (Docker wrapping logic).
