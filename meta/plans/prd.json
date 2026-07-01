@@ -29,8 +29,8 @@
         31
       ],
       "size": "S",
-      "status": "pending",
-      "attempts": 0,
+      "status": "stalled",
+      "attempts": 5,
       "blocked_by": [
         "feat-wenyan-handoff-rollout.md"
       ]
