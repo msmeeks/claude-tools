@@ -9,9 +9,39 @@
       "status": "done",
       "attempts": 1,
       "blocked_by": []
+    },
+    {
+      "file": "fix-close-iteration-step-restructure.md",
+      "issues": [
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27
+      ],
+      "size": "S",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
     }
   ],
   "integration_branch": "integration/2026-06-30-close-iteration-plans-removal",
   "smoke_test": null,
-  "feature_branches": []
+  "feature_branches": [],
+  "sdlc_review_status": "complete",
+  "sdlc_finding_issues": [
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27
+  ]
 }
