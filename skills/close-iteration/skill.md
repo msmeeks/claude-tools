@@ -147,14 +147,39 @@ gh pr ready <pr-number>
 
 ---
 
+## Step 6a — Remove meta/plans/ on the integration branch
+
+Do this before merging, so the removal rides along as part of the normal PR merge in
+Step 7 rather than requiring a separate direct push to the default branch afterward.
+
+```bash
+git switch <integration_branch>
+git fetch origin
+git pull origin <integration_branch>
+git rm -r meta/plans/
+git commit -m "chore: remove iteration plans before merging <integration_branch>
+
+Plans are preserved in git history on <integration_branch>."
+git push origin <integration_branch>
+git switch <default_branch>
+```
+
+Fetching/pulling the integration branch immediately before committing avoids a
+non-fast-forward push if the branch moved since the Step 2d `git fetch`. Switching back
+to the default branch afterward ensures Step 8b's local branch deletion isn't blocked by
+the integration branch being currently checked out.
+
+---
+
 ## Step 7 — Merge
 
 ```bash
 gh pr merge <pr-number> --merge --delete-branch
 ```
 
-`--merge` preserves the full integration branch commit history. `--delete-branch` removes
-the remote integration branch automatically.
+`--merge` preserves the full integration branch commit history, including the
+`meta/plans/` removal commit from Step 6a. `--delete-branch` removes the remote
+integration branch automatically.
 
 ---
 
@@ -162,26 +187,14 @@ the remote integration branch automatically.
 
 Run all sub-steps in order.
 
-### 8a — Remove meta/plans/ from the default branch
-
-```bash
-git switch <default_branch>
-git pull origin <default_branch>
-git rm -r meta/plans/
-git commit -m "chore: remove iteration plans after merging <integration_branch>
-
-Plans are preserved in git history on <integration_branch>."
-git push origin <default_branch>
-```
-
-### 8b — Close PRD issues
+### 8a — Close PRD issues
 
 For each PRD issue that passed all three checks in Step 5:
 ```bash
 gh issue close <N> --comment "Closed by iteration <integration_branch>. All scoped work merged in PR #<pr-number>."
 ```
 
-### 8c — Clean up worktrees and branches
+### 8b — Clean up worktrees and branches
 
 Read `prd.json.feature_branches`. For each branch:
 1. Find its worktree: `git worktree list --porcelain` → match path → `git worktree remove <path> --force`
@@ -193,12 +206,13 @@ Read `prd.json.feature_branches`. For each branch:
 Also enumerate `git worktree list --porcelain` for any remaining worktree whose branch
 matches `integration_branch` and remove it.
 
-Delete the local integration branch if it still exists locally:
+Delete the local integration branch if it still exists locally (it was already switched off
+in Step 6a and is fully merged via Step 7, so this succeeds without `-D`):
 ```bash
 git branch -d <integration_branch>
 ```
 
-### 8d — Final pull
+### 8c — Final pull
 
 ```bash
 git switch <default_branch>
