@@ -11,3 +11,17 @@ Implemented the wenyan-ultra handoff proof of concept for `sdlc-code-reviewer` (
 - Pre-existing, unrelated test failure noted and left alone: `scripts/tests/test_sdlc_gate.py::test_run_sdlc_review_gate_marks_status_complete_after_running` fails on a clean checkout of this branch too (before any of this plan's changes) — not caused by this work.
 
 Unblocks: `feat-wenyan-handoff-rollout.md` (#30).
+
+## 2026-07-01T16:20:00Z — feat-wenyan-handoff-rollout.md
+
+Rolled out the wenyan-ultra file-handoff protocol from `sdlc-code-reviewer` (PoC) to the remaining 7 sdlc reviewer/QA agents (#30):
+- `agents/sdlc-style-reviewer.md`, `sdlc-accessibility-reviewer.md`, `sdlc-design-reviewer.md`, `sdlc-test-reviewer.md`: added `Write` tool + schema-agnostic "Handoff-file mode" section (4-field `{file, line, summary, failure_scenario}` schema, severity/category folded into `summary`).
+- `agents/sdlc-security-reviewer.md`, `sdlc-privacy-reviewer.md`: same, plus a plain (uncompressed) `category` field (`"finding"` / `"possible-real-secret"` / `"possible-real-pii"`) with worked BAD/GOOD no-verbatim/no-masking examples for suspected real secrets/PII.
+- `agents/sdlc-qa-engineer.md`: distinct schema `{agent, status, tests_run, tests_failed:[{name, expected, actual, log_excerpt}]}` since PASS/FAIL+phased output doesn't fit the finding shape; mandatory redact-then-compress of `log_excerpt`.
+- `agents/sdlc-code-reviewer.md`: dropped the now-stale "PoC — this agent only" framing so it matches the other 7.
+- `skills/sdlc/SKILL.md`: Phase 3/4 now mint a UUID+path per agent (not just one), enumerate all 8 literal filename-validation regexes explicitly, add a central field-mapping reference (how each agent's severity/domain fields fold into `summary`/`failure_scenario`, plus the QA schema and redaction order), track retry/hard-fail state in an explicit per-`(agent, uuid)` table so one agent's failure never touches another's slot under `--parallel`, and run an end-of-phase cleanup sweep restricted to the 8 known literal filename prefixes (no bare wildcard).
+- Dispatched `sdlc-code-reviewer` to review this diff itself — it found and I fixed: the stale PoC-only framing left in `sdlc-code-reviewer.md`, an under-specified filename-regex validation step (now all 8 spelled out literally instead of "extrapolate from one"), a wildcard/no-wildcard inconsistency between the filename-validation rule and the cleanup-sweep step, a copy-paste "50 findings" cap reference that didn't fit the QA schema's `tests_failed` field, and a gap in retry instructions about preserving the original review-scope wording.
+- Updated `docs/features/sdlc-review-handoff.md` and `docs/llms.md` (via `sdlc-doc-writer`) to describe the full 8-agent rollout instead of the single-agent PoC.
+- Pre-existing, unrelated test failure confirmed present both before and after this change (via `git stash`): `scripts/tests/test_sdlc_gate.py::test_run_sdlc_review_gate_marks_status_complete_after_running` — not caused by this work.
+
+Unblocks: `feat-wenyan-handoff-validation.md` (#31).
