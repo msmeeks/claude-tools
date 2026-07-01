@@ -31,6 +31,7 @@ Skills live at `~/.claude/skills/<name>/` (symlinked from this repo). When the d
 | `skills/pr-image-upload/SKILL.md` | Uploads screenshots to GitHub as release assets; returns markdown image tags |
 | `skills/pr-image-upload/pr-image-upload.sh` | Shell implementation for the upload workflow |
 | `skills/rank-backlog/SKILL.md` | GUS backlog analysis and nevering-candidate ranking; outputs CSV |
+| `skills/close-iteration/skill.md` | Gate-checks, merges, and cleans up an iteration opened by `/plan-iteration` |
 
 ## Technical Detail
 
@@ -72,6 +73,19 @@ Analyzes a GUS team's backlog for nevering candidates. Two modes:
 - **Manual fallback**: requires `--users=email1,email2` flag; queries each member individually via `gus_work_list`.
 
 Scoring algorithm weights: epic completed/nevered (+100), zero customer impact (+80), low impact + old (+60), age > 365 days (+20), inactivity > 180 days (+15). Output is a ranked CSV file in the current working directory.
+
+### close-iteration
+
+The bookend to `/plan-iteration`. Verifies hard blockers (all plans terminal, SDLC review
+complete, findings addressed, no merge conflicts, smoke test passes), surfaces soft
+warnings for confirmation, checks PRD issue coverage, then promotes and merges the
+integration PR, closes linked issues, and deletes branches/worktrees.
+
+`meta/plans/` is removed as part of Step 6a, committed and pushed directly on the
+integration branch *before* the PR is merged (Step 7) — this lets the removal ride along
+in the normal merge commit instead of requiring a separate direct push to the default
+branch afterward. Post-merge cleanup (Step 8) only closes PRD issues, deletes
+branches/worktrees, and pulls the default branch; it no longer touches `meta/plans/`.
 
 ### Adding a new skill
 
