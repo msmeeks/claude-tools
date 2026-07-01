@@ -8,5 +8,8 @@
       "attempts": 0,
       "blocked_by": []
     }
-  ]
+  ],
+  "integration_branch": "integration/2026-06-30-close-iteration-plans-removal",
+  "smoke_test": null,
+  "feature_branches": []
 }
