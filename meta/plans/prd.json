@@ -1,0 +1,12 @@
+{
+  "plans": [
+    {
+      "file": "fix-close-iteration-plans-removal.md",
+      "issues": [17],
+      "size": "S",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
+    }
+  ]
+}
