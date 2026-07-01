@@ -3,6 +3,7 @@
 __pycache__/
 *.log
 meta/plans/implementation-logs/
+meta/plans/scratchpad/
 meta/plans/prd.json.lock
 meta/sdlc-review-findings.md
 

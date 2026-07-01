@@ -49,6 +49,8 @@ The central workflow orchestrator. Divides work into four phases invocable indep
 
 On first use in a project, `/sdlc` bootstraps `docs/` via `doc-writer` before anything else. The checklist at the bottom of `SKILL.md` serves as a definition of done.
 
+In `review`, the seven agents normally run and return plain-English prose. `sdlc-code-reviewer` alone currently uses a compressed file-handoff protocol instead (PoC) — see [sdlc-review-handoff.md](sdlc-review-handoff.md).
+
 ### demo
 
 Produces two artifacts per feature: a styled HTML demo script and an MP4 video. Screenshots are captured via a headless Chrome CDP session (Node.js, no external packages beyond built-in WebSocket). Video is assembled with Pillow (text rendering on PNG frames) + ffmpeg (encoding and concatenation). If `demo-gen` is installed at `~/Code/demo-generator/.venv/bin/demo-gen`, the skill delegates to that CLI instead.

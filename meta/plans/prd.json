@@ -2,27 +2,38 @@
   "plans": [
     {
       "file": "feat-wenyan-handoff-poc.md",
-      "issues": [28, 29],
+      "issues": [
+        28,
+        29
+      ],
       "size": "S",
-      "status": "pending",
-      "attempts": 0,
+      "status": "done",
+      "attempts": 2,
       "blocked_by": []
     },
     {
       "file": "feat-wenyan-handoff-rollout.md",
-      "issues": [30],
+      "issues": [
+        30
+      ],
       "size": "M",
       "status": "pending",
       "attempts": 0,
-      "blocked_by": ["feat-wenyan-handoff-poc.md"]
+      "blocked_by": [
+        "feat-wenyan-handoff-poc.md"
+      ]
     },
     {
       "file": "feat-wenyan-handoff-validation.md",
-      "issues": [31],
+      "issues": [
+        31
+      ],
       "size": "S",
       "status": "pending",
       "attempts": 0,
-      "blocked_by": ["feat-wenyan-handoff-rollout.md"]
+      "blocked_by": [
+        "feat-wenyan-handoff-rollout.md"
+      ]
     }
   ],
   "integration_branch": "integration/2026-07-01-wenyan-handoff-poc",

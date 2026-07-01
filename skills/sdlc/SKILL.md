@@ -69,8 +69,23 @@ Follow these rules during implementation:
 
 Dispatch the seven review agents **in series** — wait for each result before starting the next. With `--parallel`, dispatch all seven simultaneously.
 
+**PoC callout:** `sdlc-code-reviewer` below uses a compressed file-handoff protocol instead of returning prose directly (issues #28/#29, proof of concept). The other six agents in this phase are unchanged and return plain-English prose as normal — the asymmetry is intentional and scoped to this one agent until the PoC is validated for rollout.
+
+Handoff files use a fresh UUID-named file per invocation rather than the shared `meta/plans/prd.json` + lock pattern — there's no concurrent-writer/merge scenario here (one agent, one file, one read), so a lock adds nothing.
+
 ```
-Agent(sdlc-code-reviewer): Review [files changed] for DRY/SOLID, correctness, and third-party usage.
+[Ensure {repo_root}/meta/plans/scratchpad/ exists (create it if this is the first PoC run this session). Mint a fresh UUID and construct the absolute path {repo_root}/meta/plans/scratchpad/sdlc-code-reviewer-{uuid}.json. This path is minted by the orchestrator, not the agent — never let the agent choose its own filename.]
+
+Agent(sdlc-code-reviewer): Review [files changed] for DRY/SOLID, correctness, and third-party usage. Instead of returning prose, write your findings via the Write tool to exactly this path: {absolute scratchpad path}. Follow the handoff-file schema and compression rule in your own instructions.
+
+[Attempt to read the file back via the Read tool — never Bash/cat. Treat any of the following as a validation failure, including the file simply not existing (e.g. the agent's Write call errored):
+  - filename doesn't match ^sdlc-code-reviewer-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.json$, or the resolved path (no symlinks) isn't inside the scratchpad dir you minted
+  - JSON doesn't parse, or doesn't match the schema below (byte-for-byte identical to agents/sdlc-code-reviewer.md): `{agent, findings:[{file, line, summary, failure_scenario}]}` with `findings` capped at 50 entries and each `summary`/`failure_scenario` capped at 2000 characters
+  - any finding's `file` isn't one of [files changed] in this review — don't trust the file's own `agent` field for identity, you already know which agent you dispatched
+
+If validation fails for any reason above (including a missing file): delete the file if it exists, then re-invoke Agent(sdlc-code-reviewer) exactly once, explicitly instructing it to return plain-English prose directly in its response (no file write, no handoff path given) for this retry. This retry either succeeds with usable prose, or it doesn't — there's no second file to validate, so judge the retry only on whether the prose is present and usable (non-empty, addresses the review scope). If the retry's prose is missing, empty, or unusable: hard-fail this agent's review — surface the raw scratchpad path (if a file exists) and a clear error, but never print the file's contents, and don't guess a translation. Delete the file after a hard-fail too, once the error is surfaced.
+
+On success: decode the wenyan-ultra `summary`/`failure_scenario` fields to plain English immediately before using them, then delete the handoff file.]
 
 [wait, then:]
 

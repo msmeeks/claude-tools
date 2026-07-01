@@ -11,6 +11,7 @@ Load this file first. Then load only the specific doc files relevant to your tas
 - [features/custom-llm.md](features/custom-llm.md) — route Claude Code to Ollama, Gemini, or OpenAI via claude-code-router proxy
 - [features/demo-gen.md](features/demo-gen.md) — Python CLI that generates HTML + MP4 demo artifacts; invoked by the `/demo` skill
 - [features/run-next-plan.md](features/run-next-plan.md) — Ralph Wiggum loop: non-interactive orchestrator that drives meta/plans/ to completion, including the SDLC review gate
+- [features/sdlc-review-handoff.md](features/sdlc-review-handoff.md) — PoC: compressed file-based handoff between /sdlc Phase 3 and sdlc-code-reviewer only
 
 ## Dev
 - [../README.md](../README.md) — quick-start, skills reference, agents reference

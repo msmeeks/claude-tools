@@ -68,6 +68,8 @@ Each agent reports findings grouped by severity. The severity vocabulary differs
 - Security: **Critical** → **High** → **Medium** → **Informational**
 - QA: **PASS / FAIL** banner followed by section-by-section results
 
+**Exception (PoC):** `sdlc-code-reviewer`, when dispatched with a literal scratchpad path by `/sdlc` Phase 3, writes findings as compressed JSON via `Write` instead of returning prose. See [sdlc-review-handoff.md](sdlc-review-handoff.md). The other six review agents are unaffected.
+
 ### Adding a new agent
 
 1. Create `agents/<name>.md` with valid frontmatter (`name`, `description`, `model`, `tools`).
