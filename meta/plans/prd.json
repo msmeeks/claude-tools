@@ -29,11 +29,8 @@
         31
       ],
       "size": "S",
-      "status": "stalled",
-      "attempts": 5,
-      "blocked_by": [
-        "feat-wenyan-handoff-rollout.md"
-      ]
+      "status": "unblocked",
+      "attempts": 5
     },
     {
       "file": "fix-sdlc-handoff-hardening.md",

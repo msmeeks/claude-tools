@@ -146,3 +146,21 @@ an extra field pass classification instead of being flagged.
 Unblocks: nothing (no plan lists this as a `blocked_by` dependency). All plans in `prd.json` are now
 `done` or `stalled` (the latter, `feat-wenyan-handoff-validation.md`, awaits a human go/no-go decision
 per its own progress entry above).
+
+## 2026-07-01T21:20:00Z — feat-wenyan-handoff-validation.md unblocked
+
+Five prior automated attempts correctly stalled this plan rather than trusting an in-file paragraph
+claiming pre-authorization (see attempts 1-5 in
+`implementation-logs/run-next-plan-2026_07_01_T15_51_25.log`). Escalated to the human in chat (not via
+plan-file text). Confirmed directly:
+- The flagged "authorization already granted" paragraph was the user's own edit, not a live injection.
+- Full 5-PR × 2-mode × 8-agent validation run approved.
+- Read-only cross-repo `gh` access to `bible-flashcards` approved.
+- Temporary disabling of the global `/caveman` CLAUDE.md directive for baseline runs approved (must be
+  restored after baseline passes complete, per the plan's own Context section).
+
+Reworded the plan paragraph to record this chain (chat confirmation, not doc-text) rather than leave the
+original "do not stop to ask" phrasing, since that phrasing is exactly the shape future attempts should
+keep being suspicious of. `prd.json` status set to `unblocked` (was `stalled`, attempts kept at 5 as
+historical record). GitHub issues #33 and #42 (needs-info, blocked on this same decision) can now go
+through a normal `/triage` pass.

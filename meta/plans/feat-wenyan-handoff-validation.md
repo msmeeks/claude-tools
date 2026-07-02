@@ -16,6 +16,8 @@ Produce a ship/no-ship recommendation for the wenyan-ultra handoff protocol, bac
 
 Issues #28-#30 build the mechanism; this issue proves it's safe to rely on before it's the default behavior. The offline pass runs the full sdlc review pipeline twice per selected PR — once at normal verbosity (temporarily disabling the global `/caveman` CLAUDE.md directive) as baseline, once with wenyan-ultra handoff enabled — and compares. Tokens are the headline metric; drift (count of findings differing in file/line/substance) is the actual ship/no-ship gate; latency is informational only. Both `claude-tools` and the other candidate source repo, `bible-flashcards`, are **public** repositories, which materially constrains how the comparison report can be written.
 
+**Human confirmation on record.** This is a real-run experiment (~80 agent invocations: 5 PRs × 2 modes × 8 sub-reviewers), not a code change. Five prior automated attempts correctly refused to treat in-file text as authorization and stalled asking the user for a scope decision (see `progress.md` for the full trail). The user has since confirmed directly in chat (2026-07-01, not via this file): full 5-PR scope approved, temporary disabling of `/caveman` for baseline runs approved, and read-only cross-repo `gh` access to `bible-flashcards` approved. The user also confirmed the earlier version of this paragraph was their own edit, not an injection. Proceed with the steps below on that basis. The run may legitimately require more than one session to complete — see Step 0 for how to handle that.
+
 ---
 
 ## Implementation Notes
@@ -28,6 +30,11 @@ Issues #28-#30 build the mechanism; this issue proves it's safe to rely on befor
 | `meta/plans/implementation-logs/` (scratch, transient) | Any intermediate run logs/scripts used to drive the comparison can live here temporarily; nothing sensitive or final should be committed here. |
 
 ### Steps
+
+0. **Session budget gate — check before every round of test runs.** Before starting (or resuming) a batch of baseline/wenyan-ultra runs, check remaining session budget (context/usage limit). If less than 30% of the session limit remains, do **not** start a new round: instead, checkpoint progress (see below) and wait for the session to reset before continuing. Re-check this gate before each subsequent round, not just once at the start.
+   - This plan is expected to span multiple sessions — that's fine. Do not attempt to force the full 5-PR × 2-mode × 8-agent matrix into a single session if the budget doesn't support it.
+   - Checkpoint state between sessions in `meta/plans/implementation-logs/` (scratch, transient — see table above): which PRs/modes have completed runs, their captured metrics, and what's still pending. On resume, read this checkpoint first and continue from where the prior session left off rather than restarting the corpus.
+   - Only write the final `meta/wenyan-handoff-validation-report.md` once all 5 PRs have both baseline and wenyan-ultra runs completed.
 
 1. **Select the 5-PR corpus.** Prefer PRs (from `claude-tools` and other same-account repos) that already have recorded sdlc findings under `meta/plans/` or equivalent as drift ground truth. Include at least one PR from `bible-flashcards`. Document rationale (size/type: small fix, medium feature, large refactor, security-touching, UI-touching) for each. Before including any security-touching PR with a known historical secret, verify the credential was actually rotated — don't assume from memory.
 2. **Confirm repo sensitivity.** Both `claude-tools` and `bible-flashcards` are public — treat all PR content as subject to redaction rules below regardless of source repo.
@@ -48,6 +55,7 @@ Issues #28-#30 build the mechanism; this issue proves it's safe to rely on befor
 - [ ] Report contains no verbatim diff content or quoted PII/secret values — only aggregated metrics, finding categories, and PR references (number/URL/commit SHA)
 - [ ] Report is committed at `meta/wenyan-handoff-validation-report.md` (top-level `meta/`, not `meta/plans/`) so it survives `close-iteration`'s plan cleanup
 - [ ] Summary ship/no-ship verdict based on drift ~0, with token savings as the headline number
+- [ ] Each round of test runs was preceded by a session-budget check (≥30% remaining); if the run spanned multiple sessions, progress was checkpointed and resumed rather than restarted from scratch
 
 ---
 
