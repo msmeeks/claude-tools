@@ -54,7 +54,7 @@ Byte-for-byte identical copies live in both each agent's own file and `skills/sd
 ```
 Each agent folds its own severity/category axis (Critical/Major/Minor, Blocker/Major/Minor, Linter/Naming/Comments/Idiomatic, WCAG criterion, design-brief reference, coverage %, etc.) into `summary` — there is no separate severity field, and none should be invented per agent. Only `summary` and `failure_scenario` are compressed. `agent`, `file`, `line` stay plain and literal.
 
-**4-field schema + `category`** — used by `sdlc-security-reviewer` and `sdlc-privacy-reviewer`:
+**4-field schema + `category`** — used by `sdlc-security-reviewer` and `sdlc-privacy-reviewer` (2 agents):
 ```json
 {
   "agent": "sdlc-security-reviewer",
@@ -76,7 +76,7 @@ Each agent folds its own severity/category axis (Critical/Major/Minor, Blocker/M
 
 All 7 finding-schema agents cap `findings` at 50 entries and each `summary`/`failure_scenario` string at 2000 characters.
 
-**QA schema** — used only by `sdlc-qa-engineer` (Phase 4), since PASS/FAIL + phased results don't fit the finding shape:
+**QA schema** — used only by `sdlc-qa-engineer` (Phase 4, 1 agent), since PASS/FAIL + phased results don't fit the finding shape:
 ```json
 {
   "agent": "sdlc-qa-engineer",

@@ -108,3 +108,41 @@ note); ran `/qa`-equivalent checks (full `scripts/tests/` suite + manual grep ve
 
 Unblocks: nothing new (no plan lists this as a `blocked_by` dependency); `fix-sdlc-handoff-doc-consistency.md`
 (#39-#41) remains independently unblocked and is next.
+
+## 2026-07-01T21:10:00Z — fix-sdlc-handoff-doc-consistency.md
+
+Implemented all three doc/tooling fixes for stale/inconsistent wenyan-ultra handoff documentation
+(#39-#41). Pure documentation/tooling change, no orchestrator behavior change — matches the plan's own
+"Pre-Implementation Review: not run" note. Used `/tdd` for the one piece of actual code (the new
+consistency checker): wrote `scripts/tests/test_sdlc_schema_consistency.py` first (confirmed RED —
+`check_sdlc_schema_consistency.py` didn't exist), then implemented the checker to GREEN, including a
+second RED→GREEN cycle when the first implementation attempt let an intentionally-divergent block with
+an extra field pass classification instead of being flagged.
+
+- **#39** — `docs/features/agents.md` and `docs/features/skills.md` no longer describe the handoff
+  protocol as a `sdlc-code-reviewer`-only PoC with "the other six unaffected" language; both now state
+  all 8 Phase 3/4 review-and-QA agents use handoff mode, consistent with `sdlc-review-handoff.md`.
+- **#41** — `skills/sdlc/SKILL.md`'s field-mapping reference rewritten to explicit "5 agents ... / 2
+  agents ... / 1 agent ... — 8 agents total" phrasing, matching the counting style already used in
+  `docs/features/sdlc-review-handoff.md`'s schema table (which got matching "(2 agents)" / "(Phase 4, 1
+  agent)" annotations added to its two other schema headings for full parity). Checked all 7
+  `agents/sdlc-*.md` files for restated counts — none found any conflicting phrasing to fix.
+- **#40** — added `scripts/check_sdlc_schema_consistency.py`: extracts fenced ```json blocks from the 9
+  source files (`skills/sdlc/SKILL.md`, `docs/features/sdlc-review-handoff.md`, 7
+  `agents/sdlc-*.md` files), classifies each by schema variant (plain 4-field / 4-field+`category` / QA)
+  from its finding key set, and asserts structural equality (keys + nesting shape, ignoring literal
+  values) within each variant — failing with a message naming the divergent file(s) and the expected vs.
+  actual shape. Wrapped in `scripts/tests/test_sdlc_schema_consistency.py` following the
+  `test_sdlc_gate.py` convention (load module by file path via `importlib`), so it runs with the
+  project's normal `pytest scripts/tests/` invocation. Manually verified per the plan's step 5: passes
+  against the current post-#39/#41 repo state; deliberately added an extra field to one copy locally
+  (not committed) and confirmed the script fails naming that exact file, then reverted and confirmed it
+  passes again.
+- `python3 -m pytest scripts/tests/ -q`: 47 passed (including the 2 new tests), 1 pre-existing unrelated
+  failure confirmed (`test_sdlc_gate.py::test_run_sdlc_review_gate_marks_status_complete_after_running`),
+  same failure documented in all three prior progress entries — not caused by this change.
+  `python3 -m ruff check` on both new files: clean.
+
+Unblocks: nothing (no plan lists this as a `blocked_by` dependency). All plans in `prd.json` are now
+`done` or `stalled` (the latter, `feat-wenyan-handoff-validation.md`, awaits a human go/no-go decision
+per its own progress entry above).

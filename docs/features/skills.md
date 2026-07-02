@@ -49,7 +49,7 @@ The central workflow orchestrator. Divides work into four phases invocable indep
 
 On first use in a project, `/sdlc` bootstraps `docs/` via `doc-writer` before anything else. The checklist at the bottom of `SKILL.md` serves as a definition of done.
 
-In `review`, the seven agents normally run and return plain-English prose. `sdlc-code-reviewer` alone currently uses a compressed file-handoff protocol instead (PoC) — see [sdlc-review-handoff.md](sdlc-review-handoff.md).
+In `review`, all 8 Phase 3/4 review-and-QA agents use a compressed file-handoff protocol instead of returning plain-English prose — see [sdlc-review-handoff.md](sdlc-review-handoff.md).
 
 ### demo
 

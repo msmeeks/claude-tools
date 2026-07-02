@@ -68,7 +68,7 @@ Each agent reports findings grouped by severity. The severity vocabulary differs
 - Security: **Critical** → **High** → **Medium** → **Informational**
 - QA: **PASS / FAIL** banner followed by section-by-section results
 
-**Exception (PoC):** `sdlc-code-reviewer`, when dispatched with a literal scratchpad path by `/sdlc` Phase 3, writes findings as compressed JSON via `Write` instead of returning prose. See [sdlc-review-handoff.md](sdlc-review-handoff.md). The other six review agents are unaffected.
+**Phase 3/4 handoff mode:** all 8 Phase 3/4 review-and-QA agents (the seven review agents above plus `sdlc-qa-engineer`), when dispatched with a literal scratchpad path by `/sdlc` Phase 3/4, write findings as compressed JSON via `Write` instead of returning prose. See [sdlc-review-handoff.md](sdlc-review-handoff.md).
 
 ### Adding a new agent
 
