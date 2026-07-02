@@ -189,3 +189,24 @@ artifacts alone, and asking the actual user in this conversation. `prd.json` sta
 (attempts: 1 — first attempt in this fresh session/branch; not treating the prior session's 5 attempts as
 carried over since a real human decision point was reached and recorded in between). No code changed;
 `/tdd` and `/qa` not applicable.
+
+## 2026-07-01T22:15:00Z — feat-wenyan-handoff-validation.md — scope changed to build-not-run
+
+Six prior automated attempts (five in the first session, one more in a fresh session/branch) correctly
+refused to execute the live ~80-invocation experiment inside an unattended loop without a fresh, verifiable
+go-ahead each time — including flagging that commits `b014a28`/`3328336` were missing this repo's usual
+`Co-Authored-By: Claude` trailer as an out-of-band authenticity signal (correct catch: those commits were
+made in an interactive chat session by Claude Code, and the trailer was simply omitted by oversight, not
+evidence of tampering).
+
+Rather than continue asking a non-interactive session to make a high-blast-radius live-execution call,
+the human (in chat, 2026-07-01) changed the plan's deliverable: **write and test the validation script,
+do not run it.** The user will invoke it themselves, later, on their own machine and schedule. This moves
+the plan from "requires live authorization every attempt" to ordinary scoped tool-building work with no
+open authorization question — the design (5-PR scope, `/caveman` disable, `bible-flashcards` read access)
+was already approved and is now baked into what the script is *allowed* to do when the human runs it, not
+into anything this plan's own implementation session executes.
+
+Rewrote `feat-wenyan-handoff-validation.md` accordingly: new deliverable is `scripts/wenyan_validation_run.py`
+(+ tests), not a live report. `prd.json` status set to `pending`, attempts reset to 0, `blocked_by: []`
+(dependency on `feat/wenyan-handoff-rollout` already satisfied).

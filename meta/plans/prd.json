@@ -29,8 +29,8 @@
         31
       ],
       "size": "S",
-      "status": "stalled",
-      "attempts": 1,
+      "status": "pending",
+      "attempts": 0,
       "blocked_by": []
     },
     {
