@@ -45,8 +45,8 @@
         38
       ],
       "size": "S",
-      "status": "pending",
-      "attempts": 0,
+      "status": "done",
+      "attempts": 2,
       "blocked_by": []
     },
     {
@@ -64,5 +64,18 @@
   ],
   "integration_branch": "integration/2026-07-01-wenyan-handoff-poc",
   "smoke_test": null,
-  "feature_branches": []
+  "feature_branches": [],
+  "sdlc_review_status": "needs-human",
+  "sdlc_finding_issues": [
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42
+  ]
 }
