@@ -58,12 +58,22 @@
       "status": "done",
       "attempts": 1,
       "blocked_by": []
+    },
+    {
+      "file": "fix-wenyan-ultra-spec-docs.md",
+      "issues": [
+        33
+      ],
+      "size": "S",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
     }
   ],
   "integration_branch": "integration/2026-07-01-wenyan-handoff-poc",
   "smoke_test": null,
   "feature_branches": [],
-  "sdlc_review_status": "needs-human",
+  "sdlc_review_status": "complete",
   "sdlc_finding_issues": [
     33,
     34,
