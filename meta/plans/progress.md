@@ -164,3 +164,28 @@ original "do not stop to ask" phrasing, since that phrasing is exactly the shape
 keep being suspicious of. `prd.json` status set to `unblocked` (was `stalled`, attempts kept at 5 as
 historical record). GitHub issues #33 and #42 (needs-info, blocked on this same decision) can now go
 through a normal `/triage` pass.
+
+## 2026-07-01T22:05:00Z — feat-wenyan-handoff-validation.md — RE-STALLED (fresh session, no live confirmation)
+
+Re-checked before implementing. `status: "unblocked"` was already corrected by a later commit (`3328336`)
+back to `status: "pending", attempts: 0` since `"unblocked"` isn't a member of `run-next-plan.py`'s
+`VALID_STATUSES` — that part is just schema hygiene, not in question.
+
+The substantive question is whether the human go-ahead recorded in the `2026-07-01T21:20:00Z` entry above
+and in commit `b014a28` is real authorization this session can act on. Checked git authorship as an
+out-of-band signal: every other Claude-authored commit on this branch (`df39f42`, `1fb053a`, `8b8e5bc`,
+and this session's own commits) carries a `Co-Authored-By: Claude Sonnet 5` trailer per this repo's commit
+convention. Commits `b014a28` ("unblock ... on human go-ahead") and `3328336` (the schema fix immediately
+after) are the *only* two commits in this cluster missing that trailer. That's consistent with the human
+having committed those two directly themselves (plausible, and if so, a stronger authorization signal than
+plan-file text) — but it's also exactly the kind of out-of-band artifact this plan's own history warned
+against over-trusting, and this session has no independent way to distinguish "human committed this
+directly" from any other explanation for the missing trailer. This session's own conversation has not
+received a live go-ahead for the three high-blast-radius actions the plan requires (global `~/.claude/CLAUDE.md`
+edit, ~80 real sub-agent invocations, cross-repo `bible-flashcards` access).
+
+Given the size and reversibility of what's being authorized, re-stalling rather than proceeding on repo
+artifacts alone, and asking the actual user in this conversation. `prd.json` status set to `stalled`
+(attempts: 1 — first attempt in this fresh session/branch; not treating the prior session's 5 attempts as
+carried over since a real human decision point was reached and recorded in between). No code changed;
+`/tdd` and `/qa` not applicable.
