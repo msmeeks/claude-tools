@@ -29,8 +29,9 @@
         31
       ],
       "size": "S",
-      "status": "unblocked",
-      "attempts": 5
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
     },
     {
       "file": "fix-sdlc-handoff-hardening.md",
