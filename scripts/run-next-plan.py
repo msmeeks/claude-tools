@@ -354,8 +354,6 @@ Update meta/plans/prd.json — set status to "done" for the completed plan.
 ONLY DO ONE PLAN AT A TIME.
 Use /tdd to drive implementation (write failing test first).
 Use /qa after changes (automated tests, lint, smoke checks).
-When spawning subagents include in their prompt:
-"Use ultra-compressed caveman speech for all prose responses. Keep full technical accuracy."
 
 If all plans are complete, output on its own line:
 <promise>COMPLETE</promise>

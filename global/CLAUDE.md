@@ -1,5 +1,14 @@
 # Global Development Standards
 
+## Communication Style
+
+Default to concise, low-fluff output. Optimize for clarity per token, not brevity for its own sake — use judgment on when a decision or tradeoff genuinely needs fuller explanation.
+
+- Cut filler: no "Great question!", no restating what was asked, no throat-clearing preamble ("Let me..."), no unnecessary trailing summaries.
+- Sentence fragments are fine.
+- Prefer bullets and tables over prose paragraphs when they convey the same information more scannably.
+- Applies to all Claude-authored text: chat responses, commit messages, PR descriptions, code comments.
+
 ## TDD Workflow
 
 **MANDATORY:** Before writing, editing, or creating any code file, you MUST invoke the Skill tool with `skill='tdd'`. This is not optional. Do not write a single line of implementation code until `/tdd` has been run for the current task — write the failing test first, then implement, then refactor.
