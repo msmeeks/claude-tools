@@ -259,3 +259,23 @@ implementation — confirmed via a manual smoke check that `main()` refuses to p
 
 Unblocks: nothing (no plan lists this as a `blocked_by` dependency). All plans in `prd.json` are now
 `done`.
+
+## 2026-07-01T22:45:00Z — fix-wenyan-ultra-spec-docs.md
+
+Implemented the doc-only fix for #33: `docs/features/sdlc-review-handoff.md` and `skills/sdlc/SKILL.md`
+now state, near their first substantive use of the term, that `wenyan-ultra` is the highest compression
+intensity level defined in `~/.claude/skills/caveman/SKILL.md` (description + worked examples), lossy and
+LLM-approximated rather than a formal grammar/character-set/deterministic codec, that technical
+specs/identifiers/code/error strings are never compressed at any level per the `caveman` skill's own
+rules, and that fidelity is verified empirically by `scripts/wenyan_validation_run.py`'s drift gate (0
+substantive mismatches per PR, independently across 5 PRs) rather than by a formal spec. Matches the
+plan's own "Pre-Implementation Review: not run — documentation-only" note, so `/tdd` was not applicable;
+ran `/qa`-equivalent checks instead: `python3 -m pytest scripts/tests/ -q` (69 passed, same 1
+pre-existing unrelated failure as every prior entry above), `python3 -m ruff check` (clean, no Python
+files touched), and `python3 scripts/check_sdlc_schema_consistency.py` (passed — the edits didn't touch
+any JSON schema block). Re-read both files end to end after editing: remaining "decode"/"decoded" wording
+elsewhere in both files describes the orchestrator's plain-English-decoding *action*, not a formal codec
+spec, so no further changes were needed there.
+
+Unblocks: nothing (no plan lists this as a `blocked_by` dependency). All plans in `prd.json` are now
+`done`.

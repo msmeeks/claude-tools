@@ -9,7 +9,7 @@ Compressed file-based handoff protocol between the `/sdlc` orchestrator and all 
 
 ## Technologies
 - **JSON** — handoff file schema (two variants: 4-field finding schema, and the QA-specific schema)
-- **wenyan-ultra** — compression scheme applied only to specific string fields inside each handoff JSON (never the whole object); decoded back to plain English by the orchestrator before use
+- **wenyan-ultra** — the highest compression intensity level defined in `~/.claude/skills/caveman/SKILL.md` (see that file's description and worked examples), applied only to specific string fields inside each handoff JSON (never the whole object) and decoded back to plain English by the orchestrator before use. It is lossy, LLM-approximated compression, not a formal grammar, character set, or deterministic codec — there is no spec to decode against. Per the `caveman` skill's own rules, technical specifications, identifiers, code, and error strings are never compressed at any level, only prose fields are. Fidelity is not verified structurally; it's verified empirically by `scripts/wenyan_validation_run.py`'s drift gate (0 substantive mismatches per PR, independently across 5 PRs) — see "Offline validation" below.
 - **UUID** — per-(agent, invocation) unique filename, one per dispatched agent slot, to avoid cross-agent collisions under `--parallel` dispatch
 
 ## Technical Overview
