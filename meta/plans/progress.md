@@ -210,3 +210,52 @@ into anything this plan's own implementation session executes.
 Rewrote `feat-wenyan-handoff-validation.md` accordingly: new deliverable is `scripts/wenyan_validation_run.py`
 (+ tests), not a live report. `prd.json` status set to `pending`, attempts reset to 0, `blocked_by: []`
 (dependency on `feat/wenyan-handoff-rollout` already satisfied).
+
+## 2026-07-01T22:35:00Z — feat-wenyan-handoff-validation.md (build-not-run scope, implemented)
+
+Implemented the build-not-run deliverable per the rewritten plan (#31): a standalone, human-run offline
+validation script for the wenyan-ultra handoff protocol. **Not invoked for real** as part of this
+implementation — confirmed via a manual smoke check that `main()` refuses to proceed without an explicit
+`--prs` corpus and never reaches a real `gh`/`claude` subprocess call in this session.
+
+- `scripts/wenyan_validation_run.py` (new): `select_pr_corpus` (5-PR selection, requires ≥1
+  `bible-flashcards` PR, prefers PRs with recorded findings as drift ground truth, documents rationale
+  per PR); `redact_secrets` (Authorization-header/bearer-token/common-PAT-prefix/email redaction);
+  `compute_drift` (per-file, substance-matched — not positional — pairing between baseline and
+  wenyan-ultra findings, so reordering alone never counts as drift); `evaluate_corpus_verdict` (ship iff
+  all 5 PRs independently zero-drift, never averaged, per the issue #33 bar); `caveman_directive_disabled`
+  (try/finally context manager that strips and reliably restores the global `/caveman` CLAUDE.md
+  directive, verified restored even when a simulated pass raises partway through);
+  `load_checkpoint`/`save_checkpoint`/`mark_pass_complete`/`is_pass_complete` (resume support, checkpoint
+  redacted before every write); `run_pipeline_pass` (argument-array subprocess invocation, never
+  shell-interpolated, injectable runner for testing); `generate_report` (writes
+  `meta/wenyan-handoff-validation-report.md`, aggregated categories/counts and PR number/URL/SHA
+  references only, no verbatim diff/finding content); a real (non-stub) `main()` wiring all of the above,
+  requiring an explicit `--prs` corpus rather than auto-discovering one, so it cannot silently launch a
+  live ~80-invocation run unattended.
+- `scripts/tests/test_wenyan_validation_run.py` (new, TDD RED→GREEN): 22 tests covering corpus selection,
+  redaction, drift computation (including duplicate/reorder edge cases), checkpoint round-trip and
+  redaction-before-persist, `/caveman` restore-on-success/exception/no-op, and pipeline-pass argument-array
+  invocation + error handling — all `gh`/`claude` calls mocked, no real subprocess or network call.
+- `docs/features/sdlc-review-handoff.md`: added an "Offline validation (issue #31)" section describing
+  the script's purpose, ship bar, and that it's human-invoked only, never wired into `/sdlc`/CI/any plan.
+- Dispatched `sdlc-code-reviewer` to review this diff. It found and I fixed three real issues: (1)
+  **critical** — the Authorization-header redaction regex only consumed the scheme word (`Bearer`),
+  leaving the actual token after it unredacted in the checkpoint/report; fixed by making the header
+  pattern consume the full value and adding common PAT-prefix coverage (`ghp_`, `gho_`, `xox*`, `AKIA`,
+  etc.), plus a regression test using a non-`sk-`-prefixed token so the gap can't hide behind the one
+  pattern that happened to already catch it; (2) **major** — `compute_drift` paired findings by list
+  position, so two runs returning the identical finding set in a different order (plausible — LLM output
+  order isn't stable across independent invocations) would report false-positive drift, undermining the
+  whole tool's purpose; fixed by matching findings within each file by `substance` first (greedy,
+  first-available) and only comparing `line` on matched pairs, with a new order-independence regression
+  test; (3) **minor** — simplified `select_pr_corpus`'s required-repo dedup logic, which had a dead/no-op
+  conditional and picked the required-repo PR only as an after-the-fact backfill; rewrote to pick the
+  required-repo PR (preferring one with recorded findings) first, then fill the rest.
+- `python3 -m pytest scripts/tests/ -q`: 69 passed, 1 pre-existing unrelated failure confirmed
+  (`test_sdlc_gate.py::test_run_sdlc_review_gate_marks_status_complete_after_running`), same failure
+  documented in all prior progress entries — not caused by this change. `python3 -m ruff check` on both
+  new files: clean.
+
+Unblocks: nothing (no plan lists this as a `blocked_by` dependency). All plans in `prd.json` are now
+`done`.
