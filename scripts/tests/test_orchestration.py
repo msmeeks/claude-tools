@@ -1,6 +1,8 @@
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 _MODULE_PATH = Path(__file__).resolve().parent.parent / "run-next-plan.py"
 _spec = importlib.util.spec_from_file_location("run_next_plan", _MODULE_PATH)
@@ -10,6 +12,35 @@ _spec.loader.exec_module(run_next_plan)
 
 select_next_plan = run_next_plan.select_next_plan
 scan_output = run_next_plan.scan_output
+_working_tree_dirty = run_next_plan._working_tree_dirty
+_push_branch = run_next_plan._push_branch
+ensure_committed_and_pushed = run_next_plan.ensure_committed_and_pushed
+
+
+def _init_repo(path):
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=path, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=path, check=True)
+    (path / "README.md").write_text("hello\n")
+    subprocess.run(["git", "add", "."], cwd=path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=path, check=True)
+
+
+def _init_repo_with_remote(tmp_path):
+    remote = tmp_path / "remote.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+    local = tmp_path / "local"
+    local.mkdir()
+    _init_repo(local)
+    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=local, check=True)
+    return local, remote
+
+
+def _remote_log(remote, branch):
+    r = subprocess.run(
+        ["git", "log", branch, "--format=%s"], cwd=remote, capture_output=True, text=True
+    )
+    return r.stdout.splitlines()
 
 
 def _plan(file, status="pending", blocked_by=None, attempts=0):
@@ -81,3 +112,76 @@ def test_scan_output_returns_error_on_nonzero_exit_without_rate_limit_text():
 def test_scan_output_returns_ok_on_zero_exit_with_no_sigil():
     text = "Did some work, nothing special happened"
     assert scan_output(text, 0) == "ok"
+
+
+def test_working_tree_dirty_false_on_clean_repo(tmp_path):
+    _init_repo(tmp_path)
+    assert _working_tree_dirty(tmp_path) is False
+
+
+def test_working_tree_dirty_true_with_uncommitted_change(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "README.md").write_text("changed\n")
+    assert _working_tree_dirty(tmp_path) is True
+
+
+def test_push_branch_sets_upstream_and_pushes_when_none_exists(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    _push_branch(local, "main")
+    assert _remote_log(remote, "main") == ["init"]
+
+
+def test_push_branch_pushes_new_commits_when_ahead_of_upstream(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    _push_branch(local, "main")
+    (local / "file2.txt").write_text("more\n")
+    subprocess.run(["git", "add", "."], cwd=local, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "second"], cwd=local, check=True)
+    _push_branch(local, "main")
+    assert _remote_log(remote, "main") == ["second", "init"]
+
+
+def test_push_branch_is_noop_when_not_ahead_of_upstream(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    _push_branch(local, "main")
+    # Nothing new to push; calling again must not error and must leave remote unchanged.
+    _push_branch(local, "main")
+    assert _remote_log(remote, "main") == ["init"]
+
+
+def test_ensure_committed_and_pushed_pushes_without_invoking_claude_when_clean(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    with patch.object(run_next_plan, "invoke_claude") as fake_invoke:
+        ensure_committed_and_pushed(local, "main", "plan a.md")
+    fake_invoke.assert_not_called()
+    assert _remote_log(remote, "main") == ["init"]
+
+
+def test_ensure_committed_and_pushed_asks_claude_to_commit_dirty_changes(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("changed by plan\n")
+
+    def fake_commit(prompt, repo_root):
+        subprocess.run(["git", "add", "-A"], cwd=repo_root, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "claude commit"], cwd=repo_root, check=True)
+        return "ok"
+
+    with patch.object(run_next_plan, "invoke_claude", side_effect=fake_commit) as fake_invoke:
+        ensure_committed_and_pushed(local, "main", "plan a.md")
+
+    fake_invoke.assert_called_once()
+    assert _remote_log(remote, "main") == ["claude commit", "init"]
+
+
+def test_ensure_committed_and_pushed_auto_commits_when_still_dirty_after_claude(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("changed by plan\n")
+
+    with patch.object(run_next_plan, "invoke_claude", return_value="ok") as fake_invoke:
+        ensure_committed_and_pushed(local, "main", "plan a.md")
+
+    fake_invoke.assert_called_once()
+    assert _working_tree_dirty(local) is False
+    log = _remote_log(remote, "main")
+    assert log[0].startswith("wip: uncommitted changes from plan a.md")
+    assert log[1] == "init"

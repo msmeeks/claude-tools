@@ -32,7 +32,7 @@ The script treats `meta/plans/prd.json` as the single source of truth for plan s
 | `meta/plans/implementation-logs/run-next-plan-*-triage.log` | Per-issue triage outcome log written by the SDLC review gate |
 | `meta/ralph.dockerfile` | Optional sandbox Dockerfile; if present, Claude runs inside a built container instead of on the host |
 | `meta/ralph.dockerfile.example` | Template for the above, with a bind-mount security note |
-| `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_docker_sandbox.py` | Test suite; run via `cd scripts && python3 -m pytest` |
+| `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_docker_sandbox.py` | Test suite; run via `cd scripts && python3 -m pytest`. `test_orchestration.py` covers `_working_tree_dirty`, `_push_branch`, and `ensure_committed_and_pushed` against real throwaway git repos (with a bare "remote"), not mocks. |
 | `skills/close-iteration/skill.md` | Step 2b reads this script's `sdlc_review_status` values (`pending`/`complete`/`needs-human`) from `prd.json` as a hard-blocker check before promoting/merging the iteration |
 
 ## Technical Detail
@@ -54,6 +54,16 @@ Each pass through the `while True:` loop re-reads `prd.json`, selects a non-term
 ### Rate-limit retries
 
 Combined stdout/stderr from each Claude invocation is classified by `scan_output` as `complete` (COMPLETE sigil found), `rate_limit` (regex match on phrases like "rate limit", "429", "usage limit", "overloaded"), `error` (non-zero exit), or `ok`. On `rate_limit`, the script parses a retry delay from the output text (explicit "retry after N" / "try again in N", or a "resets H:MMam/pm" time in America/New_York, falling back to `RETRY_WAIT_DEFAULT = 60`s, plus a flat 60s buffer), sleeps, and retries the same attempt — up to `MAX_RETRIES = 20` times before giving up and leaving the plan `in-progress` for a future run to resume.
+
+### Commit/push enforcement
+
+Claude is asked to commit (and, since this is the only thing that actually pushes anything, the prompts now say "commit and push") after each plan-implementation session, the docs phase, and the SDLC review gate's triage step. The script does not trust that this happened: `ensure_committed_and_pushed(repo_root, integration_branch, context)` runs after each of those three points and:
+
+1. Checks `git status --porcelain`. If clean, skips straight to step 3.
+2. If dirty, invokes Claude once more with a narrow "commit these outstanding changes" prompt. If the tree is still dirty afterward (Claude failed to commit for any reason), auto-commits everything with `git add -A` + a generic `wip: uncommitted changes from <context>` message as a safety net — this never blocks the loop, but does mean an occasional low-quality commit message can show up if Claude didn't commit its own work.
+3. Pushes the branch (`_push_branch`): sets upstream via `git push -u origin <branch>` if none exists yet, otherwise pushes only if the local branch is ahead of `@{u}` (a no-op push is skipped rather than shelled out unnecessarily).
+
+This closes the gap where a plan could be marked `done` in `prd.json` while its changes were still sitting uncommitted (or committed-but-unpushed) in the local working tree.
 
 ### Docker sandbox
 

@@ -84,6 +84,15 @@ def _fake_subprocess_run(cmd, **kwargs):
         return type("R", (), {"returncode": 0})()
     if cmd[:2] == ["git", "symbolic-ref"]:
         return type("R", (), {"returncode": 0, "stdout": "refs/remotes/origin/main\n"})()
+    if cmd[:2] == ["git", "status"]:
+        # Working tree clean — ensure_committed_and_pushed should not need to ask Claude
+        # to commit anything, only check whether a push is needed.
+        return type("R", (), {"returncode": 0, "stdout": ""})()
+    if cmd[:3] == ["git", "rev-parse", "--abbrev-ref"]:
+        return type("R", (), {"returncode": 0, "stdout": "origin/main\n"})()
+    if cmd[:2] == ["git", "rev-list"]:
+        # Not ahead of upstream — _push_branch should no-op rather than actually pushing.
+        return type("R", (), {"returncode": 0, "stdout": "0\n"})()
     raise AssertionError(f"unexpected subprocess.run call: {cmd}")
 
 
@@ -97,6 +106,8 @@ def test_run_sdlc_review_gate_marks_status_complete_after_running(tmp_path):
         calls.append(prompt)
         if "file a GitHub issue" in prompt:
             return "ISSUE: #11\nISSUE: #12\n"
+        if "run /triage" in prompt:
+            return "HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE"
         return "ok"
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
@@ -105,7 +116,7 @@ def test_run_sdlc_review_gate_marks_status_complete_after_running(tmp_path):
         run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
 
     assert load_prd(prd_path)["sdlc_review_status"] == "complete"
-    assert len(calls) == 3
+    assert len(calls) == 4
     assert "#11" in calls[2] and "#12" in calls[2]
 
 
