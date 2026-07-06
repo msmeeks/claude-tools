@@ -57,11 +57,41 @@ autonomously; the low-confidence issue(s) were left `needs-info` and logged in
 normal `/triage` pass on those issues, then update `sdlc_review_status` before retrying.
 
 ### 2c — SDLC findings addressed
-Fetch each issue number in `prd.json.sdlc_finding_issues`:
+An issue in `sdlc_finding_issues` counts as addressed if it is already `CLOSED`, **or** if it
+is linked to the integration PR as a closing reference — GitHub will auto-close it the moment
+Step 8's merge lands, so it is expected to still show `OPEN` at this point in the run. Do not
+treat that as a failure.
+
+First find the integration PR number:
+```bash
+gh pr list --head <integration_branch> --state open --json number --jq '.[0].number'
+```
+
+Then fetch the set of issues GitHub will auto-close on merge of that PR:
+```bash
+gh api graphql -f query='
+  query($owner:String!, $repo:String!, $pr:Int!) {
+    repository(owner:$owner, name:$repo) {
+      pullRequest(number:$pr) {
+        closingIssuesReferences(first: 100) { nodes { number } }
+      }
+    }
+  }' -f owner=<owner> -f repo=<repo> -F pr=<pr-number> \
+  --jq '.data.repository.pullRequest.closingIssuesReferences.nodes[].number'
+```
+
+For each issue number in `prd.json.sdlc_finding_issues`:
 ```bash
 gh issue view <N> --json number,title,state
 ```
-Any issue still in state `OPEN` is a hard blocker. Print a table: number, title, state.
+- `state: CLOSED` → addressed.
+- `state: OPEN` and the issue number appears in the `closingIssuesReferences` list above →
+  addressed (will auto-close on merge) — note this in the table but do not block.
+- `state: OPEN` and **not** in `closingIssuesReferences` → hard blocker. No merge is currently
+  going to close it, so it's genuinely unaddressed.
+
+Print a table: number, title, state, resolution (`closed` / `will auto-close on merge` /
+`BLOCKER — not linked`). Only rows marked `BLOCKER` stop the run.
 
 ### 2d — No merge conflicts
 ```bash
@@ -167,7 +197,10 @@ the specific gap (which child issue is open, which plan is not done, what scope 
 
 ## Step 7 — Issue Linking and PR Promotion
 
-Compile the full `Closes` list from all `prd.json.plans[*].issues` arrays.
+Compile the full `Closes` list from all `prd.json.plans[*].issues` arrays plus
+`prd.json.sdlc_finding_issues`. Including the SDLC finding issues here guarantees they
+auto-close on merge even if the commit(s) that addressed them didn't happen to use a
+closing keyword.
 
 Fetch the integration PR:
 ```bash
