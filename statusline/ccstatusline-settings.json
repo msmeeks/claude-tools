@@ -3,7 +3,9 @@
   "lines": [
     [
       { "id": "1", "type": "current-working-dir", "color": "yellow", "rawValue": true },
-      { "id": "3", "type": "git-branch", "color": "magenta" },
+      { "id": "3", "type": "git-branch", "color": "magenta" }
+    ],
+    [
       { "id": "5", "type": "context-percentage", "color": "cyan", "merge": true },
       { "id": "5b", "type": "custom-text", "customText": " (", "color": "cyan", "rawValue": true, "merge": true },
       { "id": "5c", "type": "context-length", "color": "cyan", "rawValue": true, "merge": true },
@@ -13,7 +15,6 @@
       { "id": "11", "type": "session-usage", "color": "brightBlue" },
       { "id": "13", "type": "weekly-usage", "color": "brightMagenta" }
     ],
-    [],
     []
   ],
   "flexMode": "full-minus-40",
