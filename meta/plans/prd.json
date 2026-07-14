@@ -13,7 +13,12 @@
   ],
   "sdlc_review_status": "pending",
   "sdlc_finding_issues": [],
-  "sdlc_review_completed_agents": [],
+  "sdlc_review_completed_agents": [
+    "sdlc-code-reviewer",
+    "sdlc-style-reviewer",
+    "sdlc-security-reviewer",
+    "sdlc-privacy-reviewer"
+  ],
   "feature_branches": [],
   "smoke_test": "cd scripts && python3 -m pytest"
 }
