@@ -234,6 +234,39 @@ def test_load_prd_raises_systemexit_not_typeerror_on_malformed_json(tmp_path):
         load_prd(prd_path)
 
 
+def test_load_prd_accepts_prd_issue_and_pr_number(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    data = _valid_prd()
+    data["prd_issue"] = 42
+    data["pr_number"] = 7
+    prd_path.write_text(json.dumps(data))
+
+    loaded = load_prd(prd_path)
+
+    assert loaded["prd_issue"] == 42
+    assert loaded["pr_number"] == 7
+
+
+def test_load_prd_raises_systemexit_on_non_integer_prd_issue(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    data = _valid_prd()
+    data["prd_issue"] = "forty-two"
+    prd_path.write_text(json.dumps(data))
+
+    with pytest.raises(SystemExit):
+        load_prd(prd_path)
+
+
+def test_load_prd_raises_systemexit_on_non_integer_pr_number(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    data = _valid_prd()
+    data["pr_number"] = True  # bool is not a valid pr_number
+    prd_path.write_text(json.dumps(data))
+
+    with pytest.raises(SystemExit):
+        load_prd(prd_path)
+
+
 def test_resolve_integration_branch_uses_prd_json_value_when_no_cli_override():
     data = _valid_prd()
     data["integration_branch"] = "integration/2026-06-26-esv"

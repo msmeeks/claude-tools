@@ -151,9 +151,9 @@ Size key: `S` (1–3 files), `M` (4–8 files), `L` (9–15 files), `XL` (16+ fi
    If none found, set `smoke_test` to `null` and warn the user to populate it manually
    in `prd.json` before running `/close-iteration`.
 
-5. Open a draft PR:
+5. Open a draft PR and capture its number:
    ```bash
-   gh pr create --draft \
+   pr_url=$(gh pr create --draft \
      --base <default_branch> \
      --head <integration_branch> \
      --title "Iteration: <comma-separated cluster titles>" \
@@ -164,11 +164,18 @@ Size key: `S` (1–3 files), `M` (4–8 files), `L` (9–15 files), `XL` (16+ fi
    ## All Issues
    <bulleted list of every #N from all plan entries>
    EOF
-   )"
+   )")
+   pr_number=$(gh pr view "$pr_url" --json number --jq .number)
    ```
 
-6. Update `prd.json` with the new fields (merge into the existing object):
+6. Determine the PRD issue number (`prd_issue`): the `prd`-labeled parent issue this
+   iteration implements. Find it via the `## Parent` section of the pool issues, or
+   `gh issue list --label prd --state open --json number`. If none applies, omit `prd_issue`.
+
+7. Update `prd.json` with the new fields (merge into the existing object):
    - `integration_branch`: the generated branch name
+   - `pr_number`: the draft PR number captured above (integer)
+   - `prd_issue`: the PRD issue number, if one was found (integer; omit otherwise)
    - `smoke_test`: the detected command string, or `null`
    - `feature_branches`: `[]`
 

@@ -26,13 +26,13 @@ The script treats `meta/plans/prd.json` as the single source of truth for plan s
 | File | Purpose |
 |---|---|
 | `scripts/run-next-plan.py` | The orchestrator itself |
-| `meta/plans/prd.json` | Plan registry: `integration_branch`, `plans[]` (file/status/attempts/blocked_by), `sdlc_review_status`, `sdlc_finding_issues`, `sdlc_review_completed_agents`, `feature_branches`, `smoke_test` |
+| `meta/plans/prd.json` | Plan registry: `integration_branch`, `pr_number`, `prd_issue`, `plans[]` (file/status/attempts/blocked_by), `sdlc_review_status`, `sdlc_finding_issues`, `sdlc_review_completed_agents`, `feature_branches`, `smoke_test` |
 | `meta/plans/progress.md` | Human-readable log Claude appends to after each completed plan |
 | `meta/plans/implementation-logs/run-next-plan-*.log` | Per-invocation log (gitignored); scrubs credentials before writing |
 | `meta/plans/implementation-logs/run-next-plan-*-triage.log` | Per-issue triage outcome log written by the SDLC review gate |
 | `meta/ralph.dockerfile` | Optional sandbox Dockerfile; if present, Claude runs inside a built container instead of on the host |
 | `meta/ralph.dockerfile.example` | Template for the above, with a bind-mount security note |
-| `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_docker_sandbox.py` | Test suite; run via `cd scripts && python3 -m pytest`. `test_orchestration.py` covers `_working_tree_dirty`, `_push_branch`, and `ensure_committed_and_pushed` against real throwaway git repos (with a bare "remote"), not mocks. |
+| `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_docker_sandbox.py`, `test_pr_description.py` | Test suite; run via `cd scripts && python3 -m pytest`. `test_orchestration.py` covers `_working_tree_dirty`, `_push_branch`, and `ensure_committed_and_pushed` against real throwaway git repos (with a bare "remote"), not mocks. |
 | `skills/close-iteration/skill.md` | Step 2b reads this script's `sdlc_review_status` values (`pending`/`complete`/`needs-human`) from `prd.json` as a hard-blocker check before promoting/merging the iteration |
 
 ## Technical Detail
@@ -84,7 +84,7 @@ Once `select_next_plan` finds no eligible plans (or Claude emits the `<promise>C
 
   **Session-limit resilience.** Every gate Claude call goes through `_gate_invoke`, which raises `ReviewInterrupted` if the output matches `RATE_LIMIT_RE`. A session/usage limit is therefore **never** misread as `needs-human`. Instead — exactly like the main plan loop — the gate parses the reset delay from the output (`_parse_retry_after_text` + 60s buffer), `time.sleep`s until it clears, and retries; the retry escalates the reviewer dispatch parallel→serial per the `attempt` counter (mirroring the per-plan model escalation). Each attempt commits any progress first (`sdlc_review_completed_agents`, `sdlc_finding_issues`), so nothing is lost. Only if the limit persists across all `MAX_REVIEW_ATTEMPTS` (5) attempts does the gate give up, returning `"incomplete"` (status left non-terminal, not `needs-human`); `_run_gate_and_continue` then exits 0 so a later re-run resumes from the persisted progress.
 
-- **`complete`**: the docs phase runs (`run_docs_phase`: `/sdlc-doc-writer` scoped to the iteration's changed files, then `/help-docs` and `/demo` for new/changed features, committed to the integration branch), then the script exits 0 — the iteration is genuinely finished.
+- **`complete`**: the docs phase runs (`run_docs_phase`: `/sdlc-doc-writer` scoped to the iteration's changed files, then `/help-docs` and `/demo` for new/changed features, committed to the integration branch), then `update_pr_description` writes the final PR summary (see below), then the script exits 0 — the iteration is genuinely finished.
 
 - **`needs-human`**: the script does **not** re-run the gate or claim completion. It calls `_die_needs_human()`, which exits 1 with a message pointing at the most recent `run-next-plan-*-triage.log` and instructing a human to resolve the flagged `needs-info` issue(s) via a normal `/triage` pass; `run-next-plan.py` will resume automatically once `sdlc_review_status` is manually/externally updated to `complete`.
 
@@ -107,6 +107,19 @@ If new plans were created by the triage step, the loop simply `continue`s and pi
 
 After every plan-selection pass (success, stall, or gate completion), `sync_pr_closes` scans `done` plans' `**Issues:**` lines for issue numbers and appends any missing `Closes #N` entries to the integration branch's open PR body via `gh pr edit`, so the PR always reflects which issues its merged plans close.
 
+Any PR lookup goes through `resolve_pr_number(data, integration_branch)`: it prefers `prd.json`'s captured `pr_number` (written by `/plan-iteration` when it opens the draft PR) and falls back to a `gh pr list --head <branch>` lookup, returning `None` if there is no open PR. Both `sync_pr_closes` and the PR-description phase use it.
+
+### Two-audience PR description
+
+At the tail of `run_docs_phase` (once the iteration is genuinely complete), `update_pr_description` generates a PR summary aimed at two audiences and splices it into the PR body:
+
+- `_generate_pr_summary` prompts Claude to write the summary to `meta/pr-summary.md`, grounded in the changed-file list, `progress.md`, and the closed-issue titles (full diff as backup). Each change is classified **user-facing** (observable product/UI/CLI/API/customer-doc behavior) or **backend/engineering** (everything else).
+  - **For the Product Manager**: the PRD it implements (linked from `prd_issue`, or "No PRD issue linked" when absent), a brief overview, a bulleted list of user-facing changes, and a `- [ ]` GitHub-checklist test plan for those changes.
+  - **For the Engineer**: the same shape for non-customer-facing/backend changes. Its test plan is deliberately *not* a re-run of the automated suite or CI — the prompt forbids "run pytest/ruff/lint", "check CI", and coverage items — and instead steers Claude to manual-reviewer verification: edge cases hard to exercise via UI/API (concurrency/locking, partial-failure and retry paths, boundary inputs), integration seams where a contract could drift, and architectural/schema/migration changes worth a design-level read, each naming the specific risk and where to look.
+  - An audience with no changes gets an explicit "No … changes in this iteration." line rather than a missing section.
+- The summary is wrapped in `<!-- PR-SUMMARY:START -->` / `<!-- PR-SUMMARY:END -->` markers; `splice_summary_block` inserts it at the top of the PR body, replacing any prior block (idempotent) and leaving the `## Closes` section untouched. Body order is PM → Engineer → `## Closes`.
+- If there is no open PR, or Claude writes no summary, the step warns and leaves the body unchanged — it never fails the run at the finish line.
+
 ### Tests
 
-Run from `scripts/`: `python3 -m pytest`. Suite is split across `test_orchestration.py` (loop/attempt/escalation behavior), `test_prd_data_layer.py` (schema validation, locking, status transitions), `test_sdlc_gate.py` (review-gate prompt construction and status transitions, including the `needs-human` path, the parallel→serial retry escalation, and session-limit `incomplete`/resume behavior), and `test_docker_sandbox.py` (Docker wrapping logic).
+Run from `scripts/`: `python3 -m pytest`. Suite is split across `test_orchestration.py` (loop/attempt/escalation behavior), `test_prd_data_layer.py` (schema validation — including `prd_issue`/`pr_number` — locking, status transitions), `test_sdlc_gate.py` (review-gate prompt construction and status transitions, including the `needs-human` path, the parallel→serial retry escalation, and session-limit `incomplete`/resume behavior), `test_docker_sandbox.py` (Docker wrapping logic), and `test_pr_description.py` (`resolve_pr_number` field-vs-branch resolution, `splice_summary_block` idempotent marker splicing, and `update_pr_description` orchestration including the no-PR skip).

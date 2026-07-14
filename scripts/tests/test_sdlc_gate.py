@@ -112,6 +112,9 @@ def test_save_prd_allows_setting_complete_when_previously_pending(tmp_path):
 def _fake_subprocess_run(cmd, **kwargs):
     if cmd[:2] == ["gh", "auth"]:
         return type("R", (), {"returncode": 0})()
+    if cmd[:3] == ["gh", "pr", "list"]:
+        # No open PR — update_pr_description (run by the docs phase) skips cleanly.
+        return type("R", (), {"returncode": 0, "stdout": "[]"})()
     if cmd[:2] == ["git", "symbolic-ref"]:
         return type("R", (), {"returncode": 0, "stdout": "refs/remotes/origin/main\n"})()
     if cmd[:2] == ["git", "status"]:
