@@ -1,0 +1,19 @@
+{
+  "integration_branch": "integration/2026-07-14-pr-description",
+  "pr_number": 43,
+  "plans": [
+    {
+      "file": "two-audience-pr-description.md",
+      "issues": [],
+      "size": "M",
+      "status": "done",
+      "attempts": 1,
+      "blocked_by": []
+    }
+  ],
+  "sdlc_review_status": "pending",
+  "sdlc_finding_issues": [],
+  "sdlc_review_completed_agents": [],
+  "feature_branches": [],
+  "smoke_test": "cd scripts && python3 -m pytest"
+}
