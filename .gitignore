@@ -2,6 +2,7 @@
 *.pyc
 __pycache__/
 *.log
+.coverage
 meta/plans/implementation-logs/
 meta/plans/prd.json.lock
 meta/sdlc-review-findings.md
