@@ -104,6 +104,27 @@ def test_scan_output_detects_rate_limit_pattern():
     assert scan_output(text, 1) == "rate_limit"
 
 
+def test_scan_output_ignores_review_prose_mentioning_rate_limits():
+    # Real false positive observed in the SDLC gate: a reviewer flagged code as
+    # "not rate-limit-aware" — substantive review output, not a CLI limit message.
+    text = (
+        "| Minor | `_generate_pr_summary` invocation not rate-limit-aware | code |\n"
+        "The function quotes usage limit / 429 / too many requests handling.\n"
+        "<promise>COMPLETE</promise>\n"
+    )
+    assert scan_output(text, 0) == "complete"
+
+
+def test_scan_output_ignores_incidental_limit_words_without_announcement():
+    text = "This code path handles the usage limit and 429 too-many-requests branches."
+    assert scan_output(text, 0) == "ok"
+
+
+def test_scan_output_detects_reset_time_announcement():
+    text = "Claude usage limit reached ∙ resets 4:00pm"
+    assert scan_output(text, 1) == "rate_limit"
+
+
 def test_scan_output_returns_error_on_nonzero_exit_without_rate_limit_text():
     text = "Some unrelated failure occurred"
     assert scan_output(text, 1) == "error"

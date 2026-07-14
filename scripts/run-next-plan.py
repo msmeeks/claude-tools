@@ -70,8 +70,20 @@ VALID_SDLC_REVIEW_STATUSES = {"pending", "complete", "needs-human"}
 TERMINAL_SDLC_REVIEW_STATUSES = {"complete", "needs-human"}
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
+# Match genuine CLI limit *announcements*, not incidental mentions. Bare tokens like
+# "rate limit", "usage limit", "429", or "too many requests" appear routinely in normal
+# review/implementation output (e.g. a reviewer flagging code as "not rate-limit-aware",
+# or this file's own limit-handling code being quoted), so keying on them causes false
+# interruptions. A real limit message pairs a limit noun with a reached/exceeded/reset
+# state, or carries an explicit reset time or retry directive.
 RATE_LIMIT_RE = re.compile(
-    r"session.?limit|rate.?limit|usage.?limit|too many requests|overloaded|429|quota.?exceed|slowdown",
+    r"(?:usage|rate|session|quota|token)[\s-]?limit[\s-]*(?:reached|exceeded)"
+    r"|limit[\s-]*(?:reached|exceeded)[^.\n]{0,40}reset"
+    r"|limit will reset"
+    r"|resets?\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*[ap]\.?m\.?"
+    r"|429\s+too many requests"
+    r"|overloaded_error"
+    r"|retry-after",
     re.IGNORECASE,
 )
 
