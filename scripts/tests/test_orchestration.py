@@ -12,6 +12,11 @@ _spec.loader.exec_module(run_next_plan)
 
 select_next_plan = run_next_plan.select_next_plan
 scan_output = run_next_plan.scan_output
+
+# A representative sample of the CLI's real session-limit output. The specific clock time is
+# arbitrary and load-bearing to nothing — detection keys on the non-zero exit code, not the
+# time — so it lives here once, clearly labelled, rather than as a stray literal in tests.
+SAMPLE_LIMIT_MESSAGE = "You've hit your session limit · resets 3:20am (America/New_York)"
 _working_tree_dirty = run_next_plan._working_tree_dirty
 _push_branch = run_next_plan._push_branch
 ensure_committed_and_pushed = run_next_plan.ensure_committed_and_pushed
@@ -126,9 +131,8 @@ def test_scan_output_detects_reset_time_announcement():
 
 
 def test_scan_output_detects_real_session_limit_message():
-    # Exact wording the Claude CLI emits on a session limit.
-    text = "You've hit your session limit · resets 8:50pm (America/New_York)"
-    assert scan_output(text, 1) == "rate_limit"
+    # Exact wording the Claude CLI emits on a session limit (paired with a non-zero exit).
+    assert scan_output(SAMPLE_LIMIT_MESSAGE, 1) == "rate_limit"
 
 
 def test_parse_retry_after_reads_on_the_hour_reset_time():
@@ -138,6 +142,18 @@ def test_parse_retry_after_reads_on_the_hour_reset_time():
         "You've hit your session limit · resets 9pm (America/New_York)"
     )
     assert secs > run_next_plan.RETRY_WAIT_DEFAULT
+
+
+def test_scan_output_ignores_quoted_limit_message_on_successful_exit():
+    # Real false positive (2026-07-14): a successful run whose answer *quoted* the CLI
+    # session-limit string was misread as a real limit and triggered a 22-hour wait.
+    # A genuine limit terminates the CLI non-zero; a clean exit-0 completion never has.
+    text = (
+        "Done — one plan complete, committed and pushed.\n"
+        f"Worth knowing: the 16:36 log says `{SAMPLE_LIMIT_MESSAGE}`, so that attempts "
+        "counter is a red herring.\n"
+    )
+    assert scan_output(text, 0) == "ok"
 
 
 def test_scan_output_returns_error_on_nonzero_exit_without_rate_limit_text():

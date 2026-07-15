@@ -358,9 +358,13 @@ def scan_output(text: str, exit_code: int) -> Literal["complete", "rate_limit", 
         context = lines[max(0, line_no - 1) : line_no + 2]
         info("COMPLETE sigil detected. Context:\n" + "\n".join(context))
         return "complete"
-    if RATE_LIMIT_RE.search(text):
-        return "rate_limit"
+    # A genuine session/usage limit terminates the CLI non-zero. A clean exit-0
+    # completion never does — so limit-shaped text on a successful run is Claude
+    # *quoting* or discussing a limit, not the CLI announcing one. Gating on the
+    # exit code stops those incidental mentions from triggering a spurious wait.
     if exit_code != 0:
+        if RATE_LIMIT_RE.search(text):
+            return "rate_limit"
         return "error"
     return "ok"
 
@@ -665,13 +669,16 @@ def get_default_branch() -> str:
     return "main"
 
 
-def invoke_claude(prompt: str, repo_root: Path) -> str:
+def invoke_claude(prompt: str, repo_root: Path) -> tuple[str, int]:
+    """Run a one-shot Claude invocation. Returns (combined stdout+stderr, exit code).
+    The exit code is the reliable session-limit signal: a genuine limit terminates the CLI
+    non-zero, whereas a run that merely *quotes* limit text exits 0."""
     claude_cmd = ["claude", "-p", "-", "--permission-mode", "bypassPermissions", "--output-format", "text"]
     proc = subprocess.run(claude_cmd, input=prompt, capture_output=True, text=True, cwd=repo_root)
     output = proc.stdout + proc.stderr
     if _log_fh is not None:
         _log(_scrub_credentials(output))
-    return output
+    return output, proc.returncode
 
 
 def run_docs_phase(prd_path: Path, repo_root: Path) -> None:
@@ -799,8 +806,10 @@ class ReviewInterrupted(Exception):
 
 
 def _gate_invoke(phase: str, prompt: str, repo_root: Path) -> str:
-    output = invoke_claude(prompt, repo_root)
-    if RATE_LIMIT_RE.search(output):
+    output, exit_code = invoke_claude(prompt, repo_root)
+    # Same discriminator as scan_output: only a non-zero exit is a genuine limit. Limit-shaped
+    # text on a clean (exit-0) run is the reviewer quoting/flagging limit code, not a real hit.
+    if exit_code != 0 and RATE_LIMIT_RE.search(output):
         raise ReviewInterrupted(phase, output)
     return output
 

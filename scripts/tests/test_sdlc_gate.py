@@ -16,6 +16,12 @@ get_sdlc_review_status = run_next_plan.get_sdlc_review_status
 load_prd = run_next_plan.load_prd
 save_prd = run_next_plan.save_prd
 
+# A representative sample of the CLI's real session-limit output. The specific clock time
+# is arbitrary and load-bearing to nothing: detection is time-independent (it keys on the
+# non-zero exit code), and the wait is parsed generically. Kept as one named fixture so no
+# stray real timestamp reads as significant anywhere.
+SAMPLE_LIMIT_MESSAGE = "You've hit your session limit · resets 3:20am (America/New_York)"
+
 
 def test_review_runs_parallel_for_first_two_attempts_then_serial():
     # First two gate runs fan reviewers out in parallel; after parallel has hit the
@@ -138,10 +144,10 @@ def test_run_sdlc_review_gate_marks_status_complete_after_running(tmp_path):
     def fake_invoke_claude(prompt, repo_root):
         calls.append(prompt)
         if "file a GitHub issue" in prompt:
-            return "ISSUE: #11\nISSUE: #12\n"
+            return ("ISSUE: #11\nISSUE: #12\n", 0)
         if "run /triage" in prompt:
-            return "HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE"
-        return "ok"
+            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+        return ("ok", 0)
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
@@ -165,13 +171,13 @@ def test_run_sdlc_review_gate_waits_out_a_session_limit_then_completes(tmp_path)
         if "Dispatch these review agents" in prompt or "review agent on the diff" in prompt:
             state["review_calls"] += 1
             if state["review_calls"] == 1:
-                return "You've hit your session limit · resets 3:20am (America/New_York)"
-            return "ok"
+                return (SAMPLE_LIMIT_MESSAGE, 1)  # real limit → CLI exits non-zero
+            return ("ok", 0)
         if "file a GitHub issue" in prompt:
-            return "ISSUE: #11\nISSUE: #12\n"
+            return ("ISSUE: #11\nISSUE: #12\n", 0)
         if "run /triage" in prompt:
-            return "HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE"
-        return "ok"
+            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+        return ("ok", 0)
 
     slept = []
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
@@ -182,6 +188,32 @@ def test_run_sdlc_review_gate_waits_out_a_session_limit_then_completes(tmp_path)
     assert result == "complete"
     assert get_sdlc_review_status(load_prd(prd_path)) != "needs-human"
     assert slept  # it waited for the reset before retrying
+
+
+def test_run_sdlc_review_gate_ignores_quoted_limit_text_on_successful_review(tmp_path):
+    # A reviewer inspecting run-next-plan.py itself will quote this file's limit strings.
+    # That is a successful (exit-0) review, not a CLI limit announcement, so the gate must
+    # complete normally — never wait, never bail. A genuine limit exits the CLI non-zero.
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    def fake_invoke_claude(prompt, repo_root):
+        if "Dispatch these review agents" in prompt:
+            return (f"Flagged: the limit gate quotes `{SAMPLE_LIMIT_MESSAGE}`.", 0)
+        if "file a GitHub issue" in prompt:
+            return ("ISSUE: #11\n", 0)
+        if "run /triage" in prompt:
+            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+        return ("ok", 0)
+
+    slept = []
+    with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
+        run_next_plan.time, "sleep", side_effect=slept.append
+    ), patch.object(run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run):
+        result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+
+    assert result == "complete"
+    assert not slept  # never mistook the quoted limit string for a real limit
 
 
 def test_run_sdlc_review_gate_resumes_triage_after_waiting_out_a_limit(tmp_path):
@@ -197,12 +229,12 @@ def test_run_sdlc_review_gate_resumes_triage_after_waiting_out_a_limit(tmp_path)
         if "run /triage" in prompt:
             state["triage_calls"] += 1
             if state["triage_calls"] == 1:
-                return "You've hit your session limit · resets 3:20am"
-            return "HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE"
+                return (SAMPLE_LIMIT_MESSAGE, 1)  # real limit → CLI exits non-zero
+            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
         if "file a GitHub issue" in prompt:
             state["file_calls"] += 1
-            return "ISSUE: #11\nISSUE: #12\n"
-        return "ok"
+            return ("ISSUE: #11\nISSUE: #12\n", 0)
+        return ("ok", 0)
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.time, "sleep"
@@ -226,14 +258,14 @@ def test_run_sdlc_review_gate_escalates_to_serial_after_two_parallel_limit_hits(
     def fake_invoke_claude(prompt, repo_root):
         prompts.append(prompt)
         if "Dispatch these review agents" in prompt:  # parallel dispatch
-            return "You've hit your session limit · resets 3:20am"
+            return (SAMPLE_LIMIT_MESSAGE, 1)  # real limit → CLI exits non-zero
         if "review agent on the diff" in prompt:  # serial single-agent
-            return "ok"
+            return ("ok", 0)
         if "file a GitHub issue" in prompt:
-            return "ISSUE: #11\n"
+            return ("ISSUE: #11\n", 0)
         if "run /triage" in prompt:
-            return "HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE"
-        return "ok"
+            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+        return ("ok", 0)
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.time, "sleep"
@@ -258,7 +290,7 @@ def test_run_sdlc_review_gate_gives_up_incomplete_after_max_attempts_not_needs_h
     save_prd(prd_path, _valid_prd())
 
     def fake_invoke_claude(prompt, repo_root):
-        return "You've hit your session limit · resets 3:20am"
+        return (SAMPLE_LIMIT_MESSAGE, 1)  # real limit → CLI exits non-zero
 
     slept = []
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
