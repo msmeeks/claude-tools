@@ -370,17 +370,17 @@ def _parse_retry_after_text(text: str) -> int:
     if m:
         return int(m.group(1) or m.group(2))
 
-    m2 = re.search(r"resets (\d+:\d+(?:am|pm))", text, re.IGNORECASE)
+    m2 = re.search(r"resets\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*([ap])\.?m\.?", text, re.IGNORECASE)
     if m2:
         try:
             from zoneinfo import ZoneInfo
 
             tz = ZoneInfo("America/New_York")
             now = datetime.now(tz)
-            reset_time = datetime.strptime(m2.group(1).upper(), "%I:%M%p")
-            target = now.replace(
-                hour=reset_time.hour, minute=reset_time.minute, second=0, microsecond=0
-            )
+            hour12 = int(m2.group(1)) % 12
+            hour = hour12 + 12 if m2.group(3).lower() == "p" else hour12
+            minute = int(m2.group(2) or 0)
+            target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
             diff = int((target - now).total_seconds())
             if diff < 0:
                 diff += 86400

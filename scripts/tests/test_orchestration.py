@@ -125,6 +125,21 @@ def test_scan_output_detects_reset_time_announcement():
     assert scan_output(text, 1) == "rate_limit"
 
 
+def test_scan_output_detects_real_session_limit_message():
+    # Exact wording the Claude CLI emits on a session limit.
+    text = "You've hit your session limit · resets 8:50pm (America/New_York)"
+    assert scan_output(text, 1) == "rate_limit"
+
+
+def test_parse_retry_after_reads_on_the_hour_reset_time():
+    # "resets 9pm" (no minutes) must yield a real wait, not the 60s fallback,
+    # otherwise the gate re-loops tightly until the limit clears.
+    secs = run_next_plan._parse_retry_after_text(
+        "You've hit your session limit · resets 9pm (America/New_York)"
+    )
+    assert secs > run_next_plan.RETRY_WAIT_DEFAULT
+
+
 def test_scan_output_returns_error_on_nonzero_exit_without_rate_limit_text():
     text = "Some unrelated failure occurred"
     assert scan_output(text, 1) == "error"
