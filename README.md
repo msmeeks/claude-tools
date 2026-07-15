@@ -158,6 +158,14 @@ container built from it. See `meta/ralph.dockerfile.example` for a template.
 new plan files, and resumes the loop. Gated by `prd.json`'s `sdlc_review_status` field so it
 only ever runs once per prd lifecycle.
 
+**Finish line:** once the review gate clears, the loop updates docs and then rewrites the
+integration PR's description with a two-audience summary — a *For the Product Manager* section
+(user-facing changes plus a plain-language test plan) and a *For the Engineer* section
+(backend changes plus a reviewer checklist of things CI can't cover). The summary sits between
+`<!-- PR-SUMMARY:START/END -->` markers, so re-running replaces it rather than stacking, and
+the `## Closes` list is left alone. Requires an open PR — `/plan-iteration` records its number
+as `pr_number` in `prd.json`, and the loop falls back to a `gh pr list` lookup by branch.
+
 Tests: `cd scripts && python3 -m pytest`
 
 ## Adding a new skill
