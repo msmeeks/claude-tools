@@ -267,6 +267,28 @@ def test_load_prd_raises_systemexit_on_non_integer_pr_number(tmp_path):
         load_prd(prd_path)
 
 
+def test_load_prd_accepts_last_reviewed_sha_string_and_null(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    data = _valid_prd()
+    data["last_reviewed_sha"] = "abc123def456"
+    prd_path.write_text(json.dumps(data))
+    assert load_prd(prd_path)["last_reviewed_sha"] == "abc123def456"
+
+    data["last_reviewed_sha"] = None
+    prd_path.write_text(json.dumps(data))
+    assert load_prd(prd_path)["last_reviewed_sha"] is None
+
+
+def test_load_prd_rejects_non_string_last_reviewed_sha(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    data = _valid_prd()
+    data["last_reviewed_sha"] = 12345
+    prd_path.write_text(json.dumps(data))
+
+    with pytest.raises(SystemExit):
+        load_prd(prd_path)
+
+
 def test_resolve_integration_branch_uses_prd_json_value_when_no_cli_override():
     data = _valid_prd()
     data["integration_branch"] = "integration/2026-06-26-esv"
