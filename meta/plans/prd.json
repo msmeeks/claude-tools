@@ -6,15 +6,21 @@
   "plans": [
     {
       "file": "fix-runner-attempts-accounting.md",
-      "issues": [45, 46],
+      "issues": [
+        45,
+        46
+      ],
       "size": "S",
-      "status": "pending",
-      "attempts": 0,
+      "status": "done",
+      "attempts": 1,
       "blocked_by": []
     },
     {
       "file": "fix-runner-findings-lifecycle.md",
-      "issues": [47, 48],
+      "issues": [
+        47,
+        48
+      ],
       "size": "S",
       "status": "pending",
       "attempts": 0,
@@ -22,7 +28,12 @@
     },
     {
       "file": "fix-sdlc-skill-docs.md",
-      "issues": [44, 49, 50, 51],
+      "issues": [
+        44,
+        49,
+        50,
+        51
+      ],
       "size": "S",
       "status": "pending",
       "attempts": 0,

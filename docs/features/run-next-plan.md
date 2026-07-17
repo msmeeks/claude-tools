@@ -39,17 +39,22 @@ The script treats `meta/plans/prd.json` as the single source of truth for plan s
 
 ### Plan loop and attempt tracking
 
-Each pass through the `while True:` loop re-reads `prd.json`, selects a non-terminal plan (`select_next_plan` only screens out fully-`done`/`stalled` plans and fully-circular `blocked_by` graphs — actual priority/dependency judgment is left to Claude, which is instructed to respect `blocked_by` unless it can verify a dependency is already satisfied by reading the plan files), increments that plan's `attempts` counter under an `fcntl` lock, and invokes Claude with a fixed prompt. Plan file content is explicitly framed as untrusted document text in every prompt, not as instructions to follow.
+Each pass through the `while True:` loop re-reads `prd.json`, selects a non-terminal plan (`select_next_plan` only screens out fully-`done`/`stalled` plans and fully-circular `blocked_by` graphs — actual priority/dependency judgment is left to Claude, which is instructed to respect `blocked_by` unless it can verify a dependency is already satisfied by reading the plan files), and invokes Claude with a fixed prompt. Plan file content is explicitly framed as untrusted document text in every prompt, not as instructions to follow.
+
+**Attempt accounting is deferred until *after* the session** (`account_attempt`), so it reflects only sessions that actually ran and worked on a given plan:
+
+- **Attribution, not guesswork.** `select_next_plan` returns `eligible[0]`, but the prompt tells Claude to pick the *highest-priority* plan — which may differ — so the runner's guess isn't charged. After the session, `_attribute_worked_plan` charges the plan that demonstrably advanced: the one plan that flipped to `done` this run (primary signal), or, failing that, the plan named in a session-declared `<plan>slug.md</plan>` sigil. The sigil value is untrusted (Claude runs with `bypassPermissions` and can echo injected text) and is only honored when it names a plan in the current eligible set; an unknown/ineligible name is ignored with a warning. If neither signal is present, **nothing** is charged — never `eligible[0]` by default.
+- **Rate limits don't burn attempts.** A `rate_limit` outcome did zero work, so `account_attempt` charges nothing — mirroring the loop's treatment of limits as non-failures. Only genuine (non-limit) sessions increment `attempts` (under an `fcntl` lock).
 
 ### Stall detection and model escalation
 
-`MAX_ATTEMPTS = 5`. A plan whose `attempts` exceeds 5 without reaching `done` is marked `stalled` (`mark_stalled`) and skipped from then on. Model/effort escalates by attempt count on the *current* invocation:
+`MAX_ATTEMPTS = 5`. A plan whose charged `attempts` exceeds 5 without reaching `done` is marked `stalled` (`mark_stalled`) and skipped from then on. Because stalls key off the deferred, attributed counter, `mark_stalled` can only fire for a plan a session demonstrably worked on — never for one that merely absorbed a guessed or rate-limit increment. Model/effort escalates by the attempt number of the run about to start (`selected["attempts"] + 1`, since this run's increment hasn't happened yet):
 
-| Attempts so far | Claude invocation |
+| Attempt about to run | Claude invocation |
 |---|---|
 | 1–2 | default model/effort |
 | 3–4 (`ESCALATION_THRESHOLD = 3`) | `--model sonnet --effort high` |
-| 5 (`MAX_ATTEMPTS`) | `--model opus --effort max` |
+| 5+ (`MAX_ATTEMPTS`) | `--model opus --effort max` |
 
 ### Rate-limit retries
 
