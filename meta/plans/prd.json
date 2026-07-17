@@ -1,4 +1,8 @@
 {
+  "integration_branch": "integration/2026-07-17-runner-attempts-accounting",
+  "pr_number": 52,
+  "smoke_test": "python3 -m pytest scripts/tests",
+  "feature_branches": [],
   "plans": [
     {
       "file": "fix-runner-attempts-accounting.md",
