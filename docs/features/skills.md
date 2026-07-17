@@ -32,6 +32,8 @@ Skills live at `~/.claude/skills/<name>/` (symlinked from this repo). When the d
 | `skills/pr-image-upload/pr-image-upload.sh` | Shell implementation for the upload workflow |
 | `skills/rank-backlog/SKILL.md` | GUS backlog analysis and nevering-candidate ranking; outputs CSV |
 | `skills/close-iteration/skill.md` | Gate-checks, merges, and cleans up an iteration opened by `/plan-iteration` |
+| `skills/plan-iteration/SKILL.md` | Triages backlog issues and writes `meta/plans/prd.json` + `meta/plans/<slug>.md` for `run-next-plan.py` to execute |
+| `skills/triage-pr-comments/SKILL.md` | Re-opens plans against new PR review comments mid-iteration |
 
 ## Technical Detail
 
@@ -81,6 +83,21 @@ complete, findings addressed, no merge conflicts, smoke test passes), surfaces s
 warnings for confirmation, checks PRD issue coverage, then promotes and merges the
 integration PR, closes linked issues, and deletes branches/worktrees.
 
+The hard-blocker check on `sdlc_review_status` treats a transient `pending` reading as
+potentially benign, not automatically a stop-the-run failure: because
+`run-next-plan.py`'s incremental review gate legitimately cycles
+`complete → pending → complete` across rounds (a re-armed round for newly-appended plans),
+seeing `pending` here means either the runner is still mid-round (a real blocker — wait
+for it to finish) or, contextually, that a round already flipped back. The pass condition
+itself is unchanged: `complete` with no remaining eligible plans.
+
+The `Closes` list assembled for the PR body is compiled from **`done` plans only** —
+`stalled` plans contributed no work, so their linked issues are deliberately left off (and
+therefore left open after merge) rather than silently marked resolved. `sdlc_finding_issues`
+is added on top of the done-plan issues so SDLC findings always auto-close on merge. The
+closing report's `Issues left open:` line surfaces exactly the issues this exclusion leaves
+behind, tying back to the stalled-plan warnings raised earlier in the run.
+
 `meta/plans/` is removed as part of Step 4, committed and pushed on the integration branch
 *before* the SDLC findings review and PR-promotion steps and *before* the PR is merged
 (Step 8) — this lets the removal commit pass through the same diff-based review as the
@@ -88,6 +105,33 @@ rest of the iteration's work, and ride along in the normal merge commit instead 
 requiring a separate direct push to the default branch afterward. Post-merge cleanup
 (Step 9) only closes PRD issues, deletes branches/worktrees, and pulls the default branch
 before deleting the local integration branch; it no longer touches `meta/plans/`.
+
+### plan-iteration
+
+Backlog grooming entry point: triages each candidate issue via `/triage`, groups the
+`ready-for-agent` ones into logical clusters, and writes `meta/plans/<slug>.md` plan files
+plus `meta/plans/prd.json` for `run-next-plan.py` (see
+[run-next-plan.md](run-next-plan.md)) to drive to completion.
+
+When `prd.json` already exists (re-running against a partially-worked iteration), it merges
+rather than overwrites: an existing `plans[]` entry for the same `file` keeps its `status`
+and `attempts`, and — critically — **every existing top-level key is preserved**, not just
+`plans[]`. This includes `last_reviewed_sha`, `sdlc_review_status`, `sdlc_finding_issues`,
+`sdlc_review_completed_agents`, and `pr_number`. Dropping any of these would silently break
+the SDLC review gate's incremental (per-round) review — e.g. losing `last_reviewed_sha`
+stalls the re-arm check on the next round.
+
+### triage-pr-comments
+
+Reacts to new PR review comments mid-iteration by re-opening the affected plan(s): resets
+the matching `plans[]` entry's `status` to `pending` and `attempts` to `0` so the fix gets
+picked back up by the loop. This entry-level reset is sufficient on its own — the skill
+must **not** touch the top-level `sdlc_review_status` (or any other top-level `prd.json`
+key). `run-next-plan.py`'s incremental-review re-arm already detects the new pending plan
+and re-runs the gate scoped to `last_reviewed_sha..HEAD`; a manual `sdlc_review_status`
+reset here would either be redundant or fight the gate's own re-arm bookkeeping. Like
+`/plan-iteration`, it must preserve every existing top-level `prd.json` key when rewriting
+the file — only `plans[]` entries change.
 
 ### Adding a new skill
 
