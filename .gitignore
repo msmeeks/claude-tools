@@ -2,9 +2,11 @@
 *.pyc
 __pycache__/
 *.log
+.coverage
 meta/plans/implementation-logs/
 meta/plans/prd.json.lock
 meta/sdlc-review-findings.md
+meta/pr-summary.md
 
 # Python build / venv — scoped to demo-gen subproject so we don't
 # accidentally hide unrelated build/ or dist/ dirs elsewhere in the repo.

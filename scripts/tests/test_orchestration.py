@@ -12,6 +12,11 @@ _spec.loader.exec_module(run_next_plan)
 
 select_next_plan = run_next_plan.select_next_plan
 scan_output = run_next_plan.scan_output
+
+# A representative sample of the CLI's real session-limit output. The specific clock time is
+# arbitrary and load-bearing to nothing — detection keys on the non-zero exit code, not the
+# time — so it lives here once, clearly labelled, rather than as a stray literal in tests.
+SAMPLE_LIMIT_MESSAGE = "You've hit your session limit · resets 3:20am (America/New_York)"
 _working_tree_dirty = run_next_plan._working_tree_dirty
 _push_branch = run_next_plan._push_branch
 ensure_committed_and_pushed = run_next_plan.ensure_committed_and_pushed
@@ -102,6 +107,53 @@ def test_scan_output_does_not_fire_on_embedded_mid_line_sigil():
 def test_scan_output_detects_rate_limit_pattern():
     text = "Error: usage limit reached, please try again later"
     assert scan_output(text, 1) == "rate_limit"
+
+
+def test_scan_output_ignores_review_prose_mentioning_rate_limits():
+    # Real false positive observed in the SDLC gate: a reviewer flagged code as
+    # "not rate-limit-aware" — substantive review output, not a CLI limit message.
+    text = (
+        "| Minor | `_generate_pr_summary` invocation not rate-limit-aware | code |\n"
+        "The function quotes usage limit / 429 / too many requests handling.\n"
+        "<promise>COMPLETE</promise>\n"
+    )
+    assert scan_output(text, 0) == "complete"
+
+
+def test_scan_output_ignores_incidental_limit_words_without_announcement():
+    text = "This code path handles the usage limit and 429 too-many-requests branches."
+    assert scan_output(text, 0) == "ok"
+
+
+def test_scan_output_detects_reset_time_announcement():
+    text = "Claude usage limit reached ∙ resets 4:00pm"
+    assert scan_output(text, 1) == "rate_limit"
+
+
+def test_scan_output_detects_real_session_limit_message():
+    # Exact wording the Claude CLI emits on a session limit (paired with a non-zero exit).
+    assert scan_output(SAMPLE_LIMIT_MESSAGE, 1) == "rate_limit"
+
+
+def test_parse_retry_after_reads_on_the_hour_reset_time():
+    # "resets 9pm" (no minutes) must yield a real wait, not the 60s fallback,
+    # otherwise the gate re-loops tightly until the limit clears.
+    secs = run_next_plan._parse_retry_after_text(
+        "You've hit your session limit · resets 9pm (America/New_York)"
+    )
+    assert secs > run_next_plan.RETRY_WAIT_DEFAULT
+
+
+def test_scan_output_ignores_quoted_limit_message_on_successful_exit():
+    # Real false positive (2026-07-14): a successful run whose answer *quoted* the CLI
+    # session-limit string was misread as a real limit and triggered a 22-hour wait.
+    # A genuine limit terminates the CLI non-zero; a clean exit-0 completion never has.
+    text = (
+        "Done — one plan complete, committed and pushed.\n"
+        f"Worth knowing: the 16:36 log says `{SAMPLE_LIMIT_MESSAGE}`, so that attempts "
+        "counter is a red herring.\n"
+    )
+    assert scan_output(text, 0) == "ok"
 
 
 def test_scan_output_returns_error_on_nonzero_exit_without_rate_limit_text():
