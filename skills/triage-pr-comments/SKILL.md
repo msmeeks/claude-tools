@@ -103,7 +103,11 @@ New reviewer comments arrived since last triage. Update the existing plan:
 - Update the `<!-- reactions: ... -->` metadata line to include the new comment IDs
 - Add 👀 reactions to all new comment IDs (Step 2d below)
 - If the plan's `meta/plans/prd.json` entry has `status: "done"`, reset `status` to
-  `"pending"` and `attempts` to `0` (new comments re-open the work)
+  `"pending"` and `attempts` to `0` (new comments re-open the work). This entry-level reset is
+  **sufficient** — do **not** touch the top-level `sdlc_review_status` (or any other top-level
+  gate field). The runner re-arms the gate on its own and reviews only the new commits
+  (`last_reviewed_sha..HEAD`); a manual `sdlc_review_status` reset either hits the `save_prd`
+  latch or desyncs round state.
 - Leave existing rows and comment IDs unchanged
 
 **Case 4 — Plan exists, some 👀 comments now have 🚀 (addressed outside the runner):**
@@ -185,7 +189,12 @@ Then write (or update) `meta/plans/prd.json` — the same plan index `/triage-is
    add it as-is (`status: "pending"`, `attempts: 0`).
 4. `blocked_by` is `[]` by default for PR-comment plans — they neither block nor are blocked
    by issue plans unless a cross-cutting note makes a dependency explicit.
-5. Write the merged object back to `meta/plans/prd.json`.
+5. **Preserve all existing top-level prd.json keys** — only modify `plans[]`. When rebuilding
+   the object, carry through every key already present, including `last_reviewed_sha`,
+   `sdlc_review_status`, `sdlc_finding_issues`, `sdlc_review_completed_agents`, `pr_number`,
+   `prd_issue`, `feature_branches`, and `smoke_test`. Dropping any of these desyncs the runner's
+   incremental review gate — e.g. losing `last_reviewed_sha` stalls the re-arm on the next round.
+6. Write the merged object back to `meta/plans/prd.json`.
 
 **No `meta/plans/README.md` is written or updated by this skill.**
 

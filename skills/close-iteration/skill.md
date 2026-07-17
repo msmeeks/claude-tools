@@ -56,6 +56,12 @@ autonomously; the low-confidence issue(s) were left `needs-info` and logged in
 `meta/plans/implementation-logs/run-next-plan-*-triage.log` — tell the user to run a
 normal `/triage` pass on those issues, then update `sdlc_review_status` before retrying.
 
+Note: `sdlc_review_status` legitimately cycles `complete → pending → complete` across
+incremental review rounds. When a re-armed round (new commits since `last_reviewed_sha`)
+resets the gate, a transient `pending` is normal, not an anomaly — the runner drives it back
+to `complete` once the new commits pass. The pass condition here is unchanged: `complete`
+with no remaining eligible plans.
+
 ### 2c — SDLC findings addressed
 An issue in `sdlc_finding_issues` counts as addressed if it is already `CLOSED`, **or** if it
 is linked to the integration PR as a closing reference — GitHub will auto-close it the moment
@@ -114,6 +120,10 @@ Print a warning table and ask for explicit confirmation before proceeding:
 
 - **Stalled plans with closed issues** — the work landed outside the runner; confirm the
   plan's scope is actually covered by inspecting the PR diff.
+- **Stalled plans with open issues** — the plan did no work and its issues are *not* in the
+  Step 7 `Closes` list, so they stay open after merge (correct behaviour). Print each stalled
+  plan's `file` and its still-open issue numbers so the user can consciously confirm leaving
+  them for a future iteration. These carry through to the Step 10 `Issues left open:` line.
 - **Untraceable commits** — commits on `integration_branch` that contain no `#N` issue
   reference in their message. Mine with:
   ```bash
@@ -197,10 +207,15 @@ the specific gap (which child issue is open, which plan is not done, what scope 
 
 ## Step 7 — Issue Linking and PR Promotion
 
-Compile the full `Closes` list from all `prd.json.plans[*].issues` arrays plus
-`prd.json.sdlc_finding_issues`. Including the SDLC finding issues here guarantees they
-auto-close on merge even if the commit(s) that addressed them didn't happen to use a
-closing keyword.
+Compile the `Closes` list from **`done` plans only** — `prd.json.plans[?status=="done"].issues`
+— plus `prd.json.sdlc_finding_issues`. Do **not** include issues from `stalled` plans: a
+stalled plan did no work, so auto-closing its issues on merge would silently mark unimplemented
+work as resolved. Those issues stay deliberately open (surfaced in Step 3 and Step 10).
+Including the SDLC finding issues here guarantees they auto-close on merge even if the
+commit(s) that addressed them didn't happen to use a closing keyword.
+
+Optionally cross-check the computed list against the PR's `closingIssuesReferences` (fetched
+in Step 2c) and confirm no `done`-plan issue is missing and no `stalled`-plan issue slipped in.
 
 Fetch the integration PR:
 ```bash
@@ -282,6 +297,7 @@ PR:                  #<N> <title> (<url>)
 
 Plans:               <done> done, <stalled> stalled, <total> total
 Issues closed:       #N, #M, ...
+Issues left open:    #N, #M (stalled plans — no work done)
 PRD issues closed:   #N, ...
 PRD issues skipped:  #N (reason: <gap>)
 
