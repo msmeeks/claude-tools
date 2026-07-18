@@ -119,7 +119,12 @@ Then write (or update) `meta/plans/prd.json` — the plan index that `run-next-p
 2. For each cluster, build a plan entry: `{"file": "<slug>.md", "issues": [N, M, ...], "size": "S|M|L|XL", "status": "pending", "attempts": 0, "blocked_by": []}`.
 3. Merge: if an entry with the same `file` already exists, preserve its `status` and `attempts`; overwrite all other fields. If no entry exists, add it as-is.
 4. Populate each entry's `blocked_by` array from the dependency analysis in Step 5 — list the `file` values of clusters that must merge first.
-5. Write the merged object back to `meta/plans/prd.json`. (`integration_branch` is set by Step 8 below, once the real date-slugged branch name exists — don't stamp a placeholder here.)
+5. **Preserve all existing top-level prd.json keys** — only modify `plans[]`. When rebuilding
+   the object, carry through every key already present, including `last_reviewed_sha`,
+   `sdlc_review_status`, `sdlc_finding_issues`, `sdlc_review_completed_agents`, `pr_number`,
+   `prd_issue`, `feature_branches`, and `smoke_test`. Dropping any of these desyncs the runner's
+   incremental review gate — e.g. losing `last_reviewed_sha` stalls the re-arm on the next round.
+6. Write the merged object back to `meta/plans/prd.json`. (`integration_branch` is set by Step 8 below, once the real date-slugged branch name exists — don't stamp a placeholder here.)
 
 **No `meta/plans/README.md` is written or updated by this skill.**
 
