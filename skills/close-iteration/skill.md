@@ -50,11 +50,7 @@ outside the runner). If so, surface as a **warning** (Step 3) rather than a bloc
 
 ### 2b — SDLC review complete
 `prd.json.sdlc_review_status` must equal `"complete"`. If it's `"pending"`, the runner
-hasn't finished its SDLC gate — tell the user to let `run-next-plan.py` complete. If it's
-`"needs-human"`, the gate ran but triage wasn't confident resolving every finding
-autonomously; the low-confidence issue(s) were left `needs-info` and logged in
-`meta/plans/implementation-logs/run-next-plan-*-triage.log` — tell the user to run a
-normal `/triage` pass on those issues, then update `sdlc_review_status` before retrying.
+hasn't finished its SDLC gate — tell the user to let `run-next-plan.py` complete.
 
 Note: `sdlc_review_status` legitimately cycles `complete → pending → complete` across
 incremental review rounds. When a re-armed round (new commits since `last_reviewed_sha`)

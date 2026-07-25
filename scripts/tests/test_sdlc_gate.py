@@ -210,20 +210,6 @@ def test_save_prd_still_forbids_complete_to_pending_without_baseline(tmp_path):
         save_prd(prd_path, data)
 
 
-def test_save_prd_still_forbids_needs_human_to_pending_even_with_baseline(tmp_path):
-    # 'needs-human' is a hard human-in-the-loop stop; only a human hand-editing the file
-    # (bypassing save_prd) may resume it. The automated latch never re-arms it.
-    prd_path = tmp_path / "prd.json"
-    data = _valid_prd()
-    data["sdlc_review_status"] = "needs-human"
-    data["last_reviewed_sha"] = "deadbeef"
-    save_prd(prd_path, data)
-
-    data["sdlc_review_status"] = "pending"
-    with pytest.raises(SystemExit):
-        save_prd(prd_path, data)
-
-
 # A stand-in for the integration branch's current HEAD, returned by the fake `git rev-parse
 # HEAD`. Tests assert the gate persists this as last_reviewed_sha when it completes a round.
 FAKE_HEAD_SHA = "headsha0000000000000000000000000000000a"
@@ -268,7 +254,7 @@ def test_run_sdlc_review_gate_marks_status_complete_after_running(tmp_path):
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\nISSUE: #12\n", 0)
         if "run /triage" in prompt:
-            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+            return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
@@ -293,7 +279,7 @@ def test_gate_persists_head_as_baseline_and_clears_bookkeeping_on_completion(tmp
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
         if "run /triage" in prompt:
-            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+            return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
@@ -319,7 +305,7 @@ def test_gate_first_run_reviews_whole_pr_against_default_branch(tmp_path):
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
         if "run /triage" in prompt:
-            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+            return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
@@ -344,7 +330,7 @@ def test_gate_incremental_run_reviews_only_commits_since_baseline(tmp_path):
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
         if "run /triage" in prompt:
-            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+            return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
@@ -417,7 +403,7 @@ def test_gate_accumulates_finding_issues_across_rounds(tmp_path):
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
         if "run /triage" in prompt:
-            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+            return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
@@ -441,7 +427,7 @@ def test_gate_dedupes_finding_issues_when_a_number_recurs(tmp_path):
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)  # same number recurs
         if "run /triage" in prompt:
-            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+            return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
@@ -469,7 +455,7 @@ def test_gate_reround_files_its_own_issues_despite_prior_cumulative(tmp_path):
             state["file_calls"] += 1
             return ("ISSUE: #11\n", 0)
         if "run /triage" in prompt:
-            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+            return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
@@ -500,7 +486,7 @@ def test_gate_round_scratch_guard_prevents_refiling_within_a_round(tmp_path):
             return ("ISSUE: #99\n", 0)
         if "run /triage" in prompt:
             state["triage_issues"] = prompt
-            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+            return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
@@ -527,7 +513,7 @@ def test_gate_rotates_stale_findings_file_at_fresh_round_start(tmp_path):
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
         if "run /triage" in prompt:
-            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+            return ("TRIAGE_DONE", 0)
         return ("ok", 0)  # faked reviewers do not rewrite the file
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
@@ -553,7 +539,7 @@ def test_gate_preserves_findings_file_on_mid_round_resume(tmp_path):
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
         if "run /triage" in prompt:
-            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+            return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
@@ -580,8 +566,8 @@ def test_rotate_findings_file_refuses_symlink(tmp_path):
 
 
 def test_run_sdlc_review_gate_waits_out_a_session_limit_then_completes(tmp_path):
-    # Regression: a session limit must NOT be misread as a human-review need, and must NOT
-    # bail — the gate waits for the reset (like the main loop) and retries automatically.
+    # Regression: a session limit must NOT make the gate bail — it waits for the reset
+    # (like the main loop) and retries automatically.
     prd_path = tmp_path / "prd.json"
     save_prd(prd_path, _valid_prd())
 
@@ -596,7 +582,7 @@ def test_run_sdlc_review_gate_waits_out_a_session_limit_then_completes(tmp_path)
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\nISSUE: #12\n", 0)
         if "run /triage" in prompt:
-            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+            return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
     slept = []
@@ -606,7 +592,7 @@ def test_run_sdlc_review_gate_waits_out_a_session_limit_then_completes(tmp_path)
         result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
 
     assert result == "complete"
-    assert get_sdlc_review_status(load_prd(prd_path)) != "needs-human"
+    assert get_sdlc_review_status(load_prd(prd_path)) == "complete"
     assert slept  # it waited for the reset before retrying
 
 
@@ -623,7 +609,7 @@ def test_run_sdlc_review_gate_ignores_quoted_limit_text_on_successful_review(tmp
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
         if "run /triage" in prompt:
-            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+            return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
     slept = []
@@ -639,7 +625,7 @@ def test_run_sdlc_review_gate_ignores_quoted_limit_text_on_successful_review(tmp
 def test_run_sdlc_review_gate_resumes_triage_after_waiting_out_a_limit(tmp_path):
     # The specific failure that motivated this: reviews + issue-filing succeed, then triage
     # hits the limit. The gate waits, then re-runs ONLY triage (reviews already complete,
-    # issues already filed) — no needs-human, no duplicate issue filing.
+    # issues already filed) — no duplicate issue filing.
     prd_path = tmp_path / "prd.json"
     save_prd(prd_path, _valid_prd())
 
@@ -650,7 +636,7 @@ def test_run_sdlc_review_gate_resumes_triage_after_waiting_out_a_limit(tmp_path)
             state["triage_calls"] += 1
             if state["triage_calls"] == 1:
                 return (SAMPLE_LIMIT_MESSAGE, 1)  # real limit → CLI exits non-zero
-            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+            return ("TRIAGE_DONE", 0)
         if "file a GitHub issue" in prompt:
             state["file_calls"] += 1
             return ("ISSUE: #11\nISSUE: #12\n", 0)
@@ -663,7 +649,6 @@ def test_run_sdlc_review_gate_resumes_triage_after_waiting_out_a_limit(tmp_path)
 
     assert result == "complete"
     data = load_prd(prd_path)
-    assert get_sdlc_review_status(data) != "needs-human"
     assert state["file_calls"] == 1  # issues filed once, not re-filed on the retry
     # Per-round scratch is cleared once the round completes; the cumulative record retains
     # this round's filed issues (see test_gate_accumulates_finding_issues_across_rounds).
@@ -687,7 +672,7 @@ def test_run_sdlc_review_gate_escalates_to_serial_after_two_parallel_limit_hits(
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
         if "run /triage" in prompt:
-            return ("HUMAN_IN_LOOP_REQUIRED: false\nTRIAGE_DONE", 0)
+            return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
@@ -705,9 +690,9 @@ def test_run_sdlc_review_gate_escalates_to_serial_after_two_parallel_limit_hits(
     assert load_prd(prd_path)["sdlc_review_completed_agents"] == []
 
 
-def test_run_sdlc_review_gate_gives_up_incomplete_after_max_attempts_not_needs_human(tmp_path):
+def test_run_sdlc_review_gate_gives_up_incomplete_after_max_attempts(tmp_path):
     # If the limit never resets, the gate bounds its waiting to MAX_REVIEW_ATTEMPTS and then
-    # gives up as 'incomplete' — it must NOT wait forever and must NOT claim needs-human.
+    # gives up as 'incomplete' — it must NOT wait forever and must NOT claim completion.
     prd_path = tmp_path / "prd.json"
     save_prd(prd_path, _valid_prd())
 
@@ -721,7 +706,7 @@ def test_run_sdlc_review_gate_gives_up_incomplete_after_max_attempts_not_needs_h
         result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
 
     assert result == "incomplete"
-    assert get_sdlc_review_status(load_prd(prd_path)) != "needs-human"
+    assert get_sdlc_review_status(load_prd(prd_path)) == "pending"
     assert len(slept) == run_next_plan.MAX_REVIEW_ATTEMPTS  # bounded, not infinite
 
 

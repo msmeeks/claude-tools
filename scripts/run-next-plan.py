@@ -29,13 +29,10 @@ incremental — each round reviews only the commits since the last completed rev
 for another incremental round. Gated by prd.json's top-level "sdlc_review_status" field,
 which ends up one of:
     "pending"       — gate hasn't run yet (or a run was interrupted and needs resuming)
-    "complete"      — gate ran and every finding was confidently resolved autonomously
-    "needs-human"   — triage was genuinely unconfident on some finding (left needs-info
-                      for a human). The script halts (exit 1) rather than looping the gate
-                      again or claiming completion.
+    "complete"      — gate ran and every finding was triaged
 
-Session-limit resilience: a session/usage limit hitting any gate step is NOT treated as
-needing human review. Like the main plan loop, the gate waits out the reset and retries
+Session-limit resilience: a session/usage limit hitting any gate step leaves the status
+non-terminal. Like the main plan loop, the gate waits out the reset and retries
 automatically. Each retry escalates the reviewer dispatch: the first REVIEW_PARALLEL_ATTEMPTS
 attempts fan the seven review agents out in parallel; after that they run one at a time so
 each completed reviewer (persisted in sdlc_review_completed_agents, alongside the filed
@@ -65,12 +62,7 @@ ESCALATION_THRESHOLD = 3
 
 PLAN_FILE_RE = re.compile(r"^[\w.-]+\.md$")
 VALID_STATUSES = {"pending", "in-progress", "done", "stalled"}
-# "needs-human": the SDLC review gate ran and filed findings, but triage wasn't confident
-# enough to autonomously mark every finding ready-for-agent — a human must resolve the
-# flagged issue(s) (see meta/plans/implementation-logs/run-next-plan-*-triage.log) before
-# this can become "complete".
-VALID_SDLC_REVIEW_STATUSES = {"pending", "complete", "needs-human"}
-TERMINAL_SDLC_REVIEW_STATUSES = {"complete", "needs-human"}
+VALID_SDLC_REVIEW_STATUSES = {"pending", "complete"}
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
 # Match genuine CLI limit *announcements*, not incidental mentions. Bare tokens like
@@ -249,19 +241,16 @@ def save_prd(path: Path, data: dict) -> None:
     if path.is_file():
         existing = json.loads(path.read_text())
         existing_status = existing.get("sdlc_review_status")
-        if existing_status in TERMINAL_SDLC_REVIEW_STATUSES and data.get(
-            "sdlc_review_status"
-        ) == "pending":
-            # Carve out exactly one intentional terminal→pending transition: re-arming a
-            # *completed* review for a new incremental round, recognizable by a recorded
-            # review baseline. Everything else (needs-human, or a complete with no baseline)
-            # stays latched — preserving the original guard against an accidental blank reset
-            # that would otherwise re-run the whole gate.
-            rearming_new_round = existing_status == "complete" and bool(
-                existing.get("last_reviewed_sha")
-            )
-            if not rearming_new_round:
-                die(f"Refusing to revert prd.json 'sdlc_review_status' from {existing_status!r} to 'pending'.")
+        # Carve out exactly one intentional complete→pending transition: re-arming a
+        # completed review for a new incremental round, recognizable by a recorded review
+        # baseline. A complete with no baseline stays latched — preserving the guard against
+        # an accidental blank reset that would re-run the whole gate.
+        if (
+            existing_status == "complete"
+            and data.get("sdlc_review_status") == "pending"
+            and not existing.get("last_reviewed_sha")
+        ):
+            die(f"Refusing to revert prd.json 'sdlc_review_status' from {existing_status!r} to 'pending'.")
 
     fd, tmp_path = tempfile.mkstemp(dir=path.parent, prefix=".prd-", suffix=".tmp")
     try:
@@ -915,9 +904,9 @@ def update_pr_description(prd_path: Path, repo_root: Path) -> None:
 class ReviewInterrupted(Exception):
     """An SDLC-review-gate Claude invocation hit a session/usage limit before finishing.
 
-    The gate catches this, waits out the reset (like the main plan loop), and retries —
-    never mistaking a transient limit for a genuine human-review need. `output` carries the
-    interrupted invocation's text so the wait can be parsed from any "resets H:MM" hint."""
+    The gate catches this, waits out the reset (like the main plan loop), and retries.
+    `output` carries the interrupted invocation's text so the wait can be parsed from any
+    "resets H:MM" hint."""
 
     def __init__(self, phase: str, output: str) -> None:
         super().__init__(phase)
@@ -1029,14 +1018,13 @@ Output the issue numbers created, one per line, prefixed with "ISSUE:"."""
 
 def run_sdlc_review_gate(prd_path: Path, repo_root: Path) -> str:
     """Run (or resume) the SDLC review gate. Returns one of:
-    "complete"    — reviews done, triage confident, docs updated;
-    "needs-human" — triage flagged genuine needs-info (a real human-in-the-loop stop);
+    "complete"    — reviews done, findings triaged, docs updated;
     "incomplete"  — the session/usage limit persisted across MAX_REVIEW_ATTEMPTS attempts;
                     progress is saved and a later re-run resumes.
 
-    A session/usage limit is never treated as needing human review: like the main plan
-    loop, the gate waits out the reset and retries. Each retry escalates the reviewer
-    dispatch: the first REVIEW_PARALLEL_ATTEMPTS attempts fan reviewers out in parallel;
+    On a session/usage limit the gate waits out the reset and retries, like the main plan
+    loop. Each retry escalates the reviewer dispatch: the first REVIEW_PARALLEL_ATTEMPTS
+    attempts fan reviewers out in parallel;
     after that they run one at a time so each completed reviewer is persisted and partial
     progress survives the next interruption.
     """
@@ -1095,9 +1083,7 @@ def run_sdlc_review_gate(prd_path: Path, repo_root: Path) -> str:
             )
             if not round_filed:
                 round_filed = _run_file_issues_phase(prd_path, repo_root)
-            human_in_loop_required = _run_triage_phase(
-                prd_path, repo_root, round_filed, triage_log_path
-            )
+            _run_triage_phase(prd_path, repo_root, round_filed, triage_log_path)
             break
         except ReviewInterrupted as exc:
             integration_branch = load_prd(prd_path)["integration_branch"]
@@ -1121,13 +1107,13 @@ def run_sdlc_review_gate(prd_path: Path, repo_root: Path) -> str:
     ensure_committed_and_pushed(repo_root, integration_branch, "SDLC review triage")
 
     # Record the reviewed HEAD as the new baseline so the next round diffs from here, and clear
-    # the per-round bookkeeping so a fresh round (re-armed after 'complete', or resumed by a
-    # human after 'needs-human') starts clean instead of thinking a prior round's reviewers
-    # already ran / its issues were already filed. Captured after the push so HEAD is final.
+    # the per-round bookkeeping so a fresh round (re-armed after 'complete') starts clean
+    # instead of thinking a prior round's reviewers already ran / its issues were already
+    # filed. Captured after the push so HEAD is final.
     reviewed_sha = _git_head_sha(repo_root)
 
     def mutate(data: dict) -> None:
-        data["sdlc_review_status"] = "needs-human" if human_in_loop_required else "complete"
+        data["sdlc_review_status"] = "complete"
         if reviewed_sha:
             data["last_reviewed_sha"] = reviewed_sha
         data["sdlc_review_completed_agents"] = []
@@ -1137,22 +1123,13 @@ def run_sdlc_review_gate(prd_path: Path, repo_root: Path) -> str:
 
     _with_prd_lock(prd_path, mutate)
 
-    if human_in_loop_required:
-        warn(
-            "SDLC review gate: triage was not fully confident resolving every finding "
-            f"autonomously — see {triage_log_path}. sdlc_review_status set to "
-            "'needs-human'; skipping docs phase until a human resolves the flagged issue(s) "
-            "(a normal /triage pass will pick up the needs-info issue(s))."
-        )
-        return "needs-human"
-
     run_docs_phase(prd_path, repo_root)
     return "complete"
 
 
 def _run_triage_phase(
     prd_path: Path, repo_root: Path, issue_ints: list[int], triage_log_path: str
-) -> bool:
+) -> None:
     issue_numbers = [f"#{n}" for n in issue_ints]
     triage_prompt = f"""For each of these newly filed issues, run /triage to evaluate it: {issue_numbers}
 
@@ -1163,21 +1140,8 @@ your best-supported recommendation (state the recommendation and a one-line rati
 you go), the same way /triage's step 2 already asks you to "recommend... with reasoning" —
 just skip the "wait for direction" pause.
 
-Before applying a state label, judge your own confidence honestly:
-- If, after self-answering, more than a couple of material open questions remain (design
-  decisions you had to guess at rather than derive from the codebase, issue, or ADRs), OR
-- the implementation is architecturally significant, crosses many subsystems, or is too
-  large for a single agent-run plan (roughly XL: 16+ files or new infra, per
-  /plan-iteration's size key),
-then do NOT mark the issue ready-for-agent — mark it needs-info instead (even though the
-report itself may be complete), and post a comment with your grilling notes and open
-questions so a human triaging it next doesn't start from scratch. This is a deliberate
-human-in-the-loop safety valve: err toward needs-info when genuinely unsure, so the issue
-surfaces for a human on the next ordinary /triage pass instead of getting silently
-auto-approved.
-
-Otherwise, apply the outcome per /triage's state machine as usual (post agent brief /
-needs-info notes / close).
+Apply the outcome per /triage's state machine as usual (post agent brief / needs-info
+notes / close).
 
 Then, for every issue that reached ready-for-agent (and only those), group them into
 logical clusters the same way /plan-iteration's Step 5 does, and write one
@@ -1195,31 +1159,11 @@ IMMUTABILITY CONSTRAINTS — you must not violate these:
 LOGGING — write to {triage_log_path} (create meta/plans/implementation-logs/ if missing;
 this directory is gitignored, so do not try to commit the log itself) one line per issue
 in {issue_numbers}:
-  "#N: ready-for-agent", "#N: wontfix", or
-  "#N: needs-info (low confidence) — <one-line reason>".
+  "#N: ready-for-agent", "#N: wontfix", or "#N: needs-info — <one-line reason>".
 Commit and push any new plan files (but not the log) to the current branch.
 
-Finish by printing exactly one of these two lines, verbatim, with nothing else on that line:
-  HUMAN_IN_LOOP_REQUIRED: true
-  HUMAN_IN_LOOP_REQUIRED: false
-Print "true" if ANY issue in {issue_numbers} was marked needs-info due to low confidence
-(too many open questions or too large). Print "false" only if every one of them was
-confidently resolved to ready-for-agent or wontfix.
-
-After that, print "TRIAGE_DONE" on its own line."""
-    triage_output = _gate_invoke("triage", triage_prompt, repo_root)
-    return _parse_human_in_loop_flag(triage_output)
-
-
-def _parse_human_in_loop_flag(output: str) -> bool:
-    match = re.search(r"HUMAN_IN_LOOP_REQUIRED:\s*(true|false)", output, re.IGNORECASE)
-    if match is None:
-        warn(
-            "Could not find HUMAN_IN_LOOP_REQUIRED marker in triage output — "
-            "failing safe and treating this as needing human review."
-        )
-        return True
-    return match.group(1).lower() == "true"
+Finish by printing "TRIAGE_DONE" on its own line."""
+    _gate_invoke("triage", triage_prompt, repo_root)
 
 
 def _format_blocked_by_graph(plans: list[dict]) -> str:
@@ -1231,16 +1175,6 @@ def _format_blocked_by_graph(plans: list[dict]) -> str:
         blockers = ", ".join(f"{b} ({status_by_file.get(b, 'unknown')})" for b in p["blocked_by"])
         lines.append(f"  {p['file']} -> blocked_by: {blockers}")
     return "\n".join(lines) if lines else "  (no blocked_by relationships)"
-
-
-def _die_needs_human() -> None:
-    die(
-        "SDLC review gate flagged finding(s) that need human triage before this iteration "
-        "can close (sdlc_review_status: 'needs-human'). See the most recent "
-        "meta/plans/implementation-logs/run-next-plan-*-triage.log and resolve the "
-        "needs-info issue(s) via a normal /triage pass; run-next-plan.py will pick back up "
-        "once sdlc_review_status is updated to 'complete'."
-    )
 
 
 def _rearm_sdlc_review_gate(prd_path: Path) -> None:
@@ -1262,8 +1196,8 @@ def _rearm_sdlc_review_gate(prd_path: Path) -> None:
 def _run_gate_and_continue(prd_path: Path, repo_root: Path) -> None:
     """Run (or resume) the SDLC review gate. The gate waits out session limits itself; it
     only returns "incomplete" if the limit persisted across every retry, in which case exit
-    cleanly (0) so a later re-run resumes. On "complete"/"needs-human", return and let the
-    main loop's next pass act on the status."""
+    cleanly (0) so a later re-run resumes. On "complete", return and let the main loop's
+    next pass act on the status."""
     result = run_sdlc_review_gate(prd_path, repo_root)
     if result == "incomplete":
         info(
@@ -1362,9 +1296,6 @@ def main() -> None:
 
         if selected is None:
             sdlc_status = get_sdlc_review_status(data)
-            if sdlc_status == "needs-human":
-                sync_pr_closes(prd_path, plans_dir, integration_branch)
-                _die_needs_human()
             if sdlc_status != "complete":
                 if args.dry_run:
                     print()
@@ -1536,8 +1467,6 @@ def main() -> None:
             else:
                 sync_pr_closes(prd_path, plans_dir, integration_branch)
                 sdlc_status = get_sdlc_review_status(data)
-                if sdlc_status == "needs-human":
-                    _die_needs_human()
                 if sdlc_status != "complete":
                     info("Running SDLC review gate...")
                     _run_gate_and_continue(prd_path, repo_root)
@@ -1553,8 +1482,6 @@ def main() -> None:
         sync_pr_closes(prd_path, plans_dir, integration_branch)
         if all(p["status"] in ("done", "stalled") for p in data["plans"]):
             sdlc_status = get_sdlc_review_status(data)
-            if sdlc_status == "needs-human":
-                _die_needs_human()
             if sdlc_status != "complete":
                 info("All plans done or stalled. Running SDLC review gate...")
                 _run_gate_and_continue(prd_path, repo_root)
