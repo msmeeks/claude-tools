@@ -677,9 +677,53 @@ def sync_pr_closes(prd_path: Path, plans_dir: Path, integration_branch: str) -> 
     info(f"sync_pr_closes: PR #{pr_number} updated with {len(new_closes)} new Closes entries")
 
 
+_LOGS_REL = "meta/plans/implementation-logs/"
+
+# This script's own live log lives inside the repo and is appended to *while* the commit
+# checks run — including by invoke_claude itself. Counting it as work would make every
+# dirty check fire spuriously and the post-commit re-check impossible to satisfy.
+_WORK_PATHSPEC = [".", f":(exclude){_LOGS_REL}"]
+
+
+def _ensure_logs_gitignored(repo_root: Path) -> None:
+    """Make the invariant the runner's prompts already assume actually true: the run-log
+    directory is gitignored and untracked."""
+    ignored = subprocess.run(
+        ["git", "check-ignore", "-q", f"{_LOGS_REL}placeholder.log"], cwd=repo_root
+    )
+    if ignored.returncode != 0:
+        gitignore = repo_root / ".gitignore"
+        existing = gitignore.read_text() if gitignore.exists() else ""
+        if not existing.strip():
+            separator = ""
+        elif existing.endswith("\n"):
+            separator = "\n"
+        else:
+            separator = "\n\n"
+        gitignore.write_text(
+            f"{existing}{separator}# run-next-plan.py per-invocation logs\n{_LOGS_REL}\n"
+        )
+        info(f"Added {_LOGS_REL} to .gitignore.")
+
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", _LOGS_REL], capture_output=True, text=True, cwd=repo_root
+    )
+    if tracked.returncode == 0 and tracked.stdout.strip("\0"):
+        # --cached: stop tracking, but leave the files on disk — one of them is the log
+        # this process is writing to right now.
+        subprocess.run(
+            ["git", "rm", "-r", "--cached", "-q", "--", _LOGS_REL], cwd=repo_root, check=True
+        )
+        count = len([p for p in tracked.stdout.split("\0") if p])
+        info(f"Untracked {count} previously committed run log(s) under {_LOGS_REL}.")
+
+
 def _working_tree_dirty(repo_root: Path) -> bool:
     r = subprocess.run(
-        ["git", "status", "--porcelain"], capture_output=True, text=True, cwd=repo_root
+        ["git", "status", "--porcelain", "--", *_WORK_PATHSPEC],
+        capture_output=True,
+        text=True,
+        cwd=repo_root,
     )
     return bool(r.stdout.strip())
 
@@ -726,7 +770,9 @@ any existing plan entry. Do not push."""
                 f"Working tree still dirty after {context} even after asking Claude to commit "
                 "— auto-committing as a safety net so no work is lost."
             )
-            subprocess.run(["git", "add", "-A"], cwd=repo_root, check=True)
+            subprocess.run(
+                ["git", "add", "-A", "--", *_WORK_PATHSPEC], cwd=repo_root, check=True
+            )
             subprocess.run(
                 ["git", "commit", "-q", "-m", f"wip: uncommitted changes from {context}"],
                 cwd=repo_root,
@@ -1252,6 +1298,7 @@ def main() -> None:
     # Open the single per-invocation log file before anything else so info/warn/die tee into it.
     global _log_fh
     if not args.dry_run:
+        _ensure_logs_gitignored(repo_root)
         logs_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y_%m_%d_T%H_%M_%S")
         log_file = logs_dir / f"run-next-plan-{timestamp}.log"

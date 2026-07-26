@@ -22,6 +22,8 @@ SAMPLE_LIMIT_MESSAGE = "You've hit your session limit · resets 3:20am (America/
 _working_tree_dirty = run_next_plan._working_tree_dirty
 _push_branch = run_next_plan._push_branch
 ensure_committed_and_pushed = run_next_plan.ensure_committed_and_pushed
+_ensure_logs_gitignored = run_next_plan._ensure_logs_gitignored
+_LOGS_REL = run_next_plan._LOGS_REL
 
 
 def _init_repo(path):
@@ -291,6 +293,76 @@ def test_working_tree_dirty_true_with_uncommitted_change(tmp_path):
     assert _working_tree_dirty(tmp_path) is True
 
 
+def _write_run_log(repo_root, name="run-next-plan-2026_01_01_T00_00_00.log"):
+    logs_dir = repo_root / "meta" / "plans" / "implementation-logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    (logs_dir / name).write_text("a log line\n")
+
+
+def _is_ignored(repo_root, rel_path):
+    return subprocess.run(
+        ["git", "check-ignore", "-q", rel_path], cwd=repo_root
+    ).returncode == 0
+
+
+def test_ensure_logs_gitignored_adds_the_entry_when_absent(tmp_path):
+    _init_repo(tmp_path)
+    _ensure_logs_gitignored(tmp_path)
+    assert _is_ignored(tmp_path, "meta/plans/implementation-logs/some.log")
+
+
+def test_ensure_logs_gitignored_appends_below_existing_rules_without_clobbering_them(tmp_path):
+    _init_repo(tmp_path)
+    gitignore = tmp_path / ".gitignore"
+    gitignore.write_text("node_modules/\ndist/\n")
+
+    _ensure_logs_gitignored(tmp_path)
+
+    text = gitignore.read_text()
+    assert text.startswith("node_modules/\ndist/\n")
+    assert text.endswith(f"{_LOGS_REL}\n")
+    assert _is_ignored(tmp_path, f"{_LOGS_REL}some.log")
+    assert not _is_ignored(tmp_path, "src/app.py")
+
+
+def test_ensure_logs_gitignored_leaves_an_already_ignoring_gitignore_untouched(tmp_path):
+    _init_repo(tmp_path)
+    gitignore = tmp_path / ".gitignore"
+    gitignore.write_text("*.log\n")
+    _ensure_logs_gitignored(tmp_path)
+    assert gitignore.read_text() == "*.log\n"
+
+
+def test_ensure_logs_gitignored_untracks_logs_the_repo_already_committed(tmp_path):
+    _init_repo(tmp_path)
+    _write_run_log(tmp_path, "old-run.log")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "tracked log"], cwd=tmp_path, check=True)
+
+    _ensure_logs_gitignored(tmp_path)
+
+    tracked = subprocess.run(
+        ["git", "ls-files", _LOGS_REL], capture_output=True, text=True, cwd=tmp_path, check=True
+    ).stdout
+    assert tracked == ""
+    # The log itself must survive on disk — the runner is writing to it right now.
+    assert (tmp_path / _LOGS_REL / "old-run.log").exists()
+
+
+def test_working_tree_dirty_ignores_the_scripts_own_run_log(tmp_path):
+    # The runner writes its live log inside the repo, so a log-only diff is not real work.
+    _init_repo(tmp_path)
+    _write_run_log(tmp_path)
+    assert _working_tree_dirty(tmp_path) is False
+
+
+def test_working_tree_dirty_true_when_real_work_accompanies_the_run_log(tmp_path):
+    _init_repo(tmp_path)
+    _write_run_log(tmp_path)
+    (tmp_path / "README.md").write_text("changed\n")
+    assert _working_tree_dirty(tmp_path) is True
+
+
 def test_push_branch_sets_upstream_and_pushes_when_none_exists(tmp_path):
     local, remote = _init_repo_with_remote(tmp_path)
     _push_branch(local, "main")
@@ -337,6 +409,32 @@ def test_ensure_committed_and_pushed_asks_claude_to_commit_dirty_changes(tmp_pat
 
     fake_invoke.assert_called_once()
     assert _remote_log(remote, "main") == ["claude commit", "init"]
+
+
+def test_ensure_committed_and_pushed_keeps_the_run_log_out_of_the_safety_net_commit(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("changed by plan\n")
+    _write_run_log(local)
+
+    with patch.object(run_next_plan, "invoke_claude", return_value="ok"):
+        ensure_committed_and_pushed(local, "main", "plan a.md")
+
+    committed = subprocess.run(
+        ["git", "show", "--name-only", "--format=", "HEAD"],
+        capture_output=True, text=True, cwd=local, check=True,
+    ).stdout.split()
+    assert committed == ["README.md"]
+
+
+def test_ensure_committed_and_pushed_does_not_ask_claude_to_commit_only_the_run_log(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    _write_run_log(local)
+
+    with patch.object(run_next_plan, "invoke_claude") as fake_invoke:
+        ensure_committed_and_pushed(local, "main", "plan a.md")
+
+    fake_invoke.assert_not_called()
+    assert _remote_log(remote, "main") == ["init"]
 
 
 def test_ensure_committed_and_pushed_auto_commits_when_still_dirty_after_claude(tmp_path):

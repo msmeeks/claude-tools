@@ -28,11 +28,11 @@ The script treats `meta/plans/prd.json` as the single source of truth for plan s
 | `scripts/run-next-plan.py` | The orchestrator itself |
 | `meta/plans/prd.json` | Plan registry: `integration_branch`, `pr_number`, `prd_issue`, `plans[]` (file/status/attempts/blocked_by), `sdlc_review_status`, `last_reviewed_sha`, `sdlc_finding_issues` (iteration-cumulative), `sdlc_round_filed_issues` (per-round scratch), `sdlc_review_completed_agents`, `feature_branches`, `smoke_test` |
 | `meta/plans/progress.md` | Human-readable log Claude appends to after each completed plan |
-| `meta/plans/implementation-logs/run-next-plan-*.log` | Per-invocation log (gitignored); scrubs credentials before writing |
+| `meta/plans/implementation-logs/run-next-plan-*.log` | Per-invocation log; scrubs credentials before writing. `_ensure_logs_gitignored` gitignores (and untracks) this directory in the target repo at startup |
 | `meta/plans/implementation-logs/run-next-plan-*-triage.log` | Per-issue triage outcome log written by the SDLC review gate |
 | `meta/ralph.dockerfile` | Optional sandbox Dockerfile; if present, Claude runs inside a built container instead of on the host |
 | `meta/ralph.dockerfile.example` | Template for the above, with a bind-mount security note |
-| `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_docker_sandbox.py`, `test_pr_description.py` | Test suite; run via `cd scripts && python3 -m pytest`. `test_orchestration.py` covers `_working_tree_dirty`, `_push_branch`, and `ensure_committed_and_pushed` against real throwaway git repos (with a bare "remote"), not mocks. |
+| `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_docker_sandbox.py`, `test_pr_description.py` | Test suite; run via `cd scripts && python3 -m pytest`. `test_orchestration.py` covers `_working_tree_dirty`, `_push_branch`, `ensure_committed_and_pushed`, and `_ensure_logs_gitignored` against real throwaway git repos (with a bare "remote"), not mocks. |
 | `skills/close-iteration/skill.md` | Step 2b reads this script's `sdlc_review_status` values (`pending`/`complete`) from `prd.json` as a hard-blocker check before promoting/merging the iteration |
 
 ## Technical Detail
@@ -67,12 +67,21 @@ A non-zero exit *without* a regex match is a plain `error`. The real CLI message
 
 On `rate_limit`, the script parses a retry delay from the output text via `_parse_retry_after_text`: an explicit "retry after N" / "try again in N", or a "resets [at] H[:MM]am/pm" time interpreted in America/New_York (minutes are optional — an on-the-hour "resets 9pm" parses to a real wait rather than falling through to the default and re-looping tightly until the limit clears). It falls back to `RETRY_WAIT_DEFAULT = 60`s, adds a flat 60s buffer, sleeps, and retries the same attempt — up to `MAX_RETRIES = 20` times before giving up and leaving the plan `in-progress` for a future run to resume.
 
+### Run-log hygiene
+
+The runner writes its live log to `meta/plans/implementation-logs/` *inside the target repo*, and its prompts tell Claude that directory is gitignored. `_ensure_logs_gitignored(repo_root)` runs at startup (before the log file is opened) to make that assumption true rather than merely asserted:
+
+1. If `git check-ignore` says the directory isn't ignored, appends `meta/plans/implementation-logs/` (with a comment) to the repo's `.gitignore`, creating it if absent and preserving any existing rules.
+2. If `git ls-files` shows logs the repo already committed, runs `git rm -r --cached` on them — files stay on disk (one is being written to right now), they just stop being tracked.
+
+Both steps are no-ops on an already-healthy repo, so a steady-state run prints nothing. The resulting `.gitignore` edit and staged untrackings are left uncommitted; the first `ensure_committed_and_pushed` of the run sweeps them into a real commit.
+
 ### Commit/push enforcement
 
 Claude is asked to commit (and, since this is the only thing that actually pushes anything, the prompts now say "commit and push") after each plan-implementation session, the docs phase, and the SDLC review gate's triage step. The script does not trust that this happened: `ensure_committed_and_pushed(repo_root, integration_branch, context)` runs after each of those three points and:
 
-1. Checks `git status --porcelain`. If clean, skips straight to step 3.
-2. If dirty, invokes Claude once more with a narrow "commit these outstanding changes" prompt. If the tree is still dirty afterward (Claude failed to commit for any reason), auto-commits everything with `git add -A` + a generic `wip: uncommitted changes from <context>` message as a safety net — this never blocks the loop, but does mean an occasional low-quality commit message can show up if Claude didn't commit its own work.
+1. Checks `git status --porcelain -- . ':(exclude)meta/plans/implementation-logs/'`. If clean, skips straight to step 3. The exclusion (`_WORK_PATHSPEC`) matters: the script's own live log lives inside the repo and is appended to *during* these checks — including by `invoke_claude` itself, which writes Claude's transcript to the log after Claude has committed. Without it, a repo that tracks `meta/plans/implementation-logs/` reports dirty on every check, step 2 can never be satisfied, and every plan produces a spurious Claude invocation plus a `wip:` commit containing nothing but log lines.
+2. If dirty, invokes Claude once more with a narrow "commit these outstanding changes" prompt. If the tree is still dirty afterward (Claude failed to commit for any reason), auto-commits the same pathspec with `git add -A -- . ':(exclude)meta/plans/implementation-logs/'` + a generic `wip: uncommitted changes from <context>` message as a safety net — this never blocks the loop, but does mean an occasional low-quality commit message can show up if Claude didn't commit its own work.
 3. Pushes the branch (`_push_branch`): sets upstream via `git push -u origin <branch>` if none exists yet, otherwise pushes only if the local branch is ahead of `@{u}` (a no-op push is skipped rather than shelled out unnecessarily).
 
 This closes the gap where a plan could be marked `done` in `prd.json` while its changes were still sitting uncommitted (or committed-but-unpushed) in the local working tree.
