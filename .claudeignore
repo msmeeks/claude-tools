@@ -1,1 +1,43 @@
+# .gitignore is respected automatically (respectGitignore defaults to true),
+# so this file only covers what .gitignore misses: repo-root caches, and the
+# standard-mandated categories as a guard in case they ever appear untracked.
+
+# Repo-root caches — .gitignore scopes these to demo-gen/ only
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Dependencies and virtualenvs
+node_modules/
+.venv/
+venv/
+
+# Build artifacts and compiled output
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.pyc
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Lock files — read-only noise
+package-lock.json
+poetry.lock
+uv.lock
+
+# Large media
+*.mp4
+*.mov
+*.png
+*.jpg
+
+# Logs, generated output, uploads
+*.log
+logs/
+uploads/
+demo-gen/output/
 meta/plans/implementation-logs/
