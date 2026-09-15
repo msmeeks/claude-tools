@@ -19,14 +19,87 @@
       ],
       "size": "XL",
       "status": "done",
-      "attempts": 1,
+      "attempts": 2,
       "blocked_by": [
         "fix-run-next-plan-loop-economy.md"
       ]
+    },
+    {
+      "file": "fix-run-next-plan-style-cleanup.md",
+      "issues": [
+        58,
+        64
+      ],
+      "size": "S",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
+    },
+    {
+      "file": "test-run-next-plan-coverage-gaps.md",
+      "issues": [
+        59,
+        61,
+        63
+      ],
+      "size": "S",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
+    },
+    {
+      "file": "refactor-config-root-single-resolution.md",
+      "issues": [
+        60
+      ],
+      "size": "M",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
+    },
+    {
+      "file": "security-run-next-plan-hardening.md",
+      "issues": [
+        62,
+        65
+      ],
+      "size": "S",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
     }
   ],
   "smoke_test": "cd scripts && python3 -m pytest",
   "feature_branches": [],
   "integration_branch": "integration/2026-09-15-run-next-plan-loop-economy",
-  "pr_number": 57
+  "pr_number": 57,
+  "sdlc_review_completed_agents": [
+    "sdlc-code-reviewer",
+    "sdlc-style-reviewer",
+    "sdlc-security-reviewer",
+    "sdlc-privacy-reviewer",
+    "sdlc-accessibility-reviewer",
+    "sdlc-design-reviewer",
+    "sdlc-test-reviewer"
+  ],
+  "sdlc_round_filed_issues": [
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65
+  ],
+  "sdlc_finding_issues": [
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65
+  ]
 }
