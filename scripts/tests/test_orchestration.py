@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 _MODULE_PATH = Path(__file__).resolve().parent.parent / "run-next-plan.py"
 _spec = importlib.util.spec_from_file_location("run_next_plan", _MODULE_PATH)
 run_next_plan = importlib.util.module_from_spec(_spec)
@@ -670,3 +672,54 @@ def test_safety_net_commit_succeeds_when_the_log_dir_is_gitignored(tmp_path):
     assert "README.md" in committed
     assert ".gitignore" in committed
     assert not any("implementation-logs" in path for path in committed)
+
+
+def _write_empty_complete_prd(plans_dir, integration_branch="integration/x"):
+    plans_dir.mkdir(parents=True, exist_ok=True)
+    (plans_dir / "prd.json").write_text(json.dumps({
+        "plans": [],
+        "integration_branch": integration_branch,
+        "sdlc_review_status": "complete",
+        "sdlc_review_rounds": 99,
+    }))
+
+
+def test_main_prints_unsandboxed_trust_model_warning_on_a_real_run(tmp_path, monkeypatch, capsys):
+    _init_repo(tmp_path)
+    plans_dir = tmp_path / "docs" / "agents" / "plans"
+    _write_empty_complete_prd(plans_dir)
+
+    monkeypatch.setattr(sys, "argv", ["run-next-plan.py"])
+    monkeypatch.setattr(run_next_plan.shutil, "which", lambda _cmd: "/usr/bin/claude")
+    monkeypatch.setattr(run_next_plan, "_register_exit_flush", lambda *a, **kw: None)
+    monkeypatch.setattr(run_next_plan, "sync_pr_closes", lambda *a, **kw: None)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit) as exc:
+        run_next_plan.main()
+    run_next_plan._log_fh = None
+
+    assert exc.value.code == 0
+    err = capsys.readouterr().err
+    assert err.count("unsandboxed") == 1
+    assert "bypassPermissions" in err or "full" in err
+
+
+def test_main_does_not_print_unsandboxed_trust_model_warning_under_dry_run(
+    tmp_path, monkeypatch, capsys
+):
+    _init_repo(tmp_path)
+    plans_dir = tmp_path / "docs" / "agents" / "plans"
+    _write_empty_complete_prd(plans_dir)
+
+    monkeypatch.setattr(sys, "argv", ["run-next-plan.py", "--dry-run"])
+    monkeypatch.setattr(run_next_plan.shutil, "which", lambda _cmd: "/usr/bin/claude")
+    monkeypatch.setattr(run_next_plan, "_register_exit_flush", lambda *a, **kw: None)
+    monkeypatch.setattr(run_next_plan, "sync_pr_closes", lambda *a, **kw: None)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit):
+        run_next_plan.main()
+    run_next_plan._log_fh = None
+
+    assert "unsandboxed" not in capsys.readouterr().err

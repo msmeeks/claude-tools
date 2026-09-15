@@ -114,3 +114,35 @@ QA: `cd scripts && python3 -m pytest` — 162 passed; `ruff check .` clean; manu
 via a throwaway repo with both `meta/` and `docs/agents/` present that `--dry-run` still
 aborts immediately at startup with the ambiguous-layout error, before any plan selection or
 prompt building.
+
+## 2026-09-15 — security-run-next-plan-hardening.md
+
+Closed issues #62, #65. Two defense-in-depth backstops for the trust-model gap the Docker
+sandbox removal opened up (neither is a boundary; the real backstop stays prompt framing that
+treats plan/issue content as untrusted document text):
+
+- **#62 — startup warning.** `main()` now prints (via `warn`, so it lands on stderr and in the
+  run log) a one-time unsandboxed-trust-model message right after the log file opens, on every
+  non-`--dry-run` invocation: the loop runs with `bypassPermissions` and the invoking user's
+  full filesystem/git/`gh` access, plan/issue framing is a mitigation not a boundary, and the
+  loop should only run against repos whose issue tracker is trusted. Gated on `args.dry_run` so
+  it never fires under `--dry-run` and fires exactly once per real run (it's not inside the
+  loop).
+- **#65 — PR-description scrub.** Both `gh pr edit` call sites that publish a
+  Claude-influenced body — `update_pr_description`'s spliced two-audience summary and
+  `sync_pr_closes`'s `## Closes` append — now run the resulting `new_body` through the
+  existing `_scrub_credentials` function immediately before the `subprocess.run` call, matching
+  the scrub already applied to run logs and push-failure stderr. `gh issue create` (invoked by
+  the Claude session itself, not Python) has no equivalent interception point and stays
+  explicitly out of scope, per the plan's own scoping note.
+- Tests (TDD, vertical slices): two new `main()`-level tests in `test_orchestration.py`
+  (warning present exactly once on a real run; absent under `--dry-run`), and two new tests in
+  `test_pr_description.py` (a credential-shaped string in `_generate_pr_summary`'s output is
+  redacted before `update_pr_description`'s `gh pr edit`; same for `sync_pr_closes`'s appended
+  body). Existing splice/closes tests already cover that non-secret content and the `##
+  Closes` block survive untouched.
+- Docs: `docs/features/run-next-plan.md`'s "Trust model: no sandbox" section gained a paragraph
+  naming both backstops and the issue-filing out-of-scope note.
+
+QA: `cd scripts && python3 -m pytest` — 166 passed; `ruff check .` clean; `--dry-run` against
+this repo prints no "unsandboxed"/WARN line, confirming the gate.

@@ -103,6 +103,31 @@ def test_update_pr_description_splices_generated_summary_into_pr_body(tmp_path, 
     assert edit[3] == "5"
 
 
+def test_update_pr_description_scrubs_credential_shaped_text_before_publishing(tmp_path, monkeypatch):
+    prd_path = _write_prd(tmp_path, pr_number=5)
+    monkeypatch.setattr(
+        run_next_plan,
+        "_generate_pr_summary",
+        lambda data, repo, config_root: "## For the PM\nSee token ghp_AAAABBBBCCCCDDDD in logs.",
+    )
+    monkeypatch.setattr(run_next_plan, "_fetch_pr_body", lambda n: "## Closes\n\nCloses #1\n")
+
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        return type("R", (), {"returncode": 0, "stdout": ""})()
+
+    monkeypatch.setattr(run_next_plan.subprocess, "run", fake_run)
+
+    update_pr_description(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
+
+    edit = next(c for c in calls if c[:3] == ["gh", "pr", "edit"])
+    body = edit[edit.index("--body") + 1]
+    assert "ghp_AAAABBBBCCCCDDDD" not in body
+    assert "[REDACTED]" in body
+
+
 def test_update_pr_description_skips_when_no_pr(tmp_path, monkeypatch):
     prd_path = _write_prd(tmp_path)  # no pr_number
     monkeypatch.setattr(run_next_plan, "resolve_pr_number", lambda data, branch: None)
@@ -147,6 +172,29 @@ def test_sync_pr_closes_skips_the_gh_round_trip_when_nothing_new_landed(tmp_path
 
     assert any(c[:3] == ["gh", "pr", "edit"] for c in calls)
     assert len(calls) == first, "repeat call with an unchanged closes set must issue no gh calls"
+
+
+def test_sync_pr_closes_scrubs_credential_shaped_text_before_publishing(tmp_path):
+    prd_path, plans_dir = _prd_with_done_plan(tmp_path)
+    run_next_plan._reset_pr_closes_cache()
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:3] == ["gh", "pr", "view"]:
+            return type("R", (), {
+                "returncode": 0,
+                "stdout": '{"body": "See token ghp_AAAABBBBCCCCDDDD in logs.\\n"}',
+            })()
+        return type("R", (), {"returncode": 0, "stdout": ""})()
+
+    with patch.object(run_next_plan.subprocess, "run", side_effect=fake_run):
+        run_next_plan.sync_pr_closes(prd_path, plans_dir, "integration/x")
+
+    edit = next(c for c in calls if c[:3] == ["gh", "pr", "edit"])
+    body = edit[edit.index("--body") + 1]
+    assert "ghp_AAAABBBBCCCCDDDD" not in body
+    assert "[REDACTED]" in body
 
 
 def test_sync_pr_closes_writes_again_once_a_new_plan_completes(tmp_path):

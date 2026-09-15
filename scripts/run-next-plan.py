@@ -657,6 +657,7 @@ def sync_pr_closes(prd_path: Path, plans_dir: Path, integration_branch: str) -> 
         new_body = body.rstrip() + "\n" + "\n".join(new_closes) + "\n"
     else:
         new_body = body.rstrip() + "\n\n## Closes\n\n" + "\n".join(new_closes) + "\n"
+    new_body = _scrub_credentials(new_body)
 
     subprocess.run(["gh", "pr", "edit", str(pr_number), "--body", new_body], check=True)
     _synced_closes = closes
@@ -1095,7 +1096,7 @@ def update_pr_description(prd_path: Path, repo_root: Path, config_root: Path) ->
         warn("update_pr_description: Claude produced no summary — leaving PR body unchanged")
         return
 
-    new_body = splice_summary_block(_fetch_pr_body(pr_number), summary)
+    new_body = _scrub_credentials(splice_summary_block(_fetch_pr_body(pr_number), summary))
     subprocess.run(["gh", "pr", "edit", str(pr_number), "--body", new_body], check=True)
     info(f"update_pr_description: PR #{pr_number} summary updated")
 
@@ -1552,6 +1553,12 @@ def main() -> None:
         log_file = logs_dir / f"run-next-plan-{timestamp}.log"
         _log_fh = open(log_file, "w")  # noqa: SIM115
         info(f"Log: {log_file}")
+        warn(
+            "This loop runs unsandboxed: Claude executes with bypassPermissions and the "
+            "invoking user's full filesystem/git/gh access. Plan and issue content is "
+            "treated as untrusted document text, but that is a mitigation, not a security "
+            "boundary. Only run this against repositories whose issue tracker is trusted."
+        )
 
     integration_branch = resolve_integration_branch(load_prd(prd_path), args.integration_branch)
     info(f"Integration branch: {integration_branch}")

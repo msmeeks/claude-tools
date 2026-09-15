@@ -118,6 +118,8 @@ There is none. The loop runs `claude --permission-mode bypassPermissions` **dire
 
 The only thing between an attacker-controlled plan or issue body and arbitrary code execution is prompt framing: every prompt the runner constructs marks plan and issue content as untrusted document text rather than instructions. That is a mitigation, not a boundary. Run this only against repositories whose issue tracker you trust. See `docs/agents/PRIVACY.md` (`meta/PRIVACY.md` in un-migrated repos) for the full residual-risk discussion.
 
+Two defense-in-depth backstops, neither a boundary in itself: a one-time warning (`warn`, so it's stderr and the run log) is printed at the start of every non-`--dry-run` invocation, restating the no-sandbox trust model so it isn't something an operator only learns from documentation they may not have read; and the PR-description body Python builds and passes to `gh pr edit` — both in `update_pr_description` and `sync_pr_closes` — is run through `_scrub_credentials` immediately before that call, matching the scrub already applied to run logs and push-failure stderr. The `gh issue create` call in the file-issues phase has no equivalent interception point (the Claude session invokes it directly as its own tool call, not Python), so it stays out of scope; that path is covered instead by the paraphrase-only, redaction-instructed issue-filing prompt.
+
 ### SDLC review gate
 
 Once `select_next_plan` finds no eligible plans (or Claude emits the `<promise>COMPLETE</promise>` sigil and `prd.json` confirms all plans are terminal), the script checks `prd.json`'s `sdlc_review_status`:
