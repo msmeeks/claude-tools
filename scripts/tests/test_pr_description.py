@@ -2,6 +2,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 _MODULE_PATH = Path(__file__).resolve().parent.parent / "run-next-plan.py"
 _spec = importlib.util.spec_from_file_location("run_next_plan", _MODULE_PATH)
@@ -111,3 +112,61 @@ def test_update_pr_description_skips_when_no_pr(tmp_path, monkeypatch):
     monkeypatch.setattr(run_next_plan.subprocess, "run", no_edit)
     # Should not raise.
     update_pr_description(prd_path, tmp_path)
+
+
+def _prd_with_done_plan(tmp_path, plan_file="a.md"):
+    plans_dir = tmp_path / "meta" / "plans"
+    plans_dir.mkdir(parents=True, exist_ok=True)
+    (plans_dir / plan_file).write_text("**Issues:** #7\n")
+    prd_path = plans_dir / "prd.json"
+    run_next_plan.save_prd(prd_path, {
+        "integration_branch": "integration/x",
+        "pr_number": 5,
+        "plans": [{"file": plan_file, "status": "done", "attempts": 0, "blocked_by": []}],
+    })
+    return prd_path, plans_dir
+
+
+def test_sync_pr_closes_skips_the_gh_round_trip_when_nothing_new_landed(tmp_path):
+    prd_path, plans_dir = _prd_with_done_plan(tmp_path)
+    run_next_plan._reset_pr_closes_cache()
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:3] == ["gh", "pr", "view"]:
+            return type("R", (), {"returncode": 0, "stdout": '{"body": ""}'})()
+        return type("R", (), {"returncode": 0, "stdout": ""})()
+
+    with patch.object(run_next_plan.subprocess, "run", side_effect=fake_run):
+        run_next_plan.sync_pr_closes(prd_path, plans_dir, "integration/x")
+        first = len(calls)
+        run_next_plan.sync_pr_closes(prd_path, plans_dir, "integration/x")
+
+    assert any(c[:3] == ["gh", "pr", "edit"] for c in calls)
+    assert len(calls) == first, "repeat call with an unchanged closes set must issue no gh calls"
+
+
+def test_sync_pr_closes_writes_again_once_a_new_plan_completes(tmp_path):
+    prd_path, plans_dir = _prd_with_done_plan(tmp_path)
+    run_next_plan._reset_pr_closes_cache()
+    edits = []
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "pr", "view"]:
+            return type("R", (), {"returncode": 0, "stdout": '{"body": ""}'})()
+        if cmd[:3] == ["gh", "pr", "edit"]:
+            edits.append(cmd)
+        return type("R", (), {"returncode": 0, "stdout": ""})()
+
+    with patch.object(run_next_plan.subprocess, "run", side_effect=fake_run):
+        run_next_plan.sync_pr_closes(prd_path, plans_dir, "integration/x")
+
+        (plans_dir / "b.md").write_text("**Issues:** #8\n")
+        data = run_next_plan.load_prd(prd_path)
+        data["plans"].append({"file": "b.md", "status": "done", "attempts": 0, "blocked_by": []})
+        run_next_plan.save_prd(prd_path, data)
+
+        run_next_plan.sync_pr_closes(prd_path, plans_dir, "integration/x")
+
+    assert len(edits) == 2

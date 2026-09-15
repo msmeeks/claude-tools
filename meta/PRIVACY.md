@@ -33,7 +33,25 @@ attempt counts, and blocking relationships. Plan filenames may encode GitHub
 issue numbers (e.g. `issue-42.md`), which indirectly reference issue titles
 and content in the source repo's issue tracker. `prd.json` itself stores no
 issue body text, author names, or other PII — only filenames and status
-metadata.
+metadata. `sdlc_review_rounds` (an integer count of completed review-gate
+rounds) is likewise pure metadata.
+
+### Outbound: SDLC finding issues (`gh issue create`)
+The review gate's issue-filing phase is the loop's one *outbound* data path:
+it takes reviewer-written findings from `meta/sdlc-review-findings.md`, which
+are authored while reading `git diff <review-range>`, and publishes them to
+the target repo's GitHub issue tracker under the `sdlc-finding` label. Unlike
+the implementation logs, nothing downstream can redact a filed issue — the
+automation has no retraction path.
+
+The filing prompt therefore requires each body to be rewritten before it is
+posted: paraphrase the defect (name the file and symbol; quote at most a short
+identifier-level excerpt) rather than pasting raw diff or source lines, and
+redact any credential, token, key, connection string, customer data, email
+address, or other personal data as `[REDACTED]`. As with the log scrubber,
+this is a mitigation rather than a guarantee. Do not point the loop at a
+repository whose issue tracker is public unless the diff under review is also
+public.
 
 ## Retention guidance
 
@@ -45,6 +63,13 @@ metadata.
   removal later requires history rewriting.
 - **`prd.json`**: retained for the lifetime of the plan batch it tracks; safe
   to delete once all plans in a batch reach `done`.
+- **`sdlc-finding` issues**: retained until a human closes them. The review
+  gate stops re-arming after `MAX_REVIEW_ROUNDS` (2) rounds, so the final
+  round's findings are filed and triaged but deliberately *not* scheduled into
+  the iteration — they sit open in the tracker indefinitely by design. Review
+  them when closing the iteration: close or de-scope what is stale, and edit
+  or delete any issue body that turns out to carry content the filing-time
+  redaction missed. The automation cannot do either for you.
 
 ## Residual risk: indirect prompt injection via plan files
 

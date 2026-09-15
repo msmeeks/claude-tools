@@ -301,3 +301,77 @@ def test_resolve_integration_branch_cli_override_wins_over_prd_json():
     data["integration_branch"] = "integration/2026-06-26-esv"
 
     assert resolve_integration_branch(data, cli_override="integration/explicit") == "integration/explicit"
+
+
+def test_load_prd_defaults_review_rounds_to_zero_when_absent(tmp_path):
+    # Existing prd.json files predate the field and must still load.
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    loaded = load_prd(prd_path)
+
+    assert "sdlc_review_rounds" not in loaded
+    assert run_next_plan.get_sdlc_review_rounds(loaded) == 0
+
+
+def test_load_prd_accepts_review_rounds_field(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    data = _valid_prd()
+    data["sdlc_review_rounds"] = 2
+    save_prd(prd_path, data)
+
+    assert run_next_plan.get_sdlc_review_rounds(load_prd(prd_path)) == 2
+
+
+def test_load_prd_rejects_boolean_review_rounds(tmp_path):
+    # isinstance(True, int) is True, so a bare int check would let "sdlc_review_rounds": false
+    # through and silently defeat the round cap.
+    prd_path = tmp_path / "prd.json"
+    data = _valid_prd()
+    data["sdlc_review_rounds"] = False
+    save_prd(prd_path, data)
+
+    with pytest.raises(SystemExit):
+        load_prd(prd_path)
+
+
+def test_load_prd_rejects_negative_review_rounds(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    data = _valid_prd()
+    data["sdlc_review_rounds"] = -1
+    save_prd(prd_path, data)
+
+    with pytest.raises(SystemExit):
+        load_prd(prd_path)
+
+
+def test_load_prd_rejects_non_int_review_rounds(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    data = _valid_prd()
+    data["sdlc_review_rounds"] = "two"
+    save_prd(prd_path, data)
+
+    with pytest.raises(SystemExit):
+        load_prd(prd_path)
+
+
+def test_max_review_rounds_defaults_to_the_module_constant(monkeypatch):
+    monkeypatch.delenv("RALPH_MAX_REVIEW_ROUNDS", raising=False)
+    assert run_next_plan.max_review_rounds() == run_next_plan.MAX_REVIEW_ROUNDS
+
+
+def test_max_review_rounds_honours_a_valid_override(monkeypatch):
+    monkeypatch.setenv("RALPH_MAX_REVIEW_ROUNDS", "1")
+    assert run_next_plan.max_review_rounds() == 1
+
+
+def test_max_review_rounds_ignores_a_zero_or_negative_override(monkeypatch):
+    # A cap of 0 would mean "never review at all", which is never what the operator meant.
+    for raw in ("0", "-3"):
+        monkeypatch.setenv("RALPH_MAX_REVIEW_ROUNDS", raw)
+        assert run_next_plan.max_review_rounds() == run_next_plan.MAX_REVIEW_ROUNDS
+
+
+def test_max_review_rounds_ignores_a_non_integer_override(monkeypatch):
+    monkeypatch.setenv("RALPH_MAX_REVIEW_ROUNDS", "lots")
+    assert run_next_plan.max_review_rounds() == run_next_plan.MAX_REVIEW_ROUNDS

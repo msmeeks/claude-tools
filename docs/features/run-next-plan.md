@@ -14,7 +14,6 @@
 - **Python 3 stdlib only** (`argparse`, `fcntl`, `json`, `subprocess`, `re`, `tempfile`, `pathlib`) — no third-party dependencies, matches the repo's minimal-dependency preference
 - **`claude` CLI** — invoked headlessly via `claude -p - --permission-mode bypassPermissions --output-format text`, prompt piped over stdin
 - **`gh` CLI** — used to file SDLC finding issues and sync `Closes #N` entries on the integration branch's PR
-- **Docker** (optional) — sandboxes the Claude session when `meta/ralph.dockerfile` is present
 - **`fcntl` file locking** — guards concurrent writes to `prd.json` across attempt-increment/status-set operations
 
 ## Technical Overview
@@ -26,13 +25,11 @@ The script treats `meta/plans/prd.json` as the single source of truth for plan s
 | File | Purpose |
 |---|---|
 | `scripts/run-next-plan.py` | The orchestrator itself |
-| `meta/plans/prd.json` | Plan registry: `integration_branch`, `pr_number`, `prd_issue`, `plans[]` (file/status/attempts/blocked_by), `sdlc_review_status`, `last_reviewed_sha`, `sdlc_finding_issues` (iteration-cumulative), `sdlc_round_filed_issues` (per-round scratch), `sdlc_review_completed_agents`, `feature_branches`, `smoke_test` |
+| `meta/plans/prd.json` | Plan registry: `integration_branch`, `pr_number`, `prd_issue`, `plans[]` (file/status/attempts/blocked_by), `sdlc_review_status`, `sdlc_review_rounds` (completed review rounds; capped by `MAX_REVIEW_ROUNDS`), `last_reviewed_sha`, `sdlc_finding_issues` (iteration-cumulative), `sdlc_round_filed_issues` (per-round scratch), `sdlc_review_completed_agents`, `feature_branches`, `smoke_test` |
 | `meta/plans/progress.md` | Human-readable log Claude appends to after each completed plan |
 | `meta/plans/implementation-logs/run-next-plan-*.log` | Per-invocation log; scrubs credentials before writing. `_ensure_logs_gitignored` gitignores (and untracks) this directory in the target repo at startup |
 | `meta/plans/implementation-logs/run-next-plan-*-triage.log` | Per-issue triage outcome log written by the SDLC review gate |
-| `meta/ralph.dockerfile` | Optional sandbox Dockerfile; if present, Claude runs inside a built container instead of on the host |
-| `meta/ralph.dockerfile.example` | Template for the above, with a bind-mount security note |
-| `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_docker_sandbox.py`, `test_pr_description.py` | Test suite; run via `cd scripts && python3 -m pytest`. `test_orchestration.py` covers `_working_tree_dirty`, `_push_branch`, `ensure_committed_and_pushed`, and `_ensure_logs_gitignored` against real throwaway git repos (with a bare "remote"), not mocks. |
+| `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_pr_description.py` | Test suite; run via `cd scripts && python3 -m pytest`. `test_orchestration.py` covers `_working_tree_dirty`, `_push_branch`, `ensure_committed`, `flush_push`, `exit_flush`, and `_ensure_logs_gitignored` against real throwaway git repos (with a bare "remote"), not mocks. |
 | `skills/close-iteration/skill.md` | Step 2b reads this script's `sdlc_review_status` values (`pending`/`complete`) from `prd.json` as a hard-blocker check before promoting/merging the iteration |
 
 ## Technical Detail
@@ -74,21 +71,45 @@ The runner writes its live log to `meta/plans/implementation-logs/` *inside the 
 1. If `git check-ignore` says the directory isn't ignored, appends `meta/plans/implementation-logs/` (with a comment) to the repo's `.gitignore`, creating it if absent and preserving any existing rules.
 2. If `git ls-files` shows logs the repo already committed, runs `git rm -r --cached` on them — files stay on disk (one is being written to right now), they just stop being tracked.
 
-Both steps are no-ops on an already-healthy repo, so a steady-state run prints nothing. The resulting `.gitignore` edit and staged untrackings are left uncommitted; the first `ensure_committed_and_pushed` of the run sweeps them into a real commit.
+Both steps are no-ops on an already-healthy repo, so a steady-state run prints nothing. The resulting `.gitignore` edit and staged untrackings are left uncommitted; the first `ensure_committed` of the run sweeps them into a real commit.
 
 ### Commit/push enforcement
 
-Claude is asked to commit (and, since this is the only thing that actually pushes anything, the prompts now say "commit and push") after each plan-implementation session, the docs phase, and the SDLC review gate's triage step. The script does not trust that this happened: `ensure_committed_and_pushed(repo_root, integration_branch, context)` runs after each of those three points and:
+Committing and publishing are separate concerns, deliberately. **Claude is never told to push** — every prompt (plan implementation, the commit-remediation prompt, the docs phase, the triage phase) says "commit" and then says "Do not push" explicitly. The instruction is explicit rather than merely absent because plan and issue text is untrusted: silence would leave room for an injected "…and push your work" to reintroduce exactly the behavior this split removes.
 
-1. Checks `git status --porcelain -- . ':(exclude)meta/plans/implementation-logs/'`. If clean, skips straight to step 3. The exclusion (`_WORK_PATHSPEC`) matters: the script's own live log lives inside the repo and is appended to *during* these checks — including by `invoke_claude` itself, which writes Claude's transcript to the log after Claude has committed. Without it, a repo that tracks `meta/plans/implementation-logs/` reports dirty on every check, step 2 can never be satisfied, and every plan produces a spurious Claude invocation plus a `wip:` commit containing nothing but log lines.
-2. If dirty, invokes Claude once more with a narrow "commit these outstanding changes" prompt. If the tree is still dirty afterward (Claude failed to commit for any reason), auto-commits the same pathspec with `git add -A -- . ':(exclude)meta/plans/implementation-logs/'` + a generic `wip: uncommitted changes from <context>` message as a safety net — this never blocks the loop, but does mean an occasional low-quality commit message can show up if Claude didn't commit its own work.
-3. Pushes the branch (`_push_branch`): sets upstream via `git push -u origin <branch>` if none exists yet, otherwise pushes only if the local branch is ahead of `@{u}` (a no-op push is skipped rather than shelled out unnecessarily).
+`ensure_committed(repo_root, integration_branch, context)` runs after each phase and guarantees nothing is lost:
 
-This closes the gap where a plan could be marked `done` in `prd.json` while its changes were still sitting uncommitted (or committed-but-unpushed) in the local working tree.
+1. Checks `git status --porcelain -- . ':(exclude)meta/plans/implementation-logs/'`. If clean, it does nothing. The exclusion (`_WORK_PATHSPEC`) matters: the script's own live log lives inside the repo and is appended to *during* these checks — including by `invoke_claude` itself, which writes Claude's transcript to the log after Claude has committed. Without it, a repo that tracks `meta/plans/implementation-logs/` reports dirty on every check, step 2 can never be satisfied, and every plan produces a spurious Claude invocation plus a `wip:` commit containing nothing but log lines.
+2. If dirty, invokes Claude once more with a narrow "commit these outstanding changes, do not push" prompt. If the tree is still dirty afterward, auto-commits the same pathspec with a generic `wip: uncommitted changes from <context>` message as a safety net — this never blocks the loop, but does mean an occasional low-quality commit message can show up if Claude didn't commit its own work.
 
-### Docker sandbox
+`flush_push(repo_root, integration_branch)` is the only thing that publishes. `_push_branch` sets upstream via `git push -u origin <branch>` if none exists, otherwise pushes only when the local branch is ahead of `@{u}`, and on failure *warns* (scrubbed through `_scrub_credentials`, since git's stderr can echo the credential-helper URL) rather than raising.
 
-If `meta/ralph.dockerfile` exists in the repo root, `build_run_command` wraps the `claude` invocation in `docker run` instead of running it directly. It refuses a symlinked dockerfile, rebuilds the image (`ralph-<sanitized-repo-slug>:latest`) only if the dockerfile is newer than the last build, and mounts the repo root at `/workspace` with `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `GIT_AUTHOR_NAME`, and `GIT_AUTHOR_EMAIL` passed through as environment variables.
+**Why the split.** `ensure_committed_and_pushed` used to do both, at three points per plan plus once per review-gate retry. One real iteration produced 55 script-issued pushes, each firing at least two GitHub Actions workflows — enough to exhaust the account's monthly Actions minutes. Pushes are now placed deliberately:
+
+| Where | Pushes |
+|---|---|
+| After each plan iteration (`main`) | 1 |
+| End of a completed review-gate round, after the docs phase | 1 |
+| Process exit (`exit_flush`, registered via `atexit`) | 1, usually a no-op |
+
+The gate's terminal push sits *after* `run_docs_phase` rather than before it, and is preceded by one more `ensure_committed` — `update_pr_description` writes `meta/pr-summary.md` after the docs-phase commit has already run, so without that sweep the file was never committed at all.
+
+**Exit-path coverage.** `main` registers `exit_flush` once, via `atexit`, immediately after resolving the integration branch. One registration covers every termination path — normal completion, the `incomplete`-gate resume exit, the session-limit give-up, the error exit, `KeyboardInterrupt`, and `die()` — rather than sprinkling `flush_push` across ten `sys.exit` sites. `exit_flush` is deliberately narrow:
+
+- **git side effects only.** It never reads or writes `prd.json` and never takes the prd lock: it can fire while `_with_prd_lock` holds the flock, which would deadlock a single-threaded process.
+- **Commits through `_WORK_PATHSPEC`**, like every other commit path, so an interrupt can't sweep the run log into pushed history.
+- **Never invokes Claude**, and **swallows every exception** — an exit path is the worst possible place to raise.
+- **Never registered under `--dry-run`**, which pushes nothing at all.
+
+### Redundant-sync suppression
+
+`sync_pr_closes` is called from four points per loop pass, and each call used to issue a `gh pr view` + `gh pr edit` round trip. It now caches the closed-issue set it last wrote (`_synced_closes`) and returns immediately when the current set is a subset of it, so the PR body is written at most once per genuinely new completion.
+
+### Trust model: no sandbox
+
+There is none. The loop runs `claude --permission-mode bypassPermissions` **directly on the host**, with the invoking user's filesystem access, git credentials, and `gh` token. An earlier optional Docker mode (`meta/ralph.dockerfile`) was removed: no repo ever adopted it, and it was weak protection anyway — a read-write bind-mount of the repo (including `.git/hooks/`) with secrets passed through as environment variables.
+
+The only thing between an attacker-controlled plan or issue body and arbitrary code execution is prompt framing: every prompt the runner constructs marks plan and issue content as untrusted document text rather than instructions. That is a mitigation, not a boundary. Run this only against repositories whose issue tracker you trust. See `meta/PRIVACY.md` for the full residual-risk discussion.
 
 ### SDLC review gate
 
@@ -108,6 +129,10 @@ Once `select_next_plan` finds no eligible plans (or Claude emits the `<promise>C
 
 - **Incremental (per-round) review.** After the first round completes, appending new `pending` plans (PR-comment fixes, or newly-triaged issues folded into the same PR) must not slip past review. On the next loop pass, when eligible plans exist but `sdlc_review_status == "complete"`, `main` calls `_rearm_sdlc_review_gate`: it flips the latch back to `pending` (permitted by the carve-out above) and clears the per-round scratch (`sdlc_review_completed_agents`, `sdlc_round_filed_issues`), keeping both `last_reviewed_sha` (the boundary) and the cumulative `sdlc_finding_issues` (the iteration record). Once those plans finish, the gate runs again but reviews only `last_reviewed_sha..HEAD` — the new commits — instead of re-scanning (and re-filing findings on) the whole PR. It then advances `last_reviewed_sha` to the new HEAD for the round after. Bookkeeping is cleared at the *end* of each round (rather than only on re-arm), so a round resumed by hand — by editing `sdlc_review_status` back to `pending`, which bypasses `save_prd` — also starts clean. If a re-armed round turns out to have no new commits (`last_reviewed_sha == HEAD`, e.g. the appended plan stalled without committing), the gate no-ops: it marks `complete` immediately without invoking any reviewer. A stale baseline no longer reachable in the repo (after a rebase/force-push) falls back to the whole-PR range. The **docs phase and PR-summary generation deliberately stay whole-iteration** (`<default_branch>...HEAD`), since docs should reflect the entire iteration, not just the latest increment.
 
+  **Round cap.** Re-arming is bounded. Each completed round increments `sdlc_review_rounds` (under the same lock that latches `complete`; the empty-increment no-op reviewed nothing and does not count), and `_rearm_sdlc_review_gate` returns `False` without touching `prd.json` once the count reaches `MAX_REVIEW_ROUNDS` (2, overridable via the `RALPH_MAX_REVIEW_ROUNDS` env var). Review findings beget plans beget commits beget findings; unbounded, the chain stops by session limit rather than by convergence — one real iteration re-armed 8 times and walked 185 finding issues before dying. At the cap the gate stays latched `complete` (it is never written back to `pending`, which would also trip `save_prd`'s revert guard), `main` latches a local `rearm_suppressed` flag so the policy-stop line is logged once, the remaining plans still run, and the loop terminates through the normal all-terminal exit.
+
+  **Final-round deferral.** The round that will hit the cap is flagged `final_round`, which changes two things. The triage prompt swaps its "cluster into plan files" instructions for explicit "do NOT write plan files, do NOT add prd.json entries" — findings are filed and triaged, then left for a human. And `_run_file_issues_phase` writes that round's issue numbers to the per-round scratch (so the re-file guard still works on a session-limit resume) but *not* to `sdlc_finding_issues` — `/close-iteration` turns that list into the PR's `Closes` block, and a PR must not claim to close findings it never fixed (#47/#44). Deferred findings persist as open issues; `meta/PRIVACY.md` covers their retention.
+
   **Session-limit resilience.** Every gate Claude call goes through `_gate_invoke`, which raises `ReviewInterrupted` when the invocation both exits non-zero and matches `RATE_LIMIT_RE` — the same two-signal discriminator `scan_output` uses, and for the same reason: review output routinely *discusses* rate limits, and an exit-0 reviewer that merely quoted limit text must not be mistaken for a real limit hit. A reviewer discussing limits therefore never triggers a spurious wait. Instead — exactly like the main plan loop — the gate parses the reset delay from the output (`_parse_retry_after_text` + 60s buffer), `time.sleep`s until it clears, and retries; the retry escalates the reviewer dispatch parallel→serial per the `attempt` counter (mirroring the per-plan model escalation). Each attempt commits any progress first (`sdlc_review_completed_agents`, `sdlc_finding_issues`), so nothing is lost. Only if the limit persists across all `MAX_REVIEW_ATTEMPTS` (5) attempts does the gate give up, returning `"incomplete"` (status left non-terminal); `_run_gate_and_continue` then exits 0 so a later re-run resumes from the persisted progress.
 
 - **`complete`**: the docs phase runs (`run_docs_phase`: `/sdlc-doc-writer` scoped to the iteration's changed files, then `/help-docs` and `/demo` for new/changed features, committed to the integration branch), then `update_pr_description` writes the final PR summary (see below), then the script exits 0 — the iteration is genuinely finished.
@@ -125,7 +150,7 @@ If new plans were created by the triage step, the loop simply `continue`s and pi
 |---|---|
 | `--restart` | Resets any `in-progress` plan(s) back to `pending` before selecting |
 | `--skip-in-progress` | Treats `in-progress` plan(s) as `pending` for selection purposes only (local view, not persisted) |
-| `--dry-run` | Prints the selected plan, `blocked_by` graph, attempts, Docker mode, and full Claude command/prompt without invoking Claude or writing logs |
+| `--dry-run` | Prints the selected plan, `blocked_by` graph, attempts, and full Claude command/prompt without invoking Claude, writing logs, or pushing anything |
 | `--integration-branch BRANCH` | Overrides `prd.json`'s `integration_branch` (which is otherwise authoritative) |
 
 ### PR `Closes #N` sync
@@ -147,4 +172,4 @@ At the tail of `run_docs_phase` (once the iteration is genuinely complete), `upd
 
 ### Tests
 
-Run from `scripts/`: `python3 -m pytest`. Suite is split across `test_orchestration.py` (loop/attempt/escalation behavior), `test_prd_data_layer.py` (schema validation — including `prd_issue`/`pr_number`/`last_reviewed_sha` — locking, status transitions), `test_sdlc_gate.py` (review-gate prompt construction and status transitions, including the parallel→serial retry escalation, session-limit `incomplete`/resume behavior, and the incremental-review machinery: `_compute_review_range` first-run-vs-baseline-vs-stale-baseline selection, baseline recording + round-scratch clearing on completion, the empty-increment no-op, the `save_prd` re-arm carve-out, `_rearm_sdlc_review_gate`, the cumulative-vs-per-round finding-issue accounting (append/dedupe, re-arm preservation, the round-scratch re-file guard), and findings-file rotation including the fresh-round-vs-mid-round-resume distinction and symlink refusal), `test_docker_sandbox.py` (Docker wrapping logic), and `test_pr_description.py` (`resolve_pr_number` field-vs-branch resolution, `splice_summary_block` idempotent marker splicing, and `update_pr_description` orchestration including the no-PR skip).
+Run from `scripts/`: `python3 -m pytest`. Suite is split across `test_orchestration.py` (loop/attempt/escalation behavior), `test_prd_data_layer.py` (schema validation — including `prd_issue`/`pr_number`/`last_reviewed_sha`/`sdlc_review_rounds`, the last with bool and negative rejection — locking, status transitions), `test_sdlc_gate.py` (review-gate prompt construction and status transitions, the `sdlc_review_rounds` cap (increment on a real round, none on an empty increment, re-arm allowed at 1 and suppressed at 2, the `RALPH_MAX_REVIEW_ROUNDS` override, final-round finding deferral, and the one-push-per-round guarantee), including the parallel→serial retry escalation, session-limit `incomplete`/resume behavior, and the incremental-review machinery: `_compute_review_range` first-run-vs-baseline-vs-stale-baseline selection, baseline recording + round-scratch clearing on completion, the empty-increment no-op, the `save_prd` re-arm carve-out, `_rearm_sdlc_review_gate`, the cumulative-vs-per-round finding-issue accounting (append/dedupe, re-arm preservation, the round-scratch re-file guard), and findings-file rotation including the fresh-round-vs-mid-round-resume distinction and symlink refusal), and `test_pr_description.py` (`resolve_pr_number` field-vs-branch resolution, `splice_summary_block` idempotent marker splicing, and `update_pr_description` orchestration including the no-PR skip).

@@ -21,7 +21,8 @@ account_attempt = run_next_plan.account_attempt
 SAMPLE_LIMIT_MESSAGE = "You've hit your session limit · resets 3:20am (America/New_York)"
 _working_tree_dirty = run_next_plan._working_tree_dirty
 _push_branch = run_next_plan._push_branch
-ensure_committed_and_pushed = run_next_plan.ensure_committed_and_pushed
+ensure_committed = run_next_plan.ensure_committed
+flush_push = run_next_plan.flush_push
 _ensure_logs_gitignored = run_next_plan._ensure_logs_gitignored
 _LOGS_REL = run_next_plan._LOGS_REL
 
@@ -387,15 +388,16 @@ def test_push_branch_is_noop_when_not_ahead_of_upstream(tmp_path):
     assert _remote_log(remote, "main") == ["init"]
 
 
-def test_ensure_committed_and_pushed_pushes_without_invoking_claude_when_clean(tmp_path):
+def test_ensure_committed_does_not_push_when_tree_is_clean(tmp_path):
     local, remote = _init_repo_with_remote(tmp_path)
     with patch.object(run_next_plan, "invoke_claude") as fake_invoke:
-        ensure_committed_and_pushed(local, "main", "plan a.md")
+        ensure_committed(local, "main", "plan a.md")
     fake_invoke.assert_not_called()
-    assert _remote_log(remote, "main") == ["init"]
+    # Commit-only: the branch has never been pushed, so the remote has no such branch yet.
+    assert _remote_log(remote, "main") == []
 
 
-def test_ensure_committed_and_pushed_asks_claude_to_commit_dirty_changes(tmp_path):
+def test_ensure_committed_asks_claude_to_commit_dirty_changes_without_pushing(tmp_path):
     local, remote = _init_repo_with_remote(tmp_path)
     (local / "README.md").write_text("changed by plan\n")
 
@@ -405,19 +407,21 @@ def test_ensure_committed_and_pushed_asks_claude_to_commit_dirty_changes(tmp_pat
         return "ok"
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_commit) as fake_invoke:
-        ensure_committed_and_pushed(local, "main", "plan a.md")
+        ensure_committed(local, "main", "plan a.md")
 
     fake_invoke.assert_called_once()
-    assert _remote_log(remote, "main") == ["claude commit", "init"]
+    assert "Do not push" in fake_invoke.call_args[0][0]
+    assert _remote_log(remote, "main") == []
+    assert _working_tree_dirty(local) is False
 
 
-def test_ensure_committed_and_pushed_keeps_the_run_log_out_of_the_safety_net_commit(tmp_path):
-    local, remote = _init_repo_with_remote(tmp_path)
+def test_ensure_committed_keeps_the_run_log_out_of_the_safety_net_commit(tmp_path):
+    local, _ = _init_repo_with_remote(tmp_path)
     (local / "README.md").write_text("changed by plan\n")
     _write_run_log(local)
 
     with patch.object(run_next_plan, "invoke_claude", return_value="ok"):
-        ensure_committed_and_pushed(local, "main", "plan a.md")
+        ensure_committed(local, "main", "plan a.md")
 
     committed = subprocess.run(
         ["git", "show", "--name-only", "--format=", "HEAD"],
@@ -426,26 +430,194 @@ def test_ensure_committed_and_pushed_keeps_the_run_log_out_of_the_safety_net_com
     assert committed == ["README.md"]
 
 
-def test_ensure_committed_and_pushed_does_not_ask_claude_to_commit_only_the_run_log(tmp_path):
-    local, remote = _init_repo_with_remote(tmp_path)
+def test_ensure_committed_does_not_ask_claude_to_commit_only_the_run_log(tmp_path):
+    local, _ = _init_repo_with_remote(tmp_path)
     _write_run_log(local)
 
     with patch.object(run_next_plan, "invoke_claude") as fake_invoke:
-        ensure_committed_and_pushed(local, "main", "plan a.md")
+        ensure_committed(local, "main", "plan a.md")
 
     fake_invoke.assert_not_called()
-    assert _remote_log(remote, "main") == ["init"]
 
 
-def test_ensure_committed_and_pushed_auto_commits_when_still_dirty_after_claude(tmp_path):
+def test_ensure_committed_auto_commits_when_still_dirty_after_claude(tmp_path):
     local, remote = _init_repo_with_remote(tmp_path)
     (local / "README.md").write_text("changed by plan\n")
 
     with patch.object(run_next_plan, "invoke_claude", return_value="ok") as fake_invoke:
-        ensure_committed_and_pushed(local, "main", "plan a.md")
+        ensure_committed(local, "main", "plan a.md")
 
     fake_invoke.assert_called_once()
     assert _working_tree_dirty(local) is False
+    flush_push(local, "main")
     log = _remote_log(remote, "main")
     assert log[0].startswith("wip: uncommitted changes from plan a.md")
     assert log[1] == "init"
+
+
+def test_flush_push_publishes_commits_left_by_ensure_committed(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("changed by plan\n")
+    with patch.object(run_next_plan, "invoke_claude", return_value="ok"):
+        ensure_committed(local, "main", "plan a.md")
+    assert _remote_log(remote, "main") == []
+
+    flush_push(local, "main")
+
+    assert _remote_log(remote, "main")[1] == "init"
+
+
+exit_flush = run_next_plan.exit_flush
+
+
+def test_exit_flush_publishes_committed_but_unpushed_work(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("done by plan\n")
+    subprocess.run(["git", "add", "-A"], cwd=local, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "plan work"], cwd=local, check=True)
+
+    exit_flush(local, "main")
+
+    assert _remote_log(remote, "main") == ["plan work", "init"]
+
+
+def test_exit_flush_auto_commits_dirty_work_without_invoking_claude(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("interrupted mid-plan\n")
+
+    with patch.object(run_next_plan, "invoke_claude") as fake_invoke:
+        exit_flush(local, "main")
+
+    fake_invoke.assert_not_called()
+    assert _working_tree_dirty(local) is False
+    assert _remote_log(remote, "main")[0].startswith("wip:")
+
+
+def test_exit_flush_never_pushes_the_run_log(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("interrupted mid-plan\n")
+    _write_run_log(local)
+
+    exit_flush(local, "main")
+
+    committed = subprocess.run(
+        ["git", "show", "--name-only", "--format=", "HEAD"],
+        capture_output=True, text=True, cwd=local, check=True,
+    ).stdout.split()
+    assert committed == ["README.md"]
+    assert _LOGS_REL not in "\n".join(committed)
+
+
+def test_exit_flush_is_a_noop_when_nothing_is_outstanding(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    exit_flush(local, "main")
+    first = _remote_log(remote, "main")
+
+    exit_flush(local, "main")
+
+    assert _remote_log(remote, "main") == first
+
+
+def test_exit_flush_reads_no_prd_json_and_takes_no_lock(tmp_path):
+    # It can fire from inside a _with_prd_lock critical section; touching prd.json there
+    # would deadlock a single-threaded process.
+    local, _ = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("work\n")
+
+    with patch.object(run_next_plan, "load_prd") as fake_load, patch.object(
+        run_next_plan, "_with_prd_lock"
+    ) as fake_lock:
+        exit_flush(local, "main")
+
+    fake_load.assert_not_called()
+    fake_lock.assert_not_called()
+
+
+def test_exit_flush_swallows_git_failures_so_it_cannot_break_the_exit_path(tmp_path):
+    missing = tmp_path / "not-a-repo"
+    missing.mkdir()
+    exit_flush(missing, "main")  # must not raise
+
+
+def test_push_failure_output_is_credential_scrubbed(tmp_path, capsys):
+    # git push stderr routinely echoes the credential-helper URL. Widening pushes to every
+    # exit path multiplies how often that lands in the log.
+    local, _ = _init_repo_with_remote(tmp_path)
+    subprocess.run(["git", "remote", "set-url", "origin", "/nonexistent/remote.git"],
+                   cwd=local, check=True)
+    leaky = "fatal: could not read https://x-access-token:ghp_AAAABBBBCCCCDDDD@github.com/o/r"
+
+    real_run = subprocess.run
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "push"]:
+            return type("R", (), {"returncode": 128, "stdout": "", "stderr": leaky})()
+        return real_run(cmd, **kwargs)
+
+    with patch.object(run_next_plan.subprocess, "run", side_effect=fake_run):
+        _push_branch(local, "main")
+
+    logged = capsys.readouterr().err
+    assert "ghp_AAAABBBBCCCCDDDD" not in logged
+    assert "[REDACTED]" in logged
+
+
+def _asserts_commit_only(prompt):
+    # Explicit, not merely silent: an injected instruction in plan or issue text could
+    # otherwise reintroduce the mid-phase pushes the commit/push split exists to prevent.
+    assert "Do not push" in prompt
+    assert "and push" not in prompt.lower()
+    assert "untrusted" in prompt
+
+
+def test_plan_prompt_asks_claude_to_commit_but_not_push(tmp_path):
+    prompt = run_next_plan._build_claude_prompt("integration/x", tmp_path)
+    _asserts_commit_only(prompt)
+
+
+def test_docs_phase_prompt_asks_claude_to_commit_but_not_push(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    run_next_plan.save_prd(prd_path, {"integration_branch": "integration/x", "plans": []})
+
+    prompts = []
+    with patch.object(run_next_plan, "invoke_claude", side_effect=lambda p, r: prompts.append(p)), \
+         patch.object(run_next_plan, "ensure_committed"), \
+         patch.object(run_next_plan, "update_pr_description"), \
+         patch.object(run_next_plan, "get_default_branch", return_value="main"):
+        run_next_plan.run_docs_phase(prd_path, tmp_path)
+
+    _asserts_commit_only(prompts[0])
+
+
+def test_triage_prompt_asks_claude_to_commit_but_not_push(tmp_path):
+    prompts = []
+    with patch.object(run_next_plan, "_gate_invoke", side_effect=lambda phase, p, r: prompts.append(p)):
+        run_next_plan._run_triage_phase(tmp_path / "prd.json", tmp_path, [11], "log.txt")
+
+    _asserts_commit_only(prompts[0])
+
+
+def test_ralph_dockerfile_is_no_longer_a_recognised_feature():
+    # The sandbox was never adopted by any target repo; a leftover meta/ralph.dockerfile
+    # must now be inert rather than silently changing how Claude is invoked.
+    for removed in ("build_run_command", "get_image_tag", "_IMAGE_TAG_SAFE_RE"):
+        assert not hasattr(run_next_plan, removed), f"{removed} should be gone"
+    source = _MODULE_PATH.read_text().lower()
+    assert "docker" not in source
+    assert "ralph.dockerfile" not in source
+
+
+def test_exit_flush_is_registered_once_for_a_real_run(tmp_path):
+    with patch.object(run_next_plan.atexit, "register") as fake_register:
+        run_next_plan._register_exit_flush(tmp_path, "main", dry_run=False)
+        run_next_plan._register_exit_flush(tmp_path, "main", dry_run=False)
+
+    fake_register.assert_called_once()
+
+
+def test_dry_run_registers_no_exit_flush(tmp_path):
+    run_next_plan._reset_exit_flush_registration()
+    with patch.object(run_next_plan.atexit, "register") as fake_register:
+        run_next_plan._register_exit_flush(tmp_path, "main", dry_run=True)
+
+    fake_register.assert_not_called()

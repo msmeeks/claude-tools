@@ -150,13 +150,25 @@ Options:
 `--model sonnet --effort high` (extended thinking); attempt 5 uses `--model opus --effort max`.
 Plans that exceed 5 attempts are marked stalled.
 
-**Docker sandbox:** if `meta/ralph.dockerfile` exists in the repo, Claude runs inside a
-container built from it. See `meta/ralph.dockerfile.example` for a template.
+**No sandbox:** the loop runs `claude --permission-mode bypassPermissions` directly on the
+host, with full access to your filesystem and credentials. Its only defense against a
+malicious plan or issue body is prompt framing (every prompt marks plan content as untrusted
+document text), which is a mitigation, not a boundary. Point it only at repos whose issue
+tracker you trust — see `meta/PRIVACY.md`.
 
 **SDLC review gate:** once all plans are done/stalled, the loop automatically runs a full
 `/sdlc` review of the integration branch, files findings as GitHub issues, triages them into
-new plan files, and resumes the loop. Gated by `prd.json`'s `sdlc_review_status` field so it
-only ever runs once per prd lifecycle.
+new plan files, and resumes the loop. Gated by `prd.json`'s `sdlc_review_status` field. The
+gate runs once per *round*, not once per iteration: appending new plans after a completed
+review re-arms it for an incremental round over just the new commits. Rounds are capped at
+`MAX_REVIEW_ROUNDS` (2, overridable via `RALPH_MAX_REVIEW_ROUNDS`) — findings from the final
+round are still filed and triaged as issues, but are left for a human rather than turned into
+more plans, so a review→fix→review chain terminates by policy instead of by session limit.
+
+**Push economy:** Claude is told to commit, never to push. The runner publishes the branch
+itself — once per plan iteration, once per completed review round, and once more at process
+exit (covering interrupts, errors and give-ups) — so a long iteration costs a handful of CI
+runs rather than one per phase.
 
 **Finish line:** once the review gate clears, the loop updates docs and then rewrites the
 integration PR's description with a two-audience summary — a *For the Product Manager* section
