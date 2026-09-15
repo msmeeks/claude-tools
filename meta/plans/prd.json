@@ -1,0 +1,22 @@
+{
+  "plans": [
+    {
+      "file": "fix-run-next-plan-loop-economy.md",
+      "issues": [54, 53, 56],
+      "size": "M",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
+    },
+    {
+      "file": "refactor-scaffolding-layout.md",
+      "issues": [55],
+      "size": "XL",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": ["fix-run-next-plan-loop-economy.md"]
+    }
+  ],
+  "smoke_test": "cd scripts && python3 -m pytest",
+  "feature_branches": []
+}
