@@ -1,19 +1,19 @@
 ---
 name: plan-iteration
-description: Backlog grooming entry point. Triages open GitHub issues one-by-one using /triage, groups ready-for-agent issues into logical implementation clusters, runs /sdlc plan review, and writes a plan file per cluster to meta/plans/. Use when asked to groom the backlog, plan the iteration, triage issues into plans, or group issues into workstreams.
+description: Backlog grooming entry point. Triages open GitHub issues one-by-one using /triage, groups ready-for-agent issues into logical implementation clusters, runs /sdlc plan review, and writes a plan file per cluster to <config-root>/plans/. Use when asked to groom the backlog, plan the iteration, triage issues into plans, or group issues into workstreams.
 ---
 
 # Plan Iteration
 
 Grooms the open backlog end-to-end: triages each issue using `/triage`, groups
 `ready-for-agent` issues into logical clusters, and writes a ready-to-execute plan
-file per cluster to `meta/plans/`.
+file per cluster to `<config-root>/plans/`.
 
 ## Usage
 
 ```
 /plan-iteration            — full mode: triage → group → /sdlc plan review → write plans
-/plan-iteration review     — re-run /sdlc plan review on existing meta/plans/*.md
+/plan-iteration review     — re-run /sdlc plan review on existing <config-root>/plans/*.md
 /plan-iteration --parallel — same as full mode but dispatches review agents in parallel
 ```
 
@@ -26,10 +26,13 @@ file per cluster to `meta/plans/`.
 
 ### Step 1 — Bootstrap
 
-1. Read `docs/llms.md`. If it doesn't exist, stop and tell the user to run `/sdlc` first.
-2. Ensure `meta/plans/` directory exists (`mkdir -p meta/plans`). Check whether
-   `meta/plans/prd.json` already exists — if so, its `plans` entries must be preserved/merged
-   in Step 7, not overwritten.
+1. Read the context index: `CONTEXT-MAP.md` (or a root `CONTEXT.md`), or `docs/llms.md` in
+   un-migrated repos. If neither exists, stop and tell the user to run `/sdlc` first.
+2. Resolve the config root: `docs/agents/` if it exists, else `meta/` (see ADR 0001 /
+   `resolve_config_root` in `run-next-plan.py`). Ensure `<config-root>/plans/` directory
+   exists (`mkdir -p <config-root>/plans`). Check whether `<config-root>/plans/prd.json`
+   already exists — if so, its `plans` entries must be preserved/merged in Step 7, not
+   overwritten.
 
 ### Step 2 — Fetch Open Issues
 
@@ -66,7 +69,8 @@ then dispatch up to 3 Explore agents **in series** — one per domain area — t
 - File-level overlap between issues
 - Key patterns the implementation should follow
 
-Include specific file paths from `docs/llms.md` in each agent prompt.
+Include specific file paths from the context index (`CONTEXT-MAP.md`/`CONTEXT.md`, or `docs/llms.md`
+in un-migrated repos) in each agent prompt.
 
 ### Step 5 — Group into Logical Clusters
 
@@ -101,7 +105,7 @@ Agent(sdlc-accessibility-reviewer): Review planned UI changes for cluster "<name
 Files affected: <list>. Intent: <one-line summary>.
 Flag WCAG 2.2 AA issues: keyboard nav, color contrast, ARIA, focus management.
 
-Agent(sdlc-design-reviewer): Review planned changes for cluster "<name>" against meta/DESIGN_BRIEF.md.
+Agent(sdlc-design-reviewer): Review planned changes for cluster "<name>" against docs/agents/DESIGN_BRIEF.md (or meta/DESIGN_BRIEF.md in un-migrated repos).
 Files affected: <list>. Intent: <one-line summary>.
 Flag component reuse opportunities and design consistency risks.
 ```
@@ -111,11 +115,11 @@ If all four agents return no findings, omit that section.
 
 ### Step 7 — Write Plan Files
 
-Write one `meta/plans/<slug>.md` per cluster using the **Standard Plan Template** below.
+Write one `<config-root>/plans/<slug>.md` per cluster using the **Standard Plan Template** below.
 
-Then write (or update) `meta/plans/prd.json` — the plan index that `run-next-plan.py` reads:
+Then write (or update) `<config-root>/plans/prd.json` — the plan index that `run-next-plan.py` reads:
 
-1. Read `meta/plans/prd.json` if it exists; parse as JSON.
+1. Read `<config-root>/plans/prd.json` if it exists; parse as JSON.
 2. For each cluster, build a plan entry: `{"file": "<slug>.md", "issues": [N, M, ...], "size": "S|M|L|XL", "status": "pending", "attempts": 0, "blocked_by": []}`.
 3. Merge: if an entry with the same `file` already exists, preserve its `status` and `attempts`; overwrite all other fields. If no entry exists, add it as-is.
 4. Populate each entry's `blocked_by` array from the dependency analysis in Step 5 — list the `file` values of clusters that must merge first.
@@ -124,9 +128,9 @@ Then write (or update) `meta/plans/prd.json` — the plan index that `run-next-p
    `sdlc_review_status`, `sdlc_finding_issues`, `sdlc_review_completed_agents`, `pr_number`,
    `prd_issue`, `feature_branches`, and `smoke_test`. Dropping any of these desyncs the runner's
    incremental review gate — e.g. losing `last_reviewed_sha` stalls the re-arm on the next round.
-6. Write the merged object back to `meta/plans/prd.json`. (`integration_branch` is set by Step 8 below, once the real date-slugged branch name exists — don't stamp a placeholder here.)
+6. Write the merged object back to `<config-root>/plans/prd.json`. (`integration_branch` is set by Step 8 below, once the real date-slugged branch name exists — don't stamp a placeholder here.)
 
-**No `meta/plans/README.md` is written or updated by this skill.**
+**No `<config-root>/plans/README.md` is written or updated by this skill.**
 
 Size key: `S` (1–3 files), `M` (4–8 files), `L` (9–15 files), `XL` (16+ files or new infra).
 
@@ -188,7 +192,7 @@ Size key: `S` (1–3 files), `M` (4–8 files), `L` (9–15 files), `XL` (16+ fi
 
 ## Review Mode (`/plan-iteration review [plan-name]`)
 
-1. List `meta/plans/*.md`. If a plan name is given, review only that one.
+1. List `<config-root>/plans/*.md`. If a plan name is given, review only that one.
 2. For each plan, dispatch the same four planning-review agents as Step 6 (series by default; parallel with `--parallel`),
    using the plan's **Implementation Notes** and **Context** sections as input.
 3. Print a per-plan findings summary. Suggest edits but do not auto-modify plan files.

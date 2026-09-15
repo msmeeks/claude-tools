@@ -115,7 +115,8 @@ Screenshots live in `help-docs/demos/screenshots/`. HTML files in `features/` re
 
 ## Brand compliance
 
-Always read `meta/BRAND_VOICE.md` before writing any script content. Match voice, tone, and terminology defined there.
+Always read `docs/agents/BRAND_VOICE.md` (`meta/BRAND_VOICE.md` in un-migrated repos) before
+writing any script content. Match voice, tone, and terminology defined there.
 
 ## CLI delegation
 
@@ -125,7 +126,7 @@ If `demo-gen` is available in PATH, delegate to it instead of generating inline:
 demo-gen generate \
   --product "<Product Name>" \
   --feature "<feature>" \
-  --brand-voice ./meta/BRAND_VOICE.md \
+  --brand-voice ./docs/agents/BRAND_VOICE.md \
   --polish standard \
   --format both \
   --screenshot help-docs/demos/screenshots/<slug1>.png \
@@ -144,7 +145,8 @@ After running, update `help-docs/demos/index.html` to link the new demo card.
 
 ## Fallback implementation steps (when demo-gen is not installed)
 
-1. Read `meta/BRAND_VOICE.md` and `docs/llms.md`
+1. Read `docs/agents/BRAND_VOICE.md` (`meta/BRAND_VOICE.md` in un-migrated repos) and the
+   context index (`CONTEXT-MAP.md`/`CONTEXT.md`, or `docs/llms.md` in un-migrated repos)
 2. Read the relevant feature doc(s) in `docs/features/`
 3. Capture real screenshots using the CDP approach above (or reuse existing ones from `help-docs/demos/screenshots/`)
 4. Write the HTML artifact using real `<img>` tags (not inline CSS mock-ups)

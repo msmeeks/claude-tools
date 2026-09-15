@@ -27,7 +27,7 @@ skills/                   # Slash-command skills
   triage-pr-comments/     # /triage-pr-comments — turn PR review comments into plan files
 
 scripts/                  # Standalone Python scripts
-  run-next-plan.py        # Ralph Wiggum loop: runs Claude against meta/plans/prd.json in a loop
+  run-next-plan.py        # Ralph Wiggum loop: runs Claude against <config-root>/plans/prd.json in a loop
   pyproject.toml          # ruff + pytest config for scripts/
   tests/                  # pytest suite for run-next-plan.py
 
@@ -54,9 +54,11 @@ demo-gen/                 # Python CLI invoked by the /demo skill
   meta/                   # BRAND_VOICE.md / DESIGN_BRIEF.md / PRIVACY.md
   help-docs/              # reference example output
 
+CONTEXT-MAP.md            # root context index (links a CONTEXT.md per top-level area)
+
 docs/                     # Internal project docs (not customer-facing)
-  llms.md                 # index of all doc files
-  overview.md             # project purpose, architecture, tech stack
+  adr/                    # architecture decision records
+  agents/                 # this repo's own project-scoped config (plans, PRIVACY.md, ...)
   features/               # one .md per feature area
 
 statusline/               # ccstatusline config (Session/Weekly usage %, context tokens, etc.)
@@ -130,13 +132,15 @@ upgrade.
 
 ## Ralph Wiggum loop (`scripts/run-next-plan.py`)
 
-Autonomous plan executor. Reads `meta/plans/prd.json` and runs a non-interactive Claude session
+Autonomous plan executor. Reads `<config-root>/plans/prd.json` (`docs/agents/` in the current
+layout, `meta/` in un-migrated repos — see [ADR 0001](./docs/adr/0001-scaffolding-layout-with-dual-read-fallback.md))
+and runs a non-interactive Claude session
 that picks the highest-priority unblocked plan, implements it, and loops until all plans are
 done or stalled. The Python layer handles attempt tracking, rate-limit retries, stall detection,
 and an SDLC review gate; all task-selection intelligence is delegated to Claude.
 
 ```bash
-# Run from inside any git repo that has meta/plans/prd.json (created by /plan-iteration)
+# Run from inside any git repo that has <config-root>/plans/prd.json (created by /plan-iteration)
 python3 ~/.claude/scripts/run-next-plan.py [options]
 
 Options:
@@ -154,7 +158,7 @@ Plans that exceed 5 attempts are marked stalled.
 host, with full access to your filesystem and credentials. Its only defense against a
 malicious plan or issue body is prompt framing (every prompt marks plan content as untrusted
 document text), which is a mitigation, not a boundary. Point it only at repos whose issue
-tracker you trust — see `meta/PRIVACY.md`.
+tracker you trust — see `docs/agents/PRIVACY.md` (`meta/PRIVACY.md` in un-migrated repos).
 
 **SDLC review gate:** once all plans are done/stalled, the loop automatically runs a full
 `/sdlc` review of the integration branch, files findings as GitHub issues, triages them into
@@ -199,14 +203,14 @@ Tests: `cd scripts && python3 -m pytest`
 
 | Skill | Invoke | Purpose |
 |---|---|---|
-| close-iteration | `/close-iteration` | Gate-check completion, merge integration PR, close issues, clean up branches and `meta/plans/` |
+| close-iteration | `/close-iteration` | Gate-check completion, merge integration PR, close issues, clean up branches and `<config-root>/plans/` |
 | demo | `/demo [feature]` | Generate HTML demo script + MP4 walkthrough video |
 | help-docs | `/help-docs` | Generate customer-facing UI guide, API reference, and demo gallery |
-| plan-iteration | `/plan-iteration` | Groom backlog: triage issues, cluster into workstreams, write plan files to `meta/plans/` |
+| plan-iteration | `/plan-iteration` | Groom backlog: triage issues, cluster into workstreams, write plan files to `<config-root>/plans/` |
 | pr-image-upload | `/pr-image-upload [PR#] <files>` | Upload screenshots to GitHub and return markdown image tags (private-repo safe) |
 | rank-backlog | `/rank-backlog "Team Name"` | Rank GUS backlog items as candidates for nevering |
 | sdlc | `/sdlc` | Full SDLC pipeline: planning reviews → implementation → code review → QA → docs |
-| triage-pr-comments | `/triage-pr-comments` | Turn open PR reviewer comments into plan files in `meta/plans/` |
+| triage-pr-comments | `/triage-pr-comments` | Turn open PR reviewer comments into plan files in `<config-root>/plans/` |
 
 ## Agents reference
 
@@ -220,7 +224,7 @@ All SDLC agents are prefixed `sdlc-` to avoid name collisions.
 | sdlc-privacy-reviewer | GDPR, PII handling, consent flows, data minimization |
 | sdlc-accessibility-reviewer | WCAG 2.2 AA, keyboard nav, ARIA, color contrast |
 | sdlc-design-reviewer | Design brief adherence, component reuse, spacing/color tokens |
-| sdlc-doc-writer | Maintains `docs/features/` and `docs/llms.md` |
+| sdlc-doc-writer | Maintains `docs/features/` and the context index (`CONTEXT-MAP.md`/`CONTEXT.md`, or `docs/llms.md` in un-migrated repos) |
 | sdlc-qa-engineer | Automated tests, smoke tests, regression checks |
 | sdlc-test-reviewer | Test value, edge cases, branch coverage, 90%+ line coverage, FE+BE parity, boundary cases |
 

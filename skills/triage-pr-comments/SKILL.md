@@ -1,12 +1,12 @@
 ---
 name: triage-pr-comments
-description: Triage comments on open GitHub PRs and write a response plan per PR to meta/plans/, indexed in meta/plans/prd.json. Each plan uses the PR's existing branch and worktree, groups all reviewer comments into concrete implementation steps, and runs /sdlc plan review. Supports iterative review cycles — re-running adds new comments to existing plans and skips already-addressed ones. Use when asked to respond to PR feedback, address review comments, triage PR comments, action reviewer requests, or plan PR responses.
+description: Triage comments on open GitHub PRs and write a response plan per PR to <config-root>/plans/, indexed in <config-root>/plans/prd.json. Each plan uses the PR's existing branch and worktree, groups all reviewer comments into concrete implementation steps, and runs /sdlc plan review. Supports iterative review cycles — re-running adds new comments to existing plans and skips already-addressed ones. Use when asked to respond to PR feedback, address review comments, triage PR comments, action reviewer requests, or plan PR responses.
 ---
 
 # Triage PR Comments
 
 Reviews all open pull requests for the current project, collects unresolved reviewer comments,
-and writes one ready-to-execute plan file per PR to `meta/plans/`. Plans reuse the PR's
+and writes one ready-to-execute plan file per PR to `<config-root>/plans/`. Plans reuse the PR's
 existing branch and worktree — no new branch is created. Comments from different PRs are never
 combined into a single plan.
 
@@ -26,8 +26,10 @@ Re-running updates existing plans with new comments rather than creating duplica
 
 ### Step 1 — Bootstrap
 
-1. Read `docs/llms.md`. If it doesn't exist, stop and tell the user to run `/sdlc` first.
-2. Ensure `meta/plans/` directory exists (`mkdir -p meta/plans`).
+1. Read the context index: `CONTEXT-MAP.md` (or a root `CONTEXT.md`), or `docs/llms.md` in
+   un-migrated repos. If neither exists, stop and tell the user to run `/sdlc` first.
+2. Resolve the config root (`<config-root>` below): `docs/agents/` if it exists, else `meta/`.
+   Ensure `<config-root>/plans/` directory exists (`mkdir -p <config-root>/plans`).
 3. Resolve `{owner}` and `{repo}` once for use in all `gh api` calls:
    ```bash
    gh repo view --json nameWithOwner --jq '.nameWithOwner'
@@ -90,7 +92,7 @@ Collect three lists per PR: `new_comments`, `in_review_comments`, `addressed_com
 
 ### Step 2c — Incremental Plan Update Logic
 
-Check whether `meta/plans/pr-<N>-comments.md` already exists:
+Check whether `<config-root>/plans/pr-<N>-comments.md` already exists:
 
 **Case 1 — No existing plan:** proceed to Steps 3–6 to create one.
 
@@ -102,7 +104,7 @@ New reviewer comments arrived since last triage. Update the existing plan:
 - Append new rows to the appropriate Reviewer Comment tables (categorise as in Step 3)
 - Update the `<!-- reactions: ... -->` metadata line to include the new comment IDs
 - Add 👀 reactions to all new comment IDs (Step 2d below)
-- If the plan's `meta/plans/prd.json` entry has `status: "done"`, reset `status` to
+- If the plan's `<config-root>/plans/prd.json` entry has `status: "done"`, reset `status` to
   `"pending"` and `attempts` to `0` (new comments re-open the work). This entry-level reset is
   **sufficient** — do **not** touch the top-level `sdlc_review_status` (or any other top-level
   gate field). The runner re-arms the gate on its own and reviews only the new commits
@@ -166,7 +168,7 @@ Agent(sdlc-accessibility-reviewer): Review planned UI comment responses for PR #
 Files affected: <list>. Reviewer requests: <summary>.
 Flag WCAG 2.2 AA issues: keyboard nav, color contrast, ARIA, focus management.
 
-Agent(sdlc-design-reviewer): Review planned comment responses for PR #<N> against meta/DESIGN_BRIEF.md.
+Agent(sdlc-design-reviewer): Review planned comment responses for PR #<N> against docs/agents/DESIGN_BRIEF.md (or meta/DESIGN_BRIEF.md in un-migrated repos).
 Files affected: <list>. Reviewer requests: <summary>.
 Flag component reuse opportunities and design consistency risks.
 ```
@@ -176,13 +178,13 @@ Omit that section if all four agents return no findings.
 
 ### Step 6 — Write Plan Files
 
-Write one `meta/plans/pr-<number>-comments.md` per PR using the **Standard Plan Template**
+Write one `<config-root>/plans/pr-<number>-comments.md` per PR using the **Standard Plan Template**
 below. The filename `pr-<N>-comments.md` is the stable identifier across all iterative rounds.
 
-Then write (or update) `meta/plans/prd.json` — the same plan index `/triage-issues` and
+Then write (or update) `<config-root>/plans/prd.json` — the same plan index `/triage-issues` and
 `run-next-plan.py` read:
 
-1. Read `meta/plans/prd.json` if it exists; parse as JSON.
+1. Read `<config-root>/plans/prd.json` if it exists; parse as JSON.
 2. For each PR with new/updated comments, build a plan entry: `{"file": "pr-<N>-comments.md", "type": "pr-comments", "pr": N, "size": "S|M|L", "status": "pending", "attempts": 0, "blocked_by": []}`.
 3. Merge: if an entry with the same `file` already exists, preserve its existing `status`
    and `attempts` values and overwrite all other fields. If no entry exists for that `file`,
@@ -194,15 +196,15 @@ Then write (or update) `meta/plans/prd.json` — the same plan index `/triage-is
    `sdlc_review_status`, `sdlc_finding_issues`, `sdlc_review_completed_agents`, `pr_number`,
    `prd_issue`, `feature_branches`, and `smoke_test`. Dropping any of these desyncs the runner's
    incremental review gate — e.g. losing `last_reviewed_sha` stalls the re-arm on the next round.
-6. Write the merged object back to `meta/plans/prd.json`.
+6. Write the merged object back to `<config-root>/plans/prd.json`.
 
-**No `meta/plans/README.md` is written or updated by this skill.**
+**No `<config-root>/plans/README.md` is written or updated by this skill.**
 
 ---
 
 ## Review Mode (`/triage-pr-comments review [pr-number]`)
 
-1. List `meta/plans/pr-*-comments.md`. If a PR number is given, review only that plan.
+1. List `<config-root>/plans/pr-*-comments.md`. If a PR number is given, review only that plan.
 2. For each plan, read its content and dispatch the same four planning-review agents as Step 5,
    using the plan's **Files to Modify** table and **Reviewer Comments** section as input.
 3. Print a per-plan findings summary. Suggest specific edits but do not auto-modify plan files.

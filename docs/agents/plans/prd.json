@@ -18,8 +18,8 @@
         55
       ],
       "size": "XL",
-      "status": "pending",
-      "attempts": 0,
+      "status": "done",
+      "attempts": 1,
       "blocked_by": [
         "fix-run-next-plan-loop-economy.md"
       ]

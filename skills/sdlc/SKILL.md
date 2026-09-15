@@ -22,10 +22,11 @@ This skill manages the full review and QA pipeline for code changes. Always invo
 
 ## Phase 0: Doc bootstrap (first time in a project)
 
-If `docs/` does not exist in the project root, dispatch first:
+If neither `CONTEXT-MAP.md`/`CONTEXT.md` nor `docs/llms.md` exists in the project root,
+dispatch first:
 
 ```
-Agent(sdlc-doc-writer): The docs/ directory does not exist for this project. Create it with docs/llms.md, docs/overview.md, and docs/features/ stubs for each major feature area. Read the codebase to understand the project before writing.
+Agent(sdlc-doc-writer): No context index exists for this project. Create CONTEXT-MAP.md at the root plus one CONTEXT.md per top-level area, docs/adr/ for architecture decisions, and docs/features/ stubs for each major feature area. Read the codebase to understand the project before writing.
 ```
 
 ## Phase 1: Planning (run before implementation)
@@ -33,7 +34,7 @@ Agent(sdlc-doc-writer): The docs/ directory does not exist for this project. Cre
 **Step 1 — Read docs first.** Dispatch the doc-writer to load context before touching code:
 
 ```
-Agent(sdlc-doc-writer): Read docs/llms.md and load the feature doc(s) relevant to [feature/task description]. Summarize what's documented, flag any gaps or outdated sections, and identify the key files and patterns I should know before implementing.
+Agent(sdlc-doc-writer): Read the context index (CONTEXT-MAP.md/CONTEXT.md, or docs/llms.md in un-migrated repos) and load the feature doc(s) relevant to [feature/task description]. Summarize what's documented, flag any gaps or outdated sections, and identify the key files and patterns I should know before implementing.
 ```
 
 **Step 2 — Dispatch planning reviews in series** (after reading doc summary). Run each agent and wait for its result before dispatching the next. With `--parallel`, dispatch all four simultaneously:
@@ -108,7 +109,7 @@ Agent(sdlc-qa-engineer): Run automated tests, lint, API smoke tests, and regress
 
 [wait, then:]
 
-Agent(sdlc-doc-writer): Update documentation for [feature changed]. Create or update the relevant docs/features/<name>.md, and update docs/llms.md if any new doc files were created.
+Agent(sdlc-doc-writer): Update documentation for [feature changed]. Create or update the relevant docs/features/<name>.md, and update the context index (CONTEXT-MAP.md/CONTEXT.md, or docs/llms.md in un-migrated repos) if any new doc files were created.
 ```
 
 QA must **PASS** before marking the task complete. Any QA failure must be fixed and QA re-run. Documentation must be updated before the task is marked done.
@@ -133,11 +134,16 @@ cd backend && python3 -m mypy app/ --ignore-missing-imports
 
 ## Design brief
 
-Before any UI work, verify `meta/DESIGN_BRIEF.md` exists. If not, create the `meta/` directory and populate `meta/DESIGN_BRIEF.md`, `meta/BRAND_VOICE.md`, and `meta/PRIVACY.md` using the templates in the global `CLAUDE.md`.
+Before any UI work, verify `docs/agents/DESIGN_BRIEF.md` exists (`meta/DESIGN_BRIEF.md` in
+un-migrated repos). If not, create the config root's directory and populate
+`DESIGN_BRIEF.md`, `BRAND_VOICE.md`, and `PRIVACY.md` there from scratch — there is no
+starter template for these; write each from the project's actual UI, voice, and data-handling
+choices.
 
 ## Summary checklist
 
-- [ ] `docs/` directory exists; `docs/llms.md` index is current
+- [ ] Context index exists (`CONTEXT-MAP.md`/`CONTEXT.md`, or `docs/llms.md` in un-migrated
+      repos) and is current
 - [ ] Doc review done at planning start (doc-writer read relevant feature docs)
 - [ ] Planning reviews done (security, privacy, a11y, design)
 - [ ] Implementation follows DRY/SOLID, minimal deps, TDD
@@ -145,7 +151,7 @@ Before any UI work, verify `meta/DESIGN_BRIEF.md` exists. If not, create the `me
 - [ ] All 7 review agents run (series by default; `--parallel` if speed needed)
 - [ ] All Critical/Blocker findings fixed
 - [ ] QA agent run and PASS
-- [ ] Doc update done (feature doc + llms.md)
+- [ ] Doc update done (feature doc + context index)
 - [ ] Design brief up to date
 
 ## Demo & Help-Docs Phase (run after docs phase on significant features)
@@ -170,6 +176,6 @@ Update `help-docs/demos/index.html` to include the new demo card.
 ## Brand compliance check
 
 Before finalizing any user-facing content in the docs or demo phases, verify:
-- `meta/BRAND_VOICE.md` exists
-- All copy matches the voice attributes in `meta/BRAND_VOICE.md`
+- `docs/agents/BRAND_VOICE.md` exists (`meta/BRAND_VOICE.md` in un-migrated repos)
+- All copy matches the voice attributes there
 - Product name, tagline, and terminology are consistent

@@ -39,10 +39,10 @@ help-docs/
 ## Generation rules
 
 ### Before writing anything
-1. Read `meta/BRAND_VOICE.md`
-2. Read `docs/llms.md` to orient
-3. Read `docs/overview.md` for product context
-4. Read relevant feature docs for each section
+1. Read `docs/agents/BRAND_VOICE.md` (`meta/BRAND_VOICE.md` in un-migrated repos)
+2. Read the context index (`CONTEXT-MAP.md`/`CONTEXT.md`, or `docs/llms.md` +
+   `docs/overview.md` in un-migrated repos) to orient
+3. Read relevant feature docs for each section
 
 ### UI Guide (`help-docs/ui/index.html`)
 - Audience: non-technical admins and workers
@@ -71,7 +71,9 @@ After generating UI docs, invoke the demo skill for:
 
 ## Brand compliance
 
-All user-facing copy must match `meta/BRAND_VOICE.md`. Technical API docs may be more formal but must use canonical product terminology.
+All user-facing copy must match `docs/agents/BRAND_VOICE.md` (`meta/BRAND_VOICE.md` in
+un-migrated repos). Technical API docs may be more formal but must use canonical product
+terminology.
 
 ## Update hook
 
