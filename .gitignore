@@ -3,10 +3,13 @@
 __pycache__/
 *.log
 .coverage
-meta/plans/implementation-logs/
-meta/plans/prd.json.lock
-meta/sdlc-review-findings.md
-meta/pr-summary.md
+# run-next-plan.py runtime artifacts. Name patterns, not exact paths: these files live
+# under docs/agents/ in the scaffolding layout and under meta/ in the original one, and a
+# raw session transcript reaching this public repo is the worst failure either layout has.
+**/implementation-logs/
+**/prd.json.lock
+**/sdlc-review-findings.md
+**/pr-summary.md
 
 # Python build / venv — scoped to demo-gen subproject so we don't
 # accidentally hide unrelated build/ or dist/ dirs elsewhere in the repo.

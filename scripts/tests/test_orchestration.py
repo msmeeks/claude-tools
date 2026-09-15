@@ -23,8 +23,8 @@ _working_tree_dirty = run_next_plan._working_tree_dirty
 _push_branch = run_next_plan._push_branch
 ensure_committed = run_next_plan.ensure_committed
 flush_push = run_next_plan.flush_push
-_ensure_logs_gitignored = run_next_plan._ensure_logs_gitignored
-_LOGS_REL = run_next_plan._LOGS_REL
+_ensure_artifacts_gitignored = run_next_plan._ensure_artifacts_gitignored
+logs_rel = run_next_plan.logs_rel
 
 
 def _init_repo(path):
@@ -295,7 +295,7 @@ def test_working_tree_dirty_true_with_uncommitted_change(tmp_path):
 
 
 def _write_run_log(repo_root, name="run-next-plan-2026_01_01_T00_00_00.log"):
-    logs_dir = repo_root / "meta" / "plans" / "implementation-logs"
+    logs_dir = repo_root / logs_rel(repo_root)
     logs_dir.mkdir(parents=True, exist_ok=True)
     (logs_dir / name).write_text("a log line\n")
 
@@ -306,48 +306,55 @@ def _is_ignored(repo_root, rel_path):
     ).returncode == 0
 
 
-def test_ensure_logs_gitignored_adds_the_entry_when_absent(tmp_path):
+def test_ensure_artifacts_gitignored_adds_the_entry_when_absent(tmp_path):
     _init_repo(tmp_path)
-    _ensure_logs_gitignored(tmp_path)
-    assert _is_ignored(tmp_path, "meta/plans/implementation-logs/some.log")
+    _ensure_artifacts_gitignored(tmp_path)
+    assert _is_ignored(tmp_path, f"{logs_rel(tmp_path)}some.log")
 
 
-def test_ensure_logs_gitignored_appends_below_existing_rules_without_clobbering_them(tmp_path):
+def test_ensure_artifacts_gitignored_appends_below_existing_rules_without_clobbering_them(tmp_path):
     _init_repo(tmp_path)
     gitignore = tmp_path / ".gitignore"
     gitignore.write_text("node_modules/\ndist/\n")
 
-    _ensure_logs_gitignored(tmp_path)
+    _ensure_artifacts_gitignored(tmp_path)
 
     text = gitignore.read_text()
     assert text.startswith("node_modules/\ndist/\n")
-    assert text.endswith(f"{_LOGS_REL}\n")
-    assert _is_ignored(tmp_path, f"{_LOGS_REL}some.log")
+    assert logs_rel(tmp_path) in text
+    assert _is_ignored(tmp_path, f"{logs_rel(tmp_path)}some.log")
     assert not _is_ignored(tmp_path, "src/app.py")
 
 
-def test_ensure_logs_gitignored_leaves_an_already_ignoring_gitignore_untouched(tmp_path):
+def test_ensure_artifacts_gitignored_leaves_an_already_ignoring_gitignore_untouched(tmp_path):
     _init_repo(tmp_path)
     gitignore = tmp_path / ".gitignore"
-    gitignore.write_text("*.log\n")
-    _ensure_logs_gitignored(tmp_path)
-    assert gitignore.read_text() == "*.log\n"
+    gitignore.write_text(
+        "**/implementation-logs/\nprd.json.lock\nsdlc-review-findings.md\npr-summary.md\n"
+    )
+    before = gitignore.read_text()
+    _ensure_artifacts_gitignored(tmp_path)
+    assert gitignore.read_text() == before
 
 
-def test_ensure_logs_gitignored_untracks_logs_the_repo_already_committed(tmp_path):
+def test_ensure_artifacts_gitignored_untracks_logs_the_repo_already_committed(tmp_path):
     _init_repo(tmp_path)
     _write_run_log(tmp_path, "old-run.log")
     subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "tracked log"], cwd=tmp_path, check=True)
 
-    _ensure_logs_gitignored(tmp_path)
+    _ensure_artifacts_gitignored(tmp_path)
 
     tracked = subprocess.run(
-        ["git", "ls-files", _LOGS_REL], capture_output=True, text=True, cwd=tmp_path, check=True
+        ["git", "ls-files", logs_rel(tmp_path)],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=True,
     ).stdout
     assert tracked == ""
     # The log itself must survive on disk — the runner is writing to it right now.
-    assert (tmp_path / _LOGS_REL / "old-run.log").exists()
+    assert (tmp_path / logs_rel(tmp_path) / "old-run.log").exists()
 
 
 def test_working_tree_dirty_ignores_the_scripts_own_run_log(tmp_path):
@@ -505,7 +512,7 @@ def test_exit_flush_never_pushes_the_run_log(tmp_path):
         capture_output=True, text=True, cwd=local, check=True,
     ).stdout.split()
     assert committed == ["README.md"]
-    assert _LOGS_REL not in "\n".join(committed)
+    assert logs_rel(tmp_path) not in "\n".join(committed)
 
 
 def test_exit_flush_is_a_noop_when_nothing_is_outstanding(tmp_path):
@@ -621,3 +628,24 @@ def test_dry_run_registers_no_exit_flush(tmp_path):
         run_next_plan._register_exit_flush(tmp_path, "main", dry_run=True)
 
     fake_register.assert_not_called()
+
+
+def test_safety_net_commit_succeeds_when_the_log_dir_is_gitignored(tmp_path):
+    """Every real run gitignores its own log directory. `git add` exits 1 if an exclude
+    pathspec names an ignored directory, so the safety-net commit must not stage that way —
+    otherwise the one path that exists to keep work from being lost raises instead."""
+    local, _ = _init_repo_with_remote(tmp_path)
+    _ensure_artifacts_gitignored(local)
+    _write_run_log(local)
+    (local / "README.md").write_text("changed by plan\n")
+
+    with patch.object(run_next_plan, "invoke_claude", return_value=("", 0)):
+        ensure_committed(local, "main", "plan a.md")
+
+    committed = subprocess.run(
+        ["git", "show", "--name-only", "--format=", "HEAD"],
+        capture_output=True, text=True, cwd=local, check=True,
+    ).stdout.split()
+    assert "README.md" in committed
+    assert ".gitignore" in committed
+    assert not any("implementation-logs" in path for path in committed)

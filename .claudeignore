@@ -40,4 +40,4 @@ uv.lock
 logs/
 uploads/
 demo-gen/output/
-meta/plans/implementation-logs/
+**/implementation-logs/

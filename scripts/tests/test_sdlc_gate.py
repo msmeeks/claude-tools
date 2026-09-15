@@ -886,6 +886,7 @@ def test_final_round_still_records_its_filed_issues_for_the_refile_guard(tmp_pat
 
 
 def test_final_round_triage_is_told_not_to_write_plans(tmp_path):
+    (tmp_path / "meta" / "plans").mkdir(parents=True)  # un-migrated layout
     prd_path = tmp_path / "prd.json"
     data = _valid_prd()
     data["sdlc_review_rounds"] = 1
@@ -906,6 +907,35 @@ def test_final_round_triage_is_told_not_to_write_plans(tmp_path):
     triage_prompt = next(p for p in prompts if "run /triage" in p)
     assert "Do NOT write any plan files" in triage_prompt
     assert "Do NOT add any entries to meta/plans/prd.json" in triage_prompt
+
+
+def test_gate_prompts_name_the_resolved_config_root(tmp_path):
+    """A migrated repo's prompts must name docs/agents/, not the layout this script was
+    written against — otherwise the loop tells Claude to write to a directory that does not
+    exist in the repo in front of it."""
+    (tmp_path / "docs" / "agents" / "plans").mkdir(parents=True)
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    prompts = []
+
+    def recording(prompt, repo_root):
+        prompts.append(prompt)
+        return _fake_gate_claude(prompt, repo_root)
+
+    with patch.object(run_next_plan, "invoke_claude", side_effect=recording), patch.object(
+        run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
+    ):
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+
+    review_prompt = next(p for p in prompts if "review agents in parallel" in p)
+    assert "docs/agents/sdlc-review-findings.md" in review_prompt
+    file_issues_prompt = next(p for p in prompts if "file a GitHub issue" in p)
+    assert "docs/agents/sdlc-review-findings.md" in file_issues_prompt
+    triage_prompt = next(p for p in prompts if "run /triage" in p)
+    assert "docs/agents/plans/<slug>.md" in triage_prompt
+    assert "docs/agents/plans/implementation-logs/" in triage_prompt
+    assert "meta/plans" not in "\n".join(prompts)
 
 
 def test_non_final_round_triage_still_clusters_issues_into_plans(tmp_path):
