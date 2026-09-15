@@ -260,7 +260,7 @@ def test_run_sdlc_review_gate_marks_status_complete_after_running(tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert load_prd(prd_path)["sdlc_review_status"] == "complete"
     assert len(calls) == 4
@@ -285,7 +285,7 @@ def test_gate_persists_head_as_baseline_and_clears_bookkeeping_on_completion(tmp
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     loaded = load_prd(prd_path)
     assert loaded["last_reviewed_sha"] == FAKE_HEAD_SHA
@@ -311,7 +311,7 @@ def test_gate_first_run_reviews_whole_pr_against_default_branch(tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     review_prompt = next(p for p in prompts if "Dispatch these review agents" in p)
     assert "main...HEAD" in review_prompt
@@ -336,7 +336,7 @@ def test_gate_incremental_run_reviews_only_commits_since_baseline(tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     review_prompt = next(p for p in prompts if "Dispatch these review agents" in p)
     assert f"{FAKE_BASELINE_SHA}..HEAD" in review_prompt
@@ -360,7 +360,7 @@ def test_gate_empty_increment_marks_complete_without_reviewing(tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
-        result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert result == "complete"
     assert calls == []  # never invoked reviewers, issue-filing, or triage
@@ -409,7 +409,7 @@ def test_gate_accumulates_finding_issues_across_rounds(tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     loaded = load_prd(prd_path)
     assert loaded["sdlc_finding_issues"] == [99, 11]  # cumulative, not overwritten
@@ -433,7 +433,7 @@ def test_gate_dedupes_finding_issues_when_a_number_recurs(tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert load_prd(prd_path)["sdlc_finding_issues"] == [11]  # deduped, no duplicate
 
@@ -461,7 +461,7 @@ def test_gate_reround_files_its_own_issues_despite_prior_cumulative(tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert state["file_calls"] == 1  # filed exactly once for the new round
     assert load_prd(prd_path)["sdlc_finding_issues"] == [99, 11]
@@ -492,7 +492,7 @@ def test_gate_round_scratch_guard_prevents_refiling_within_a_round(tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert state["file_calls"] == 0  # never re-filed
     assert "#11" in state["triage_issues"]  # triaged the already-filed round issue
@@ -519,7 +519,7 @@ def test_gate_rotates_stale_findings_file_at_fresh_round_start(tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert not findings.exists()  # stale file was rotated away, not appended to
 
@@ -545,7 +545,7 @@ def test_gate_preserves_findings_file_on_mid_round_resume(tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert findings.exists()
     assert "This round's finding" in findings.read_text()  # preserved, not rotated
@@ -560,7 +560,7 @@ def test_rotate_findings_file_refuses_symlink(tmp_path):
     link.symlink_to(outside)
 
     with pytest.raises(SystemExit):
-        run_next_plan._rotate_findings_file(tmp_path)
+        run_next_plan._rotate_findings_file(tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert outside.exists()  # symlink target left untouched
 
@@ -589,7 +589,7 @@ def test_run_sdlc_review_gate_waits_out_a_session_limit_then_completes(tmp_path)
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.time, "sleep", side_effect=slept.append
     ), patch.object(run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run):
-        result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert result == "complete"
     assert get_sdlc_review_status(load_prd(prd_path)) == "complete"
@@ -616,7 +616,7 @@ def test_run_sdlc_review_gate_ignores_quoted_limit_text_on_successful_review(tmp
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.time, "sleep", side_effect=slept.append
     ), patch.object(run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run):
-        result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert result == "complete"
     assert not slept  # never mistook the quoted limit string for a real limit
@@ -645,7 +645,7 @@ def test_run_sdlc_review_gate_resumes_triage_after_waiting_out_a_limit(tmp_path)
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.time, "sleep"
     ), patch.object(run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run):
-        result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert result == "complete"
     data = load_prd(prd_path)
@@ -678,7 +678,7 @@ def test_run_sdlc_review_gate_escalates_to_serial_after_two_parallel_limit_hits(
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.time, "sleep"
     ), patch.object(run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run):
-        result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert result == "complete"
     parallel_calls = [p for p in prompts if "Dispatch these review agents" in p]
@@ -703,7 +703,7 @@ def test_run_sdlc_review_gate_gives_up_incomplete_after_max_attempts(tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
         run_next_plan.time, "sleep", side_effect=slept.append
     ), patch.object(run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run):
-        result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert result == "incomplete"
     assert get_sdlc_review_status(load_prd(prd_path)) == "pending"
@@ -722,7 +722,7 @@ def test_run_sdlc_review_gate_dies_when_gh_not_authenticated(tmp_path):
         ),
         pytest.raises(SystemExit),
     ):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert load_prd(prd_path).get("sdlc_review_status", "pending") == "pending"
 
@@ -739,7 +739,9 @@ def _run_gate(prd_path, tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=_fake_gate_claude), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
-        return run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        return run_next_plan.run_sdlc_review_gate(
+            prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path)
+        )
 
 
 def test_gate_increments_review_rounds_on_a_completed_round(tmp_path):
@@ -880,7 +882,7 @@ def test_final_round_still_records_its_filed_issues_for_the_refile_guard(tmp_pat
     with patch.object(run_next_plan, "invoke_claude", side_effect=_fake_gate_claude), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ), patch.object(run_next_plan, "_with_prd_lock", side_effect=spy):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert [11] in seen
 
@@ -902,7 +904,7 @@ def test_final_round_triage_is_told_not_to_write_plans(tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=recording), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     triage_prompt = next(p for p in prompts if "run /triage" in p)
     assert "Do NOT write any plan files" in triage_prompt
@@ -926,7 +928,7 @@ def test_gate_prompts_name_the_resolved_config_root(tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=recording), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     review_prompt = next(p for p in prompts if "review agents in parallel" in p)
     assert "docs/agents/sdlc-review-findings.md" in review_prompt
@@ -951,7 +953,7 @@ def test_non_final_round_triage_still_clusters_issues_into_plans(tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=recording), patch.object(
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     triage_prompt = next(p for p in prompts if "run /triage" in p)
     assert "Do NOT write any plan files" not in triage_prompt
@@ -977,6 +979,6 @@ def test_a_completed_gate_round_issues_exactly_one_push(tmp_path):
     with patch.object(run_next_plan, "invoke_claude", side_effect=_fake_gate_claude), patch.object(
         run_next_plan.subprocess, "run", side_effect=ahead_of_upstream
     ):
-        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path)
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert len(pushes) == 1

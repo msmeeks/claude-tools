@@ -53,8 +53,8 @@
         60
       ],
       "size": "M",
-      "status": "pending",
-      "attempts": 0,
+      "status": "done",
+      "attempts": 1,
       "blocked_by": []
     },
     {
@@ -85,7 +85,7 @@
     64,
     65
   ],
-  "sdlc_review_status": "complete",
+  "sdlc_review_status": "pending",
   "last_reviewed_sha": "45ee6f065704d40084b381d6b9c345579ab15413",
   "sdlc_review_rounds": 1
 }

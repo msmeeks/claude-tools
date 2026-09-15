@@ -78,3 +78,39 @@ QA: `cd scripts && python3 -m pytest` — 161 passed (13 in `test_config_root.py
 clean; manual grep sweep for stale `meta/plans`, `meta/PRIVACY`, `docs/llms.md`,
 `docs/overview.md`, `meta/DESIGN_BRIEF.md`, `meta/BRAND_VOICE.md` outside `demo-gen/` and
 `sample-projects/` turned up only intentional dual-layout fallback mentions.
+
+## 2026-09-15 — refactor-config-root-single-resolution.md
+
+Closed issue #60. `resolve_config_root` — which performs real filesystem checks, including
+the both-layouts-present abort — was being called fresh from roughly a dozen call sites
+scattered across `scripts/run-next-plan.py` (directly, or via `config_root_rel`,
+`plans_dir_for`, `logs_rel`, and their callers), so a mid-run change to the working tree
+could trip the ambiguous-layout abort deep into a run, after other work had already been
+committed.
+
+- **Single resolution point.** `main()` now calls `resolve_config_root` exactly once, near
+  the top, before any prompt is built or long-running work begins, and holds the result in a
+  `config_root` local. Every function that previously re-derived the config root now takes it
+  as a parameter instead: `config_root_rel`, `plans_dir_for`, `logs_rel`, `work_pathspec`,
+  `stage_work`, `findings_path`, `pr_summary_path`, `_artifact_ignore_paths`,
+  `_ensure_artifacts_gitignored`, `_working_tree_dirty`, `ensure_committed`, `exit_flush`,
+  `_register_exit_flush`, `_build_claude_prompt`, `run_docs_phase`, `_generate_pr_summary`,
+  `update_pr_description`, `_run_review_phase`, `_rotate_findings_file`,
+  `_run_file_issues_phase`, `run_sdlc_review_gate`, `_run_triage_phase`, and
+  `_run_gate_and_continue`. `resolve_config_root` itself is unchanged — same symlink check,
+  both-layouts-present abort, and outside-repo check — only how often and where it runs
+  changed. As a side benefit, `exit_flush` (atexit-registered, must never raise) can no
+  longer trigger the abort itself, since it receives the already-resolved root rather than
+  re-deriving it.
+- **One relative-path idiom.** `config_root_rel` is now the single place that turns a
+  resolved config root into its repo-relative POSIX form; every call site that needs that
+  string calls it instead of reimplementing `.relative_to(...).as_posix()`.
+- Tracer-bullet test added first (`test_config_root_is_resolved_exactly_once_per_run` in
+  `test_config_root.py`): wraps `resolve_config_root` with a call counter around a full
+  `main()` run and asserts exactly one call. It failed before the refactor (a dozen-plus
+  calls) and passes after.
+
+QA: `cd scripts && python3 -m pytest` — 162 passed; `ruff check .` clean; manually confirmed
+via a throwaway repo with both `meta/` and `docs/agents/` present that `--dry-run` still
+aborts immediately at startup with the ambiguous-layout error, before any plan selection or
+prompt building.

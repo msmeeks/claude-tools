@@ -19,12 +19,31 @@ account_attempt = run_next_plan.account_attempt
 # arbitrary and load-bearing to nothing — detection keys on the non-zero exit code, not the
 # time — so it lives here once, clearly labelled, rather than as a stray literal in tests.
 SAMPLE_LIMIT_MESSAGE = "You've hit your session limit · resets 3:20am (America/New_York)"
-_working_tree_dirty = run_next_plan._working_tree_dirty
 _push_branch = run_next_plan._push_branch
-ensure_committed = run_next_plan.ensure_committed
 flush_push = run_next_plan.flush_push
-_ensure_artifacts_gitignored = run_next_plan._ensure_artifacts_gitignored
-logs_rel = run_next_plan.logs_rel
+resolve_config_root = run_next_plan.resolve_config_root
+
+
+def logs_rel(repo_root):
+    return run_next_plan.logs_rel(repo_root, resolve_config_root(repo_root))
+
+
+def _working_tree_dirty(repo_root):
+    return run_next_plan._working_tree_dirty(repo_root, resolve_config_root(repo_root))
+
+
+def ensure_committed(repo_root, integration_branch, context):
+    return run_next_plan.ensure_committed(
+        repo_root, resolve_config_root(repo_root), integration_branch, context
+    )
+
+
+def exit_flush(repo_root, integration_branch):
+    return run_next_plan.exit_flush(repo_root, resolve_config_root(repo_root), integration_branch)
+
+
+def _ensure_artifacts_gitignored(repo_root):
+    return run_next_plan._ensure_artifacts_gitignored(repo_root, resolve_config_root(repo_root))
 
 
 def _init_repo(path):
@@ -474,9 +493,6 @@ def test_flush_push_publishes_commits_left_by_ensure_committed(tmp_path):
     assert _remote_log(remote, "main")[1] == "init"
 
 
-exit_flush = run_next_plan.exit_flush
-
-
 def test_exit_flush_publishes_committed_but_unpushed_work(tmp_path):
     local, remote = _init_repo_with_remote(tmp_path)
     (local / "README.md").write_text("done by plan\n")
@@ -578,7 +594,9 @@ def _asserts_commit_only(prompt):
 
 
 def test_plan_prompt_asks_claude_to_commit_but_not_push(tmp_path):
-    prompt = run_next_plan._build_claude_prompt("integration/x", tmp_path)
+    prompt = run_next_plan._build_claude_prompt(
+        "integration/x", tmp_path, resolve_config_root(tmp_path)
+    )
     _asserts_commit_only(prompt)
 
 
@@ -591,7 +609,7 @@ def test_docs_phase_prompt_asks_claude_to_commit_but_not_push(tmp_path):
          patch.object(run_next_plan, "ensure_committed"), \
          patch.object(run_next_plan, "update_pr_description"), \
          patch.object(run_next_plan, "get_default_branch", return_value="main"):
-        run_next_plan.run_docs_phase(prd_path, tmp_path)
+        run_next_plan.run_docs_phase(prd_path, tmp_path, resolve_config_root(tmp_path))
 
     _asserts_commit_only(prompts[0])
 
@@ -599,7 +617,9 @@ def test_docs_phase_prompt_asks_claude_to_commit_but_not_push(tmp_path):
 def test_triage_prompt_asks_claude_to_commit_but_not_push(tmp_path):
     prompts = []
     with patch.object(run_next_plan, "_gate_invoke", side_effect=lambda phase, p, r: prompts.append(p)):
-        run_next_plan._run_triage_phase(tmp_path / "prd.json", tmp_path, [11], "log.txt")
+        run_next_plan._run_triage_phase(
+            tmp_path / "prd.json", tmp_path, resolve_config_root(tmp_path), [11], "log.txt"
+        )
 
     _asserts_commit_only(prompts[0])
 
@@ -615,9 +635,10 @@ def test_ralph_dockerfile_is_no_longer_a_recognised_feature():
 
 
 def test_exit_flush_is_registered_once_for_a_real_run(tmp_path):
+    config_root = resolve_config_root(tmp_path)
     with patch.object(run_next_plan.atexit, "register") as fake_register:
-        run_next_plan._register_exit_flush(tmp_path, "main", dry_run=False)
-        run_next_plan._register_exit_flush(tmp_path, "main", dry_run=False)
+        run_next_plan._register_exit_flush(tmp_path, config_root, "main", dry_run=False)
+        run_next_plan._register_exit_flush(tmp_path, config_root, "main", dry_run=False)
 
     fake_register.assert_called_once()
 
@@ -625,7 +646,7 @@ def test_exit_flush_is_registered_once_for_a_real_run(tmp_path):
 def test_dry_run_registers_no_exit_flush(tmp_path):
     run_next_plan._reset_exit_flush_registration()
     with patch.object(run_next_plan.atexit, "register") as fake_register:
-        run_next_plan._register_exit_flush(tmp_path, "main", dry_run=True)
+        run_next_plan._register_exit_flush(tmp_path, resolve_config_root(tmp_path), "main", dry_run=True)
 
     fake_register.assert_not_called()
 

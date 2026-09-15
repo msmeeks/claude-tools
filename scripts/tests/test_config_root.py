@@ -71,18 +71,19 @@ def test_unscaffolded_repo_defaults_to_the_new_layout(tmp_path):
 )
 def test_derived_paths_follow_the_resolved_root(tmp_path, layout, prefix):
     (tmp_path.joinpath(*layout) / "plans").mkdir(parents=True)
+    config_root = resolve_config_root(tmp_path)
 
-    assert run_next_plan.config_root_rel(tmp_path) == prefix
-    assert run_next_plan.plans_dir_for(tmp_path) == (tmp_path.joinpath(*layout) / "plans").resolve()
-    assert run_next_plan.logs_rel(tmp_path) == f"{prefix}/plans/implementation-logs/"
-    assert run_next_plan.work_pathspec(tmp_path) == [
+    assert run_next_plan.config_root_rel(tmp_path, config_root) == prefix
+    assert run_next_plan.plans_dir_for(config_root) == (tmp_path.joinpath(*layout) / "plans").resolve()
+    assert run_next_plan.logs_rel(tmp_path, config_root) == f"{prefix}/plans/implementation-logs/"
+    assert run_next_plan.work_pathspec(tmp_path, config_root) == [
         ".",
         f":(exclude){prefix}/plans/implementation-logs/",
     ]
-    assert run_next_plan.findings_path(tmp_path).name == "sdlc-review-findings.md"
-    assert run_next_plan.findings_path(tmp_path).parent == tmp_path.joinpath(*layout).resolve()
-    assert run_next_plan.pr_summary_path(tmp_path).name == "pr-summary.md"
-    assert run_next_plan.pr_summary_path(tmp_path).parent == tmp_path.joinpath(*layout).resolve()
+    assert run_next_plan.findings_path(config_root).name == "sdlc-review-findings.md"
+    assert run_next_plan.findings_path(config_root).parent == tmp_path.joinpath(*layout).resolve()
+    assert run_next_plan.pr_summary_path(config_root).name == "pr-summary.md"
+    assert run_next_plan.pr_summary_path(config_root).parent == tmp_path.joinpath(*layout).resolve()
 
 
 def _init_repo(path):
@@ -106,7 +107,7 @@ def test_artifacts_are_gitignored_under_either_layout(tmp_path, prefix):
     _init_repo(tmp_path)
     (tmp_path / prefix / "plans").mkdir(parents=True)
 
-    run_next_plan._ensure_artifacts_gitignored(tmp_path)
+    run_next_plan._ensure_artifacts_gitignored(tmp_path, resolve_config_root(tmp_path))
 
     for rel in (
         f"{prefix}/plans/implementation-logs/run.log",
@@ -121,7 +122,7 @@ def test_old_layout_repo_does_not_gain_new_layout_ignore_rules(tmp_path):
     _init_repo(tmp_path)
     (tmp_path / "meta" / "plans").mkdir(parents=True)
 
-    run_next_plan._ensure_artifacts_gitignored(tmp_path)
+    run_next_plan._ensure_artifacts_gitignored(tmp_path, resolve_config_root(tmp_path))
 
     assert "docs/agents" not in (tmp_path / ".gitignore").read_text()
 
@@ -136,7 +137,7 @@ def test_logging_is_refused_when_the_resolved_log_dir_stays_unignored(tmp_path, 
     )
 
     with pytest.raises(SystemExit):
-        run_next_plan._ensure_artifacts_gitignored(tmp_path)
+        run_next_plan._ensure_artifacts_gitignored(tmp_path, resolve_config_root(tmp_path))
 
     assert "not ignored" in capsys.readouterr().err.lower()
 
@@ -217,3 +218,57 @@ def test_orchestrator_drives_a_plan_set_to_completion_under_either_layout(
     log = next((tmp_path / prefix / "plans" / "implementation-logs").glob("*.log"))
     assert _is_ignored(tmp_path, str(log.relative_to(tmp_path)))
     run_next_plan._log_fh = None
+
+
+def test_config_root_is_resolved_exactly_once_per_run(tmp_path, monkeypatch):
+    """resolve_config_root performs real filesystem checks, including the both-layouts-present
+    abort. It must run once near the top of main() and hand its result down, not be
+    re-derived at each of the many call sites that need a config-root-relative value —
+    otherwise a mid-run change to the working tree could trip the abort deep into a run,
+    after other work has already been committed."""
+    import subprocess as sp
+
+    _init_repo(tmp_path)
+    (tmp_path / "README.md").write_text("hi\n")
+    sp.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    sp.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+
+    plans_dir = tmp_path / "docs" / "agents" / "plans"
+    plans_dir.mkdir(parents=True)
+    (plans_dir / "only-plan.md").write_text("# Plan\n\nNo issue references here.\n")
+    (plans_dir / "prd.json").write_text(
+        '{"plans": [{"file": "only-plan.md", "status": "pending", "attempts": 0, '
+        '"blocked_by": []}], "integration_branch": "integration/x", '
+        '"sdlc_review_status": "complete", "sdlc_review_rounds": 99}'
+    )
+
+    prompts: list[str] = []
+    monkeypatch.setattr(sys, "argv", ["run-next-plan.py"])
+    monkeypatch.setattr(run_next_plan.shutil, "which", lambda _cmd: "/usr/bin/claude")
+    real_popen = sp.Popen
+
+    def popen(cmd, *a, **kw):
+        if cmd and cmd[0] == "claude":
+            return _FakePopen(prompts, plans_dir / "prd.json")
+        return real_popen(cmd, *a, **kw)
+
+    monkeypatch.setattr(run_next_plan.subprocess, "Popen", popen)
+    monkeypatch.setattr(run_next_plan, "invoke_claude", lambda prompt, repo_root: ("", 0))
+    monkeypatch.setattr(run_next_plan, "_push_branch", lambda *a, **kw: None)
+    monkeypatch.setattr(run_next_plan, "_register_exit_flush", lambda *a, **kw: None)
+    monkeypatch.chdir(tmp_path)
+
+    calls = []
+    real_resolve = run_next_plan.resolve_config_root
+
+    def counting_resolve(repo_root):
+        calls.append(repo_root)
+        return real_resolve(repo_root)
+
+    monkeypatch.setattr(run_next_plan, "resolve_config_root", counting_resolve)
+
+    with pytest.raises(SystemExit):
+        run_next_plan.main()
+
+    run_next_plan._log_fh = None
+    assert len(calls) == 1
