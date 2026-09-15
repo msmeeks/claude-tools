@@ -1,12 +1,32 @@
 # Privacy Notes — Ralph Orchestration Loop
 
 This file documents what data the Ralph loop (`scripts/run-next-plan.py` and
-its `meta/plans/` artifacts) captures, where it lives, and how long it should
-be kept.
+the artifacts under its config root) captures, where it lives, and how long it
+should be kept.
+
+## Two layouts, one policy
+
+A repo's project-scoped config lives under **`docs/agents/`** (this repo's
+layout, matching the upstream scaffolding) or under **`meta/`** (the original
+layout, still used by every repo that has not migrated). The orchestrator reads
+both, permanently — see
+[ADR 0001](../adr/0001-scaffolding-layout-with-dual-read-fallback.md). Paths
+below are written for this repo's layout; **everything here applies identically
+to the `meta/` equivalent** in an un-migrated repo: same files, same
+sensitivity, same scrubbing, same retention. A repo carrying *both* roots is
+refused at startup rather than guessed at.
+
+Because these paths now sit under `docs/`, which reads as publishable, the
+ignore rules are name patterns rather than exact paths — `**/implementation-logs/`,
+`**/prd.json.lock`, `**/sdlc-review-findings.md`, `**/pr-summary.md` — so they
+cover both layouts and survive the next reorganisation. The orchestrator also
+refuses to write a log line at all if its resolved log directory is not ignored
+by the target repo, converting a silent exposure into a loud failure. Exclude
+all four from any docs-publishing or GitHub Pages pipeline.
 
 ## Data captured
 
-### Implementation logs (`meta/plans/implementation-logs/`)
+### Implementation logs (`docs/agents/plans/implementation-logs/`)
 Each invocation writes a single timestamped log file capturing the full
 stdout/stderr stream of the spawned Claude session. This can include:
 - Source code, file paths, and diffs from the target repo
@@ -22,12 +42,12 @@ formats, secrets split across lines, or secrets embedded in non-text output.
 Treat logs as sensitive regardless — do not commit them to a public repo, and
 do not share them outside the team without review.
 
-### `progress.md`
+### `progress.md` (`docs/agents/plans/progress.md`)
 Free-form narrative notes describing what each plan run did. This file is
 intended to be committed to git and is human-readable project history. Avoid
 pasting secrets, credentials, or customer data into it.
 
-### `prd.json`
+### `prd.json` (`docs/agents/plans/prd.json`)
 Machine-readable plan state: filenames, status (`pending|in-progress|done|stalled`),
 attempt counts, and blocking relationships. Plan filenames may encode GitHub
 issue numbers (e.g. `issue-42.md`), which indirectly reference issue titles
@@ -38,7 +58,7 @@ rounds) is likewise pure metadata.
 
 ### Outbound: SDLC finding issues (`gh issue create`)
 The review gate's issue-filing phase is the loop's one *outbound* data path:
-it takes reviewer-written findings from `meta/sdlc-review-findings.md`, which
+it takes reviewer-written findings from `docs/agents/sdlc-review-findings.md`, which
 are authored while reading `git diff <review-range>`, and publishes them to
 the target repo's GitHub issue tracker under the `sdlc-finding` label. Unlike
 the implementation logs, nothing downstream can redact a filed issue — the
@@ -53,16 +73,33 @@ this is a mitigation rather than a guarantee. Do not point the loop at a
 repository whose issue tracker is public unless the diff under review is also
 public.
 
+### `sdlc-review-findings.md` and `pr-summary.md`
+Both are written by a Claude session at the config root and are gitignored.
+The findings file holds reviewer prose about the diff under review — the same
+content that later becomes GitHub issues, before any paraphrasing or redaction
+has happened, so treat it as at least as sensitive as the logs. `pr-summary.md`
+is a generated PR body: it is *intended* to become public, via the PR
+description, so it must contain nothing that the PR itself should not carry.
+
+### ADRs (`docs/adr/`)
+ADRs are the `docs/` content most likely to be read by outsiders. They record
+decisions and their rationale — they must never quote raw log, findings, or
+session-transcript content.
+
 ## Retention guidance
 
-- **`implementation-logs/`**: treat as short-lived debugging artifacts. Prune
-  logs older than 30 days, or sooner if the batch they belong to has merged
-  and no issues were found. Do not retain indefinitely.
+- **`implementation-logs/`** (both layouts): treat as short-lived debugging
+  artifacts. Prune logs older than 30 days, or sooner if the batch they belong
+  to has merged and no issues were found. Do not retain indefinitely.
 - **`progress.md`**: retained indefinitely as part of project history (it is
   committed to git); keep entries free of secrets and PII at write time since
   removal later requires history rewriting.
 - **`prd.json`**: retained for the lifetime of the plan batch it tracks; safe
   to delete once all plans in a batch reach `done`.
+- **`sdlc-review-findings.md`**: per-round scratch. The gate rotates it away at
+  the start of each fresh round; delete it with the plan batch.
+- **`pr-summary.md`**: regenerated each time the PR description is updated. No
+  retention value once the PR body is written.
 - **`sdlc-finding` issues**: retained until a human closes them. The review
   gate stops re-arming after `MAX_REVIEW_ROUNDS` (2) rounds, so the final
   round's findings are filed and triaged but deliberately *not* scheduled into
@@ -77,7 +114,7 @@ public.
 blocked_by) — never raw GitHub issue body text — so it is not a direct
 injection vector. However, the Claude session invoked by `run-next-plan.py`
 runs with `--permission-mode bypassPermissions` and is instructed to read the
-full plan `.md` files under `meta/plans/`, which were generated by
+full plan `.md` files under `docs/agents/plans/`, which were generated by
 `/triage-issues` from GitHub issue bodies and may contain attacker-controlled
 text (anyone who can open an issue on the source repo can write that text).
 
