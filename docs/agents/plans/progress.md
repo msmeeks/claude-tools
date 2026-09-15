@@ -172,3 +172,18 @@ the first run, confirming the existing logic already handles the branch:
   instruction without a test noticing.
 
 QA: `cd scripts && python3 -m pytest` — 168 passed; `ruff check .` clean.
+
+## 2026-09-15 — fix-run-next-plan-style-cleanup.md
+
+Closed issues #58, #64. Two mechanical style fixes, no behavior change:
+
+- **#58** — the `sdlc_review_rounds` validation block in `scripts/run-next-plan.py` renamed its
+  abbreviated `srr` local to `review_rounds`, matching every other field's validation block in
+  the same function.
+- **#64** — `scripts/tests/test_config_root.py` had five function-scoped imports
+  (`import subprocess`, `import subprocess as sp` twice, `import json` twice) scattered across
+  helpers and tests. Moved `subprocess` and `json` to the module-scope import block alongside
+  `importlib.util`, `sys`, `pathlib.Path`, and `pytest`; every `sp` alias use became plain
+  `subprocess` to match the rest of the file.
+
+QA: `cd scripts && python3 -m pytest` — 168 passed; `ruff check .` clean.

@@ -220,9 +220,12 @@ def _validate_prd_schema(data: object) -> dict:
     if "sdlc_review_rounds" in data:
         # Same guard as 'attempts': reject bools explicitly, since isinstance(True, int) is
         # True and a `"sdlc_review_rounds": false` would otherwise silently defeat the cap.
-        srr = data["sdlc_review_rounds"]
-        if not isinstance(srr, int) or isinstance(srr, bool) or srr < 0:
-            die(f"prd.json: 'sdlc_review_rounds' must be a non-negative int, got: {srr!r}")
+        review_rounds = data["sdlc_review_rounds"]
+        if not isinstance(review_rounds, int) or isinstance(review_rounds, bool) or review_rounds < 0:
+            die(
+                "prd.json: 'sdlc_review_rounds' must be a non-negative int, "
+                f"got: {review_rounds!r}"
+            )
     return data
 
 

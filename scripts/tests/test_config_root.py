@@ -8,6 +8,8 @@ files issues from whatever it read.
 """
 
 import importlib.util
+import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -103,16 +105,12 @@ def test_derived_paths_follow_the_resolved_root(tmp_path, layout, prefix):
 
 
 def _init_repo(path):
-    import subprocess
-
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
     subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=path, check=True)
     subprocess.run(["git", "config", "user.name", "T"], cwd=path, check=True)
 
 
 def _is_ignored(repo_root, rel_path):
-    import subprocess
-
     return (
         subprocess.run(["git", "check-ignore", "-q", rel_path], cwd=repo_root).returncode == 0
     )
@@ -184,8 +182,6 @@ class _FakePopen:
         self._prompts.append(text)
 
     def close(self):
-        import json
-
         data = json.loads(self._prd_path.read_text())
         for entry in data["plans"]:
             entry["status"] = "done"
@@ -200,12 +196,10 @@ def test_orchestrator_drives_a_plan_set_to_completion_under_either_layout(
     tmp_path, prefix, monkeypatch
 ):
     """The whole point of the dual read: a migrated repo and an un-migrated one both run."""
-    import subprocess as sp
-
     _init_repo(tmp_path)
     (tmp_path / "README.md").write_text("hi\n")
-    sp.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    sp.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
 
     plans_dir = tmp_path / prefix / "plans"
     plans_dir.mkdir(parents=True)
@@ -219,7 +213,7 @@ def test_orchestrator_drives_a_plan_set_to_completion_under_either_layout(
     prompts: list[str] = []
     monkeypatch.setattr(sys, "argv", ["run-next-plan.py"])
     monkeypatch.setattr(run_next_plan.shutil, "which", lambda _cmd: "/usr/bin/claude")
-    real_popen = sp.Popen
+    real_popen = subprocess.Popen
 
     def popen(cmd, *a, **kw):
         if cmd and cmd[0] == "claude":
@@ -236,8 +230,6 @@ def test_orchestrator_drives_a_plan_set_to_completion_under_either_layout(
         run_next_plan.main()
 
     assert exc.value.code == 0
-    import json
-
     data = json.loads((plans_dir / "prd.json").read_text())
     assert [p["status"] for p in data["plans"]] == ["done"]
     assert f"{prefix}/plans/prd.json" in prompts[0]
@@ -254,12 +246,10 @@ def test_config_root_is_resolved_exactly_once_per_run(tmp_path, monkeypatch):
     re-derived at each of the many call sites that need a config-root-relative value —
     otherwise a mid-run change to the working tree could trip the abort deep into a run,
     after other work has already been committed."""
-    import subprocess as sp
-
     _init_repo(tmp_path)
     (tmp_path / "README.md").write_text("hi\n")
-    sp.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    sp.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
 
     plans_dir = tmp_path / "docs" / "agents" / "plans"
     plans_dir.mkdir(parents=True)
@@ -273,7 +263,7 @@ def test_config_root_is_resolved_exactly_once_per_run(tmp_path, monkeypatch):
     prompts: list[str] = []
     monkeypatch.setattr(sys, "argv", ["run-next-plan.py"])
     monkeypatch.setattr(run_next_plan.shutil, "which", lambda _cmd: "/usr/bin/claude")
-    real_popen = sp.Popen
+    real_popen = subprocess.Popen
 
     def popen(cmd, *a, **kw):
         if cmd and cmd[0] == "claude":
