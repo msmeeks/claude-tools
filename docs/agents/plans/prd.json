@@ -43,8 +43,8 @@
         63
       ],
       "size": "S",
-      "status": "pending",
-      "attempts": 0,
+      "status": "done",
+      "attempts": 1,
       "blocked_by": []
     },
     {
@@ -65,7 +65,7 @@
       ],
       "size": "S",
       "status": "done",
-      "attempts": 1,
+      "attempts": 2,
       "blocked_by": []
     }
   ],

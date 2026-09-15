@@ -934,6 +934,8 @@ def test_gate_prompts_name_the_resolved_config_root(tmp_path):
     assert "docs/agents/sdlc-review-findings.md" in review_prompt
     file_issues_prompt = next(p for p in prompts if "file a GitHub issue" in p)
     assert "docs/agents/sdlc-review-findings.md" in file_issues_prompt
+    assert "redact any such value as [REDACTED]" in file_issues_prompt
+    assert "credentials, tokens, keys, connection strings" in file_issues_prompt
     triage_prompt = next(p for p in prompts if "run /triage" in p)
     assert "docs/agents/plans/<slug>.md" in triage_prompt
     assert "docs/agents/plans/implementation-logs/" in triage_prompt

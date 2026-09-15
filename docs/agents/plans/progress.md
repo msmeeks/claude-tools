@@ -146,3 +146,29 @@ treats plan/issue content as untrusted document text):
 
 QA: `cd scripts && python3 -m pytest` — 166 passed; `ruff check .` clean; `--dry-run` against
 this repo prints no "unsandboxed"/WARN line, confirming the gate.
+
+## 2026-09-15 — test-run-next-plan-coverage-gaps.md
+
+Closed issues #59, #61, #63. Three tests added to close SDLC-flagged coverage gaps in
+`scripts/tests/`; none uncovered a production bug — all three passed against current code on
+the first run, confirming the existing logic already handles the branch:
+
+- **#59 — intermediate-symlink escape.** New test in `test_config_root.py` makes `docs` (a
+  parent of the leaf config root) a symlink pointing outside the repo, while `docs/agents`
+  itself is a real directory. `resolve_config_root`'s `chosen.is_symlink()` check doesn't
+  catch this (the leaf isn't a symlink), but `resolved = chosen.resolve()` follows the
+  ancestor symlink and the existing `repo_resolved not in resolved.parents` guard already
+  rejects it — confirmed by asserting the "outside the repo" message, not just any
+  `SystemExit`.
+- **#61 — `.gitignore` no-trailing-newline branch.** New test writes a `.gitignore` whose last
+  line has no `\n`, then asserts `_ensure_artifacts_gitignored`'s appended rules don't
+  concatenate onto that line and the new path is actually ignored. The existing
+  `separator = "\n\n"` branch (for the non-empty, non-newline-terminated case) already covers
+  it.
+- **#63 — issue-filing redaction instruction.** Added two assertions to the existing
+  `test_gate_prompts_name_the_resolved_config_root` test — the file-issues prompt already
+  built in that test now also gets checked for the `[REDACTED]` marker and the named
+  sensitive-data categories, so a future edit to that prompt can't silently drop the
+  instruction without a test noticing.
+
+QA: `cd scripts && python3 -m pytest` — 168 passed; `ruff check .` clean.

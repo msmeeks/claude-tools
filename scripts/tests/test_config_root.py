@@ -59,6 +59,22 @@ def test_symlinked_config_root_escaping_the_repo_is_refused(tmp_path, capsys):
     assert "symlink" in capsys.readouterr().err.lower()
 
 
+def test_intermediate_symlinked_ancestor_escaping_the_repo_is_refused(tmp_path, capsys):
+    """The leaf itself (`docs/agents`) can be a real directory while a parent (`docs`) is a
+    symlink pointing outside the repo — resolve() still follows it, so the outside-repo check,
+    not the leaf-is-symlink check, must be what catches this."""
+    outside = tmp_path / "outside" / "docs"
+    (outside / "agents" / "plans").mkdir(parents=True)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "docs").symlink_to(outside)
+
+    with pytest.raises(SystemExit):
+        resolve_config_root(repo)
+
+    assert "outside the repo" in capsys.readouterr().err.lower()
+
+
 def test_unscaffolded_repo_defaults_to_the_new_layout(tmp_path):
     """Neither root exists yet. Point at the default for new repos so the missing-prd.json
     error names the path a fresh repo should be scaffolded into."""
@@ -125,6 +141,18 @@ def test_old_layout_repo_does_not_gain_new_layout_ignore_rules(tmp_path):
     run_next_plan._ensure_artifacts_gitignored(tmp_path, resolve_config_root(tmp_path))
 
     assert "docs/agents" not in (tmp_path / ".gitignore").read_text()
+
+
+def test_gitignore_append_separates_from_a_final_line_without_a_trailing_newline(tmp_path):
+    _init_repo(tmp_path)
+    (tmp_path / "meta" / "plans").mkdir(parents=True)
+    (tmp_path / ".gitignore").write_text("node_modules/")  # no trailing newline
+
+    run_next_plan._ensure_artifacts_gitignored(tmp_path, resolve_config_root(tmp_path))
+
+    contents = (tmp_path / ".gitignore").read_text()
+    assert "node_modules/\nmeta/plans/prd.json.lock" not in contents
+    assert _is_ignored(tmp_path, "meta/plans/prd.json.lock")
 
 
 def test_logging_is_refused_when_the_resolved_log_dir_stays_unignored(tmp_path, capsys):
