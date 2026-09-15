@@ -2,7 +2,11 @@
   "plans": [
     {
       "file": "fix-run-next-plan-loop-economy.md",
-      "issues": [54, 53, 56],
+      "issues": [
+        54,
+        53,
+        56
+      ],
       "size": "M",
       "status": "pending",
       "attempts": 0,
@@ -10,13 +14,19 @@
     },
     {
       "file": "refactor-scaffolding-layout.md",
-      "issues": [55],
+      "issues": [
+        55
+      ],
       "size": "XL",
       "status": "pending",
       "attempts": 0,
-      "blocked_by": ["fix-run-next-plan-loop-economy.md"]
+      "blocked_by": [
+        "fix-run-next-plan-loop-economy.md"
+      ]
     }
   ],
   "smoke_test": "cd scripts && python3 -m pytest",
-  "feature_branches": []
+  "feature_branches": [],
+  "integration_branch": "integration/2026-09-15-run-next-plan-loop-economy",
+  "pr_number": 57
 }
