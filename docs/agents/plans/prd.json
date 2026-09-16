@@ -1,0 +1,91 @@
+{
+  "plans": [
+    {
+      "file": "fix-run-next-plan-loop-economy.md",
+      "issues": [
+        54,
+        53,
+        56
+      ],
+      "size": "M",
+      "status": "done",
+      "attempts": 1,
+      "blocked_by": []
+    },
+    {
+      "file": "refactor-scaffolding-layout.md",
+      "issues": [
+        55
+      ],
+      "size": "XL",
+      "status": "done",
+      "attempts": 2,
+      "blocked_by": [
+        "fix-run-next-plan-loop-economy.md"
+      ]
+    },
+    {
+      "file": "fix-run-next-plan-style-cleanup.md",
+      "issues": [
+        58,
+        64
+      ],
+      "size": "S",
+      "status": "done",
+      "attempts": 2,
+      "blocked_by": []
+    },
+    {
+      "file": "test-run-next-plan-coverage-gaps.md",
+      "issues": [
+        59,
+        61,
+        63
+      ],
+      "size": "S",
+      "status": "done",
+      "attempts": 2,
+      "blocked_by": []
+    },
+    {
+      "file": "refactor-config-root-single-resolution.md",
+      "issues": [
+        60
+      ],
+      "size": "M",
+      "status": "done",
+      "attempts": 2,
+      "blocked_by": []
+    },
+    {
+      "file": "security-run-next-plan-hardening.md",
+      "issues": [
+        62,
+        65
+      ],
+      "size": "S",
+      "status": "done",
+      "attempts": 2,
+      "blocked_by": []
+    }
+  ],
+  "smoke_test": "cd scripts && python3 -m pytest",
+  "feature_branches": [],
+  "integration_branch": "integration/2026-09-15-run-next-plan-loop-economy",
+  "pr_number": 57,
+  "sdlc_review_completed_agents": [],
+  "sdlc_round_filed_issues": [],
+  "sdlc_finding_issues": [
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65
+  ],
+  "sdlc_review_status": "complete",
+  "last_reviewed_sha": "e4c4ec56f1925ae489f184056b5c87af7fc34bcc",
+  "sdlc_review_rounds": 2
+}

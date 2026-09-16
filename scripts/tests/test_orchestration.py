@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 _MODULE_PATH = Path(__file__).resolve().parent.parent / "run-next-plan.py"
 _spec = importlib.util.spec_from_file_location("run_next_plan", _MODULE_PATH)
 run_next_plan = importlib.util.module_from_spec(_spec)
@@ -19,11 +21,31 @@ account_attempt = run_next_plan.account_attempt
 # arbitrary and load-bearing to nothing — detection keys on the non-zero exit code, not the
 # time — so it lives here once, clearly labelled, rather than as a stray literal in tests.
 SAMPLE_LIMIT_MESSAGE = "You've hit your session limit · resets 3:20am (America/New_York)"
-_working_tree_dirty = run_next_plan._working_tree_dirty
 _push_branch = run_next_plan._push_branch
-ensure_committed_and_pushed = run_next_plan.ensure_committed_and_pushed
-_ensure_logs_gitignored = run_next_plan._ensure_logs_gitignored
-_LOGS_REL = run_next_plan._LOGS_REL
+flush_push = run_next_plan.flush_push
+resolve_config_root = run_next_plan.resolve_config_root
+
+
+def logs_rel(repo_root):
+    return run_next_plan.logs_rel(repo_root, resolve_config_root(repo_root))
+
+
+def _working_tree_dirty(repo_root):
+    return run_next_plan._working_tree_dirty(repo_root, resolve_config_root(repo_root))
+
+
+def ensure_committed(repo_root, integration_branch, context):
+    return run_next_plan.ensure_committed(
+        repo_root, resolve_config_root(repo_root), integration_branch, context
+    )
+
+
+def exit_flush(repo_root, integration_branch):
+    return run_next_plan.exit_flush(repo_root, resolve_config_root(repo_root), integration_branch)
+
+
+def _ensure_artifacts_gitignored(repo_root):
+    return run_next_plan._ensure_artifacts_gitignored(repo_root, resolve_config_root(repo_root))
 
 
 def _init_repo(path):
@@ -294,7 +316,7 @@ def test_working_tree_dirty_true_with_uncommitted_change(tmp_path):
 
 
 def _write_run_log(repo_root, name="run-next-plan-2026_01_01_T00_00_00.log"):
-    logs_dir = repo_root / "meta" / "plans" / "implementation-logs"
+    logs_dir = repo_root / logs_rel(repo_root)
     logs_dir.mkdir(parents=True, exist_ok=True)
     (logs_dir / name).write_text("a log line\n")
 
@@ -305,48 +327,55 @@ def _is_ignored(repo_root, rel_path):
     ).returncode == 0
 
 
-def test_ensure_logs_gitignored_adds_the_entry_when_absent(tmp_path):
+def test_ensure_artifacts_gitignored_adds_the_entry_when_absent(tmp_path):
     _init_repo(tmp_path)
-    _ensure_logs_gitignored(tmp_path)
-    assert _is_ignored(tmp_path, "meta/plans/implementation-logs/some.log")
+    _ensure_artifacts_gitignored(tmp_path)
+    assert _is_ignored(tmp_path, f"{logs_rel(tmp_path)}some.log")
 
 
-def test_ensure_logs_gitignored_appends_below_existing_rules_without_clobbering_them(tmp_path):
+def test_ensure_artifacts_gitignored_appends_below_existing_rules_without_clobbering_them(tmp_path):
     _init_repo(tmp_path)
     gitignore = tmp_path / ".gitignore"
     gitignore.write_text("node_modules/\ndist/\n")
 
-    _ensure_logs_gitignored(tmp_path)
+    _ensure_artifacts_gitignored(tmp_path)
 
     text = gitignore.read_text()
     assert text.startswith("node_modules/\ndist/\n")
-    assert text.endswith(f"{_LOGS_REL}\n")
-    assert _is_ignored(tmp_path, f"{_LOGS_REL}some.log")
+    assert logs_rel(tmp_path) in text
+    assert _is_ignored(tmp_path, f"{logs_rel(tmp_path)}some.log")
     assert not _is_ignored(tmp_path, "src/app.py")
 
 
-def test_ensure_logs_gitignored_leaves_an_already_ignoring_gitignore_untouched(tmp_path):
+def test_ensure_artifacts_gitignored_leaves_an_already_ignoring_gitignore_untouched(tmp_path):
     _init_repo(tmp_path)
     gitignore = tmp_path / ".gitignore"
-    gitignore.write_text("*.log\n")
-    _ensure_logs_gitignored(tmp_path)
-    assert gitignore.read_text() == "*.log\n"
+    gitignore.write_text(
+        "**/implementation-logs/\nprd.json.lock\nsdlc-review-findings.md\npr-summary.md\n"
+    )
+    before = gitignore.read_text()
+    _ensure_artifacts_gitignored(tmp_path)
+    assert gitignore.read_text() == before
 
 
-def test_ensure_logs_gitignored_untracks_logs_the_repo_already_committed(tmp_path):
+def test_ensure_artifacts_gitignored_untracks_logs_the_repo_already_committed(tmp_path):
     _init_repo(tmp_path)
     _write_run_log(tmp_path, "old-run.log")
     subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-q", "-m", "tracked log"], cwd=tmp_path, check=True)
 
-    _ensure_logs_gitignored(tmp_path)
+    _ensure_artifacts_gitignored(tmp_path)
 
     tracked = subprocess.run(
-        ["git", "ls-files", _LOGS_REL], capture_output=True, text=True, cwd=tmp_path, check=True
+        ["git", "ls-files", logs_rel(tmp_path)],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        check=True,
     ).stdout
     assert tracked == ""
     # The log itself must survive on disk — the runner is writing to it right now.
-    assert (tmp_path / _LOGS_REL / "old-run.log").exists()
+    assert (tmp_path / logs_rel(tmp_path) / "old-run.log").exists()
 
 
 def test_working_tree_dirty_ignores_the_scripts_own_run_log(tmp_path):
@@ -387,15 +416,16 @@ def test_push_branch_is_noop_when_not_ahead_of_upstream(tmp_path):
     assert _remote_log(remote, "main") == ["init"]
 
 
-def test_ensure_committed_and_pushed_pushes_without_invoking_claude_when_clean(tmp_path):
+def test_ensure_committed_does_not_push_when_tree_is_clean(tmp_path):
     local, remote = _init_repo_with_remote(tmp_path)
     with patch.object(run_next_plan, "invoke_claude") as fake_invoke:
-        ensure_committed_and_pushed(local, "main", "plan a.md")
+        ensure_committed(local, "main", "plan a.md")
     fake_invoke.assert_not_called()
-    assert _remote_log(remote, "main") == ["init"]
+    # Commit-only: the branch has never been pushed, so the remote has no such branch yet.
+    assert _remote_log(remote, "main") == []
 
 
-def test_ensure_committed_and_pushed_asks_claude_to_commit_dirty_changes(tmp_path):
+def test_ensure_committed_asks_claude_to_commit_dirty_changes_without_pushing(tmp_path):
     local, remote = _init_repo_with_remote(tmp_path)
     (local / "README.md").write_text("changed by plan\n")
 
@@ -405,19 +435,21 @@ def test_ensure_committed_and_pushed_asks_claude_to_commit_dirty_changes(tmp_pat
         return "ok"
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=fake_commit) as fake_invoke:
-        ensure_committed_and_pushed(local, "main", "plan a.md")
+        ensure_committed(local, "main", "plan a.md")
 
     fake_invoke.assert_called_once()
-    assert _remote_log(remote, "main") == ["claude commit", "init"]
+    assert "Do not push" in fake_invoke.call_args[0][0]
+    assert _remote_log(remote, "main") == []
+    assert _working_tree_dirty(local) is False
 
 
-def test_ensure_committed_and_pushed_keeps_the_run_log_out_of_the_safety_net_commit(tmp_path):
-    local, remote = _init_repo_with_remote(tmp_path)
+def test_ensure_committed_keeps_the_run_log_out_of_the_safety_net_commit(tmp_path):
+    local, _ = _init_repo_with_remote(tmp_path)
     (local / "README.md").write_text("changed by plan\n")
     _write_run_log(local)
 
     with patch.object(run_next_plan, "invoke_claude", return_value="ok"):
-        ensure_committed_and_pushed(local, "main", "plan a.md")
+        ensure_committed(local, "main", "plan a.md")
 
     committed = subprocess.run(
         ["git", "show", "--name-only", "--format=", "HEAD"],
@@ -426,26 +458,268 @@ def test_ensure_committed_and_pushed_keeps_the_run_log_out_of_the_safety_net_com
     assert committed == ["README.md"]
 
 
-def test_ensure_committed_and_pushed_does_not_ask_claude_to_commit_only_the_run_log(tmp_path):
-    local, remote = _init_repo_with_remote(tmp_path)
+def test_ensure_committed_does_not_ask_claude_to_commit_only_the_run_log(tmp_path):
+    local, _ = _init_repo_with_remote(tmp_path)
     _write_run_log(local)
 
     with patch.object(run_next_plan, "invoke_claude") as fake_invoke:
-        ensure_committed_and_pushed(local, "main", "plan a.md")
+        ensure_committed(local, "main", "plan a.md")
 
     fake_invoke.assert_not_called()
-    assert _remote_log(remote, "main") == ["init"]
 
 
-def test_ensure_committed_and_pushed_auto_commits_when_still_dirty_after_claude(tmp_path):
+def test_ensure_committed_auto_commits_when_still_dirty_after_claude(tmp_path):
     local, remote = _init_repo_with_remote(tmp_path)
     (local / "README.md").write_text("changed by plan\n")
 
     with patch.object(run_next_plan, "invoke_claude", return_value="ok") as fake_invoke:
-        ensure_committed_and_pushed(local, "main", "plan a.md")
+        ensure_committed(local, "main", "plan a.md")
 
     fake_invoke.assert_called_once()
     assert _working_tree_dirty(local) is False
+    flush_push(local, "main")
     log = _remote_log(remote, "main")
     assert log[0].startswith("wip: uncommitted changes from plan a.md")
     assert log[1] == "init"
+
+
+def test_flush_push_publishes_commits_left_by_ensure_committed(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("changed by plan\n")
+    with patch.object(run_next_plan, "invoke_claude", return_value="ok"):
+        ensure_committed(local, "main", "plan a.md")
+    assert _remote_log(remote, "main") == []
+
+    flush_push(local, "main")
+
+    assert _remote_log(remote, "main")[1] == "init"
+
+
+def test_exit_flush_publishes_committed_but_unpushed_work(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("done by plan\n")
+    subprocess.run(["git", "add", "-A"], cwd=local, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "plan work"], cwd=local, check=True)
+
+    exit_flush(local, "main")
+
+    assert _remote_log(remote, "main") == ["plan work", "init"]
+
+
+def test_exit_flush_auto_commits_dirty_work_without_invoking_claude(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("interrupted mid-plan\n")
+
+    with patch.object(run_next_plan, "invoke_claude") as fake_invoke:
+        exit_flush(local, "main")
+
+    fake_invoke.assert_not_called()
+    assert _working_tree_dirty(local) is False
+    assert _remote_log(remote, "main")[0].startswith("wip:")
+
+
+def test_exit_flush_never_pushes_the_run_log(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("interrupted mid-plan\n")
+    _write_run_log(local)
+
+    exit_flush(local, "main")
+
+    committed = subprocess.run(
+        ["git", "show", "--name-only", "--format=", "HEAD"],
+        capture_output=True, text=True, cwd=local, check=True,
+    ).stdout.split()
+    assert committed == ["README.md"]
+    assert logs_rel(tmp_path) not in "\n".join(committed)
+
+
+def test_exit_flush_is_a_noop_when_nothing_is_outstanding(tmp_path):
+    local, remote = _init_repo_with_remote(tmp_path)
+    exit_flush(local, "main")
+    first = _remote_log(remote, "main")
+
+    exit_flush(local, "main")
+
+    assert _remote_log(remote, "main") == first
+
+
+def test_exit_flush_reads_no_prd_json_and_takes_no_lock(tmp_path):
+    # It can fire from inside a _with_prd_lock critical section; touching prd.json there
+    # would deadlock a single-threaded process.
+    local, _ = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("work\n")
+
+    with patch.object(run_next_plan, "load_prd") as fake_load, patch.object(
+        run_next_plan, "_with_prd_lock"
+    ) as fake_lock:
+        exit_flush(local, "main")
+
+    fake_load.assert_not_called()
+    fake_lock.assert_not_called()
+
+
+def test_exit_flush_swallows_git_failures_so_it_cannot_break_the_exit_path(tmp_path):
+    missing = tmp_path / "not-a-repo"
+    missing.mkdir()
+    exit_flush(missing, "main")  # must not raise
+
+
+def test_push_failure_output_is_credential_scrubbed(tmp_path, capsys):
+    # git push stderr routinely echoes the credential-helper URL. Widening pushes to every
+    # exit path multiplies how often that lands in the log.
+    local, _ = _init_repo_with_remote(tmp_path)
+    subprocess.run(["git", "remote", "set-url", "origin", "/nonexistent/remote.git"],
+                   cwd=local, check=True)
+    leaky = "fatal: could not read https://x-access-token:ghp_AAAABBBBCCCCDDDD@github.com/o/r"
+
+    real_run = subprocess.run
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == ["git", "push"]:
+            return type("R", (), {"returncode": 128, "stdout": "", "stderr": leaky})()
+        return real_run(cmd, **kwargs)
+
+    with patch.object(run_next_plan.subprocess, "run", side_effect=fake_run):
+        _push_branch(local, "main")
+
+    logged = capsys.readouterr().err
+    assert "ghp_AAAABBBBCCCCDDDD" not in logged
+    assert "[REDACTED]" in logged
+
+
+def _asserts_commit_only(prompt):
+    # Explicit, not merely silent: an injected instruction in plan or issue text could
+    # otherwise reintroduce the mid-phase pushes the commit/push split exists to prevent.
+    assert "Do not push" in prompt
+    assert "and push" not in prompt.lower()
+    assert "untrusted" in prompt
+
+
+def test_plan_prompt_asks_claude_to_commit_but_not_push(tmp_path):
+    prompt = run_next_plan._build_claude_prompt(
+        "integration/x", tmp_path, resolve_config_root(tmp_path)
+    )
+    _asserts_commit_only(prompt)
+
+
+def test_docs_phase_prompt_asks_claude_to_commit_but_not_push(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    run_next_plan.save_prd(prd_path, {"integration_branch": "integration/x", "plans": []})
+
+    prompts = []
+    with patch.object(run_next_plan, "invoke_claude", side_effect=lambda p, r: prompts.append(p)), \
+         patch.object(run_next_plan, "ensure_committed"), \
+         patch.object(run_next_plan, "update_pr_description"), \
+         patch.object(run_next_plan, "get_default_branch", return_value="main"):
+        run_next_plan.run_docs_phase(prd_path, tmp_path, resolve_config_root(tmp_path))
+
+    _asserts_commit_only(prompts[0])
+
+
+def test_triage_prompt_asks_claude_to_commit_but_not_push(tmp_path):
+    prompts = []
+    with patch.object(run_next_plan, "_gate_invoke", side_effect=lambda phase, p, r: prompts.append(p)):
+        run_next_plan._run_triage_phase(
+            tmp_path / "prd.json", tmp_path, resolve_config_root(tmp_path), [11], "log.txt"
+        )
+
+    _asserts_commit_only(prompts[0])
+
+
+def test_ralph_dockerfile_is_no_longer_a_recognised_feature():
+    # The sandbox was never adopted by any target repo; a leftover meta/ralph.dockerfile
+    # must now be inert rather than silently changing how Claude is invoked.
+    for removed in ("build_run_command", "get_image_tag", "_IMAGE_TAG_SAFE_RE"):
+        assert not hasattr(run_next_plan, removed), f"{removed} should be gone"
+    source = _MODULE_PATH.read_text().lower()
+    assert "docker" not in source
+    assert "ralph.dockerfile" not in source
+
+
+def test_exit_flush_is_registered_once_for_a_real_run(tmp_path):
+    config_root = resolve_config_root(tmp_path)
+    with patch.object(run_next_plan.atexit, "register") as fake_register:
+        run_next_plan._register_exit_flush(tmp_path, config_root, "main", dry_run=False)
+        run_next_plan._register_exit_flush(tmp_path, config_root, "main", dry_run=False)
+
+    fake_register.assert_called_once()
+
+
+def test_dry_run_registers_no_exit_flush(tmp_path):
+    run_next_plan._reset_exit_flush_registration()
+    with patch.object(run_next_plan.atexit, "register") as fake_register:
+        run_next_plan._register_exit_flush(tmp_path, resolve_config_root(tmp_path), "main", dry_run=True)
+
+    fake_register.assert_not_called()
+
+
+def test_safety_net_commit_succeeds_when_the_log_dir_is_gitignored(tmp_path):
+    """Every real run gitignores its own log directory. `git add` exits 1 if an exclude
+    pathspec names an ignored directory, so the safety-net commit must not stage that way —
+    otherwise the one path that exists to keep work from being lost raises instead."""
+    local, _ = _init_repo_with_remote(tmp_path)
+    _ensure_artifacts_gitignored(local)
+    _write_run_log(local)
+    (local / "README.md").write_text("changed by plan\n")
+
+    with patch.object(run_next_plan, "invoke_claude", return_value=("", 0)):
+        ensure_committed(local, "main", "plan a.md")
+
+    committed = subprocess.run(
+        ["git", "show", "--name-only", "--format=", "HEAD"],
+        capture_output=True, text=True, cwd=local, check=True,
+    ).stdout.split()
+    assert "README.md" in committed
+    assert ".gitignore" in committed
+    assert not any("implementation-logs" in path for path in committed)
+
+
+def _write_empty_complete_prd(plans_dir, integration_branch="integration/x"):
+    plans_dir.mkdir(parents=True, exist_ok=True)
+    (plans_dir / "prd.json").write_text(json.dumps({
+        "plans": [],
+        "integration_branch": integration_branch,
+        "sdlc_review_status": "complete",
+        "sdlc_review_rounds": 99,
+    }))
+
+
+def test_main_prints_unsandboxed_trust_model_warning_on_a_real_run(tmp_path, monkeypatch, capsys):
+    _init_repo(tmp_path)
+    plans_dir = tmp_path / "docs" / "agents" / "plans"
+    _write_empty_complete_prd(plans_dir)
+
+    monkeypatch.setattr(sys, "argv", ["run-next-plan.py"])
+    monkeypatch.setattr(run_next_plan.shutil, "which", lambda _cmd: "/usr/bin/claude")
+    monkeypatch.setattr(run_next_plan, "_register_exit_flush", lambda *a, **kw: None)
+    monkeypatch.setattr(run_next_plan, "sync_pr_closes", lambda *a, **kw: None)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit) as exc:
+        run_next_plan.main()
+    run_next_plan._log_fh = None
+
+    assert exc.value.code == 0
+    err = capsys.readouterr().err
+    assert err.count("unsandboxed") == 1
+    assert "bypassPermissions" in err or "full" in err
+
+
+def test_main_does_not_print_unsandboxed_trust_model_warning_under_dry_run(
+    tmp_path, monkeypatch, capsys
+):
+    _init_repo(tmp_path)
+    plans_dir = tmp_path / "docs" / "agents" / "plans"
+    _write_empty_complete_prd(plans_dir)
+
+    monkeypatch.setattr(sys, "argv", ["run-next-plan.py", "--dry-run"])
+    monkeypatch.setattr(run_next_plan.shutil, "which", lambda _cmd: "/usr/bin/claude")
+    monkeypatch.setattr(run_next_plan, "_register_exit_flush", lambda *a, **kw: None)
+    monkeypatch.setattr(run_next_plan, "sync_pr_closes", lambda *a, **kw: None)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit):
+        run_next_plan.main()
+    run_next_plan._log_fh = None
+
+    assert "unsandboxed" not in capsys.readouterr().err

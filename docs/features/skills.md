@@ -32,7 +32,7 @@ Skills live at `~/.claude/skills/<name>/` (symlinked from this repo). When the d
 | `skills/pr-image-upload/pr-image-upload.sh` | Shell implementation for the upload workflow |
 | `skills/rank-backlog/SKILL.md` | GUS backlog analysis and nevering-candidate ranking; outputs CSV |
 | `skills/close-iteration/skill.md` | Gate-checks, merges, and cleans up an iteration opened by `/plan-iteration` |
-| `skills/plan-iteration/SKILL.md` | Triages backlog issues and writes `meta/plans/prd.json` + `meta/plans/<slug>.md` for `run-next-plan.py` to execute |
+| `skills/plan-iteration/SKILL.md` | Triages backlog issues and writes `<config-root>/plans/prd.json` + `<config-root>/plans/<slug>.md` for `run-next-plan.py` to execute |
 | `skills/triage-pr-comments/SKILL.md` | Re-opens plans against new PR review comments mid-iteration |
 
 ## Technical Detail
@@ -59,7 +59,7 @@ Output paths: `help-docs/demos/features/<name>.html` and `help-docs/demos/featur
 
 ### help-docs
 
-Generates the full `help-docs/` tree: `ui/index.html` (non-technical user guide), `api/index.html` (developer API reference), and `demos/index.html` (gallery). Reads `meta/BRAND_VOICE.md` and `docs/` before writing. After generating UI docs, automatically invokes `/demo` for each feature section.
+Generates the full `help-docs/` tree: `ui/index.html` (non-technical user guide), `api/index.html` (developer API reference), and `demos/index.html` (gallery). Reads `docs/agents/BRAND_VOICE.md` (or `meta/BRAND_VOICE.md` in un-migrated repos) and `docs/` before writing. After generating UI docs, automatically invokes `/demo` for each feature section.
 
 ### pr-image-upload
 
@@ -98,19 +98,19 @@ is added on top of the done-plan issues so SDLC findings always auto-close on me
 closing report's `Issues left open:` line surfaces exactly the issues this exclusion leaves
 behind, tying back to the stalled-plan warnings raised earlier in the run.
 
-`meta/plans/` is removed as part of Step 4, committed and pushed on the integration branch
+`<config-root>/plans/` is removed as part of Step 4, committed and pushed on the integration branch
 *before* the SDLC findings review and PR-promotion steps and *before* the PR is merged
 (Step 8) — this lets the removal commit pass through the same diff-based review as the
 rest of the iteration's work, and ride along in the normal merge commit instead of
 requiring a separate direct push to the default branch afterward. Post-merge cleanup
 (Step 9) only closes PRD issues, deletes branches/worktrees, and pulls the default branch
-before deleting the local integration branch; it no longer touches `meta/plans/`.
+before deleting the local integration branch; it no longer touches `<config-root>/plans/`.
 
 ### plan-iteration
 
 Backlog grooming entry point: triages each candidate issue via `/triage`, groups the
-`ready-for-agent` ones into logical clusters, and writes `meta/plans/<slug>.md` plan files
-plus `meta/plans/prd.json` for `run-next-plan.py` (see
+`ready-for-agent` ones into logical clusters, and writes `<config-root>/plans/<slug>.md` plan files
+plus `<config-root>/plans/prd.json` for `run-next-plan.py` (see
 [run-next-plan.md](run-next-plan.md)) to drive to completion.
 
 When `prd.json` already exists (re-running against a partially-worked iteration), it merges

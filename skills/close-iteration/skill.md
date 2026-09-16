@@ -1,12 +1,12 @@
 ---
 name: close-iteration
-description: Closes an iteration by gate-checking completion, merging the integration PR to the default branch, closing linked issues, cleaning up branches/worktrees, and removing meta/plans/. The bookend to /plan-iteration. Use when all plans are done and the SDLC review is complete.
+description: Closes an iteration by gate-checking completion, merging the integration PR to the default branch, closing linked issues, cleaning up branches/worktrees, and removing <config-root>/plans/. The bookend to /plan-iteration. Use when all plans are done and the SDLC review is complete.
 ---
 
 # Close Iteration
 
 Closes an iteration end-to-end: verifies all gate conditions, promotes the draft PR, merges
-to the default branch, closes linked issues, removes `meta/plans/` from the working tree,
+to the default branch, closes linked issues, removes `<config-root>/plans/` from the working tree,
 and deletes the integration branch and all associated worktrees.
 
 ## Usage
@@ -15,14 +15,17 @@ and deletes the integration branch and all associated worktrees.
 /close-iteration
 ```
 
-No arguments. All context is read from `meta/plans/prd.json`.
+No arguments. All context is read from `<config-root>/plans/prd.json`.
 
 ---
 
 ## Step 1 — Bootstrap
 
-1. Read `docs/llms.md`. If it doesn't exist, stop and tell the user to run `/sdlc` first.
-2. Load `meta/plans/prd.json`. If it doesn't exist, stop — there is no active iteration.
+1. Read the context index: `CONTEXT-MAP.md` (or a root `CONTEXT.md`), or `docs/llms.md` in
+   un-migrated repos. If neither exists, stop and tell the user to run `/sdlc` first.
+2. Resolve the config root (`<config-root>` below): `docs/agents/` if it exists, else `meta/`.
+   Load `<config-root>/plans/prd.json`. If it doesn't exist, stop — there is no active
+   iteration.
 3. Resolve `{owner}` and `{repo}` for all `gh api` calls:
    ```bash
    gh repo view --json nameWithOwner --jq '.nameWithOwner'
@@ -129,7 +132,7 @@ Print a warning table and ask for explicit confirmation before proceeding:
 
 ---
 
-## Step 4 — Remove meta/plans/ on the integration branch
+## Step 4 — Remove <config-root>/plans/ on the integration branch
 
 Do this before the SDLC Findings Review and PR-promotion steps, so the removal commit
 rides through the same diff-based review as the rest of the iteration's work instead of
@@ -140,7 +143,7 @@ git switch <integration_branch>
 git fetch origin
 git pull origin <integration_branch>
 git status
-git rm -r meta/plans/
+git rm -r <config-root>/plans/
 git commit -m "chore: remove iteration plans from <integration_branch>
 
 Plans are preserved in git history on <integration_branch>."
@@ -166,7 +169,7 @@ while.
 
 ## Step 5 — SDLC Findings Review
 
-Read `meta/sdlc-review-findings.md`. For each finding section:
+Read `<config-root>/sdlc-review-findings.md`. For each finding section:
 
 1. Identify the corresponding issue number from `prd.json.sdlc_finding_issues`.
 2. Check whether that issue is closed (covered by 2c, but here inspect *why*: code change vs
@@ -237,7 +240,7 @@ gh pr merge <pr-number> --merge --delete-branch
 ```
 
 `--merge` preserves the full integration branch commit history, including the
-`meta/plans/` removal commit from Step 4. `--delete-branch` removes the remote
+`<config-root>/plans/` removal commit from Step 4. `--delete-branch` removes the remote
 integration branch automatically.
 
 ---
@@ -299,5 +302,5 @@ PRD issues skipped:  #N (reason: <gap>)
 
 Branches deleted:    <list>
 Worktrees removed:   <list>
-meta/plans/ removed: yes (history on <integration_branch>)
+<config-root>/plans/ removed: yes (history on <integration_branch>)
 ```

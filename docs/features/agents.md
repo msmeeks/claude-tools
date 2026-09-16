@@ -21,15 +21,15 @@ Each file in `agents/` is a standalone `.md` with a YAML frontmatter block follo
 
 | File | Purpose |
 |---|---|
-| `agents/code-reviewer.md` | DRY/SOLID, correctness, third-party dependency audit |
-| `agents/style-reviewer.md` | Naming, comments, idiomatic constructs, linting compliance |
-| `agents/security-reviewer.md` | OWASP Top 10, auth/authz, CVEs, injection risks; has WebFetch + WebSearch tools |
-| `agents/privacy-reviewer.md` | GDPR, PII handling, consent flows, data minimization |
-| `agents/accessibility-reviewer.md` | WCAG 2.2 AA, keyboard navigation, ARIA, color contrast |
-| `agents/design-reviewer.md` | Design brief adherence, component reuse, spacing/color tokens |
-| `agents/doc-writer.md` | Creates/updates docs/features/ and docs/llms.md |
-| `agents/qa-engineer.md` | Runs automated tests, lint, API smoke tests, regression checks |
-| `agents/test-reviewer.md` | Test value, edge cases, branch coverage, 90%+ line coverage target |
+| `agents/sdlc-code-reviewer.md` | DRY/SOLID, correctness, third-party dependency audit |
+| `agents/sdlc-style-reviewer.md` | Naming, comments, idiomatic constructs, linting compliance |
+| `agents/sdlc-security-reviewer.md` | OWASP Top 10, auth/authz, CVEs, injection risks; has WebFetch + WebSearch tools |
+| `agents/sdlc-privacy-reviewer.md` | GDPR, PII handling, consent flows, data minimization |
+| `agents/sdlc-accessibility-reviewer.md` | WCAG 2.2 AA, keyboard navigation, ARIA, color contrast |
+| `agents/sdlc-design-reviewer.md` | Design brief adherence, component reuse, spacing/color tokens |
+| `agents/sdlc-doc-writer.md` | Creates/updates docs/features/ and the context index |
+| `agents/sdlc-qa-engineer.md` | Runs automated tests, lint, API smoke tests, regression checks |
+| `agents/sdlc-test-reviewer.md` | Test value, edge cases, branch coverage, 90%+ line coverage target |
 
 ## Technical Detail
 
