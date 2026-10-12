@@ -1087,3 +1087,108 @@ def test_triage_nulling_an_existing_plans_status_still_fails_loudly(tmp_path):
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ), pytest.raises(SystemExit):
         run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
+
+
+def _record_gate_prompts(prd_path, tmp_path, fake=_fake_gate_claude):
+    prompts = []
+
+    def recording(prompt, repo_root):
+        prompts.append(prompt)
+        return fake(prompt, repo_root)
+
+    with patch.object(run_next_plan, "invoke_claude", side_effect=recording), patch.object(
+        run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
+    ):
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
+    return prompts
+
+
+def test_only_medium_and_above_findings_are_filed_as_their_own_issues(tmp_path):
+    # One issue per finding at every severity filed 100 issues across two rounds of one
+    # iteration, most of them nits. Minor/low findings share a single rollup issue instead.
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    prompts = _record_gate_prompts(prd_path, tmp_path)
+
+    file_issues_prompt = next(p for p in prompts if "file a GitHub issue" in p)
+    assert "Blocker, Critical, High, Major or Medium" in file_issues_prompt
+    assert "ONE rollup issue" in file_issues_prompt
+    assert "MINOR_ROLLUP:" in file_issues_prompt
+
+
+def test_minor_rollup_is_neither_triaged_nor_claimed_by_the_pr(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    def fake(prompt, repo_root):
+        if "file a GitHub issue" in prompt:
+            return ("ISSUE: #11\nMINOR_ROLLUP: #12\n", 0)
+        return _fake_gate_claude(prompt, repo_root)
+
+    prompts = _record_gate_prompts(prd_path, tmp_path, fake)
+
+    triage_prompt = next(p for p in prompts if "run /triage" in p)
+    assert "#11" in triage_prompt
+    assert "#12" not in triage_prompt
+    assert load_prd(prd_path)["sdlc_finding_issues"] == [11]
+
+
+def test_round_with_only_minor_findings_completes_without_triage(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    def fake(prompt, repo_root):
+        if "file a GitHub issue" in prompt:
+            return ("MINOR_ROLLUP: #12\n", 0)
+        return _fake_gate_claude(prompt, repo_root)
+
+    prompts = _record_gate_prompts(prd_path, tmp_path, fake)
+
+    assert not any("run /triage" in p for p in prompts)
+    loaded = load_prd(prd_path)
+    assert loaded["sdlc_review_status"] == "complete"
+    assert loaded["sdlc_review_rounds"] == 1
+
+
+def test_filing_skips_findings_already_covered_by_an_open_issue(tmp_path):
+    # A later round re-finding a still-open issue must not file it a second time.
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    prompts = _record_gate_prompts(prd_path, tmp_path)
+
+    file_issues_prompt = next(p for p in prompts if "file a GitHub issue" in p)
+    assert "gh issue list --label sdlc-finding --state open" in file_issues_prompt
+    assert "DUPLICATE:" in file_issues_prompt
+
+
+def test_triage_closes_cosmetic_findings_instead_of_planning_them(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    prompts = _record_gate_prompts(prd_path, tmp_path)
+
+    triage_prompt = next(p for p in prompts if "run /triage" in p)
+    assert "cosmetic churn" in triage_prompt
+    assert "close it as wontfix" in triage_prompt
+
+
+def test_finding_on_an_issue_this_pr_claims_to_fix_is_not_deduped_away(tmp_path):
+    # Issues the PR closes stay open until it merges. A later round finding that one of them
+    # is still broken means the fix fell short; deduping it would drop the finding and let
+    # the PR close the issue anyway.
+    plans_dir = tmp_path / "docs" / "agents" / "plans"
+    plans_dir.mkdir(parents=True)
+    (plans_dir / "p.md").write_text("# Plan\n\n**Issues:** #63\n")
+    prd_path = plans_dir / "prd.json"
+    data = _valid_prd()
+    data["plans"] = [{"file": "p.md", "status": "done", "attempts": 1, "blocked_by": []}]
+    data["sdlc_finding_issues"] = [112]
+    save_prd(prd_path, data)
+
+    prompts = _record_gate_prompts(prd_path, tmp_path)
+
+    file_issues_prompt = next(p for p in prompts if "file a GitHub issue" in p)
+    assert "[63, 112]" in file_issues_prompt
+    assert "is NOT a duplicate" in file_issues_prompt

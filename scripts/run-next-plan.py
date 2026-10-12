@@ -628,16 +628,21 @@ def _reset_pr_closes_cache() -> None:
     _synced_closes = None
 
 
+def done_plan_issue_numbers(data: dict, plans_dir: Path) -> list[int]:
+    """Issue numbers named on the **Issues:** line of every done plan — the set the PR closes."""
+    issue_nums: list[int] = []
+    for entry in data["plans"]:
+        if entry["status"] == "done":
+            issue_nums.extend(extract_plan_issue_numbers(plans_dir / entry["file"]))
+    return issue_nums
+
+
 def sync_pr_closes(prd_path: Path, plans_dir: Path, integration_branch: str) -> None:
     """Add missing 'Closes #N' entries to the integration branch PR body. No-ops without
     touching the network when the set of closed issues hasn't changed since the last sync."""
     global _synced_closes
     data = load_prd(prd_path)
-    issue_nums: list[int] = []
-    for entry in data["plans"]:
-        if entry["status"] == "done":
-            plan_path = plans_dir / entry["file"]
-            issue_nums.extend(extract_plan_issue_numbers(plan_path))
+    issue_nums = done_plan_issue_numbers(data, plans_dir)
     if not issue_nums:
         return
 
@@ -1211,10 +1216,32 @@ def _run_file_issues_phase(
     prd_path: Path, repo_root: Path, config_root: Path, final_round: bool = False
 ) -> list[int]:
     findings_rel = findings_path(config_root).relative_to(repo_root.resolve()).as_posix()
+    data = load_prd(prd_path)
+    claimed = sorted(
+        set(done_plan_issue_numbers(data, plans_dir_for(config_root)))
+        | set(data.get("sdlc_finding_issues", []))
+    )
     file_issues_prompt = f"""Read {findings_rel}.
-For each finding, file a GitHub issue using `gh issue create`.
-Use the ## heading as the title and the body text as the issue body.
-Add label "sdlc-finding" to each issue.
+First list the open finding issues with
+`gh issue list --label sdlc-finding --state open --limit 200`. Do not file a finding that
+one of them already covers; output "DUPLICATE: #N" (the existing issue) for it instead.
+Exception: this iteration's PR claims to fix {claimed}, and they stay open until it merges.
+A finding that one of those is still broken is NOT a duplicate — the fix fell short — so
+file it, and name the earlier issue in its body.
+Merge findings that describe the same problem into one before filing.
+
+Sort each remaining finding by severity. Use the severity its reviewer gave; if it has
+none, judge it yourself on the same scale.
+
+- Blocker, Critical, High, Major or Medium: file a GitHub issue for it using
+  `gh issue create`. Use the ## heading as the title and the body text as the issue body.
+- Anything lower (Minor, Low, Nit, Informational, suggestions): do NOT file it on its own.
+  Collect every such finding into ONE rollup issue titled
+  "SDLC review: minor findings", whose body is a Markdown checklist with one line per
+  finding (file and symbol plus a one-sentence description). Drop purely informational
+  notes that ask for no change. Skip the rollup if nothing is left to put in it.
+
+Add label "sdlc-finding" to each issue, the rollup included.
 
 These issue bodies leave this machine and land in a tracker that may be public, and the
 automation cannot retract one once filed. Before filing, rewrite each body so it:
@@ -1224,7 +1251,9 @@ automation cannot retract one once filed. Before filing, rewrite each body so it
 - carries no credentials, tokens, keys, connection strings, customer data, email
   addresses, or other personal data — redact any such value as [REDACTED].
 
-Output the issue numbers created, one per line, prefixed with "ISSUE:"."""
+Output the numbers of the individually filed issues, one per line, prefixed with "ISSUE:".
+Output the rollup's number on its own line prefixed with "MINOR_ROLLUP:", never "ISSUE:" —
+it is left for a human to schedule, not triaged or fixed in this iteration."""
     issues_output = _gate_invoke("issue filing", file_issues_prompt, repo_root)
     issue_numbers = parse_issue_numbers(issues_output)
     issue_ints = [int(n.lstrip("#")) for n in issue_numbers]
@@ -1329,9 +1358,12 @@ def run_sdlc_review_gate(prd_path: Path, repo_root: Path, config_root: Path) -> 
             )
             if not round_filed:
                 round_filed = _run_file_issues_phase(prd_path, repo_root, config_root, final_round)
-            _run_triage_phase(
-                prd_path, repo_root, config_root, round_filed, triage_log_path, final_round
-            )
+            # A round whose findings were all minor files only the rollup, which is left for
+            # a human — nothing to triage.
+            if round_filed:
+                _run_triage_phase(
+                    prd_path, repo_root, config_root, round_filed, triage_log_path, final_round
+                )
             break
         except ReviewInterrupted as exc:
             integration_branch = load_prd(prd_path)["integration_branch"]
@@ -1422,6 +1454,12 @@ non-interactive run, so do NOT ask the user questions. Answer each question your
 your best-supported recommendation (state the recommendation and a one-line rationale as
 you go), the same way /triage's step 2 already asks you to "recommend... with reasoning" —
 just skip the "wait for direction" pause.
+
+Hold each issue to a bar before marking it ready-for-agent: fixing it must change
+behaviour, correctness, security, privacy, accessibility or user-facing copy, or close a
+test gap on a risky path. If it is cosmetic churn (naming, comment wording, style the linter
+already accepts, an alternative phrasing of working code) or duplicates another open issue,
+close it as wontfix with a one-line reason.
 
 Apply the outcome per /triage's state machine as usual (post agent brief / needs-info
 notes / close).
