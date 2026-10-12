@@ -618,6 +618,7 @@ def test_docs_phase_prompt_asks_claude_to_commit_but_not_push(tmp_path):
 
 def test_triage_prompt_asks_claude_to_commit_but_not_push(tmp_path):
     prompts = []
+    run_next_plan.save_prd(tmp_path / "prd.json", {"integration_branch": "integration/x", "plans": []})
     with patch.object(run_next_plan, "_gate_invoke", side_effect=lambda phase, p, r: prompts.append(p)):
         run_next_plan._run_triage_phase(
             tmp_path / "prd.json", tmp_path, resolve_config_root(tmp_path), [11], "log.txt"

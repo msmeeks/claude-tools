@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -984,3 +985,105 @@ def test_a_completed_gate_round_issues_exactly_one_push(tmp_path):
         run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
     assert len(pushes) == 1
+
+
+def _triage_appends(prd_path, new_entry):
+    """A gate Claude fake whose triage session appends `new_entry` to prd.json raw, the way
+    a real session edits the file — bypassing save_prd's schema check."""
+
+    def fake(prompt, repo_root):
+        if "run /triage" in prompt:
+            raw = json.loads(prd_path.read_text())
+            raw["plans"].append(new_entry)
+            prd_path.write_text(json.dumps(raw))
+        return _fake_gate_claude(prompt, repo_root)
+
+    return fake
+
+
+def test_gate_completes_when_triage_appends_a_plan_with_null_status(tmp_path):
+    # #66: triage appended plans with "status": null; the next load_prd died mid-gate, the
+    # round never latched complete, and every later run died at startup.
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+    new_entry = {"file": "new-plan.md", "issues": [11], "status": None, "attempts": 0, "blocked_by": []}
+
+    with patch.object(
+        run_next_plan, "invoke_claude", side_effect=_triage_appends(prd_path, new_entry)
+    ), patch.object(run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run):
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
+
+    loaded = load_prd(prd_path)
+    assert loaded["sdlc_review_status"] == "complete"
+    assert loaded["plans"][0]["status"] == "pending"
+
+
+def test_non_final_triage_prompt_spells_out_a_pending_entry_shape(tmp_path):
+    # The old wording ("any entry with a non-null status field is immutable") read as though
+    # new entries carry a null status, which is exactly what triage then wrote (#66).
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    prompts = []
+
+    def recording(prompt, repo_root):
+        prompts.append(prompt)
+        return _fake_gate_claude(prompt, repo_root)
+
+    with patch.object(run_next_plan, "invoke_claude", side_effect=recording), patch.object(
+        run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
+    ):
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
+
+    triage_prompt = next(p for p in prompts if "run /triage" in p)
+    assert '"status": "pending"' in triage_prompt
+    assert '"attempts": 0' in triage_prompt
+    assert "non-null" not in triage_prompt
+
+
+def test_gate_survives_triage_appending_a_null_status_plan_then_hitting_a_limit(tmp_path):
+    # The interrupted path reloads prd.json too (to commit progress before waiting), so a
+    # partial triage that wrote a null-status plan must not wedge it either.
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+    state = {"triage_calls": 0}
+
+    def fake(prompt, repo_root):
+        if "run /triage" in prompt:
+            state["triage_calls"] += 1
+            if state["triage_calls"] == 1:
+                raw = json.loads(prd_path.read_text())
+                raw["plans"].append({"file": "new-plan.md", "issues": [11], "status": None})
+                prd_path.write_text(json.dumps(raw))
+                return (SAMPLE_LIMIT_MESSAGE, 1)
+        return _fake_gate_claude(prompt, repo_root)
+
+    with patch.object(run_next_plan, "invoke_claude", side_effect=fake), patch.object(
+        run_next_plan.time, "sleep"
+    ), patch.object(run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run):
+        result = run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
+
+    assert result == "complete"
+    plan = load_prd(prd_path)["plans"][0]
+    assert (plan["status"], plan["attempts"], plan["blocked_by"]) == ("pending", 0, [])
+
+
+def test_triage_nulling_an_existing_plans_status_still_fails_loudly(tmp_path):
+    # Defaults apply only to plans triage appended; a pre-existing entry it corrupted is a
+    # real immutability violation and must not be quietly repaired.
+    prd_path = tmp_path / "prd.json"
+    data = _valid_prd()
+    data["plans"] = [{"file": "old-plan.md", "status": "done", "attempts": 1, "blocked_by": []}]
+    save_prd(prd_path, data)
+
+    def fake(prompt, repo_root):
+        if "run /triage" in prompt:
+            raw = json.loads(prd_path.read_text())
+            raw["plans"][0]["status"] = None
+            prd_path.write_text(json.dumps(raw))
+        return _fake_gate_claude(prompt, repo_root)
+
+    with patch.object(run_next_plan, "invoke_claude", side_effect=fake), patch.object(
+        run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
+    ), pytest.raises(SystemExit):
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
