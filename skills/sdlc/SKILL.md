@@ -19,6 +19,8 @@ This skill manages the full review and QA pipeline for code changes. Always invo
 - `/sdlc qa` — QA phase only
 - `/sdlc docs` — documentation update only (run after changes, before merging)
 - `--parallel` — dispatch review agents in parallel instead of series (faster, but findings may be redundant)
+- `/sdlc review --report-only ...` — non-interactive review for automated callers; see
+  [Headless review contract](#headless-review-contract-review-phase-v1)
 
 ## Phase 0: Doc bootstrap (first time in a project)
 
@@ -99,6 +101,57 @@ Agent(sdlc-test-reviewer): Review [files changed] for test quality: genuine-valu
 ```
 
 Fix all Critical/Blocker issues. Fix Major issues unless there is a documented reason not to. Minor issues may be deferred to a follow-up.
+
+### Headless review contract (review phase, v1)
+
+Used by automated callers (the Ralph loop's review gate). It applies only to `/sdlc review`
+when any of the arguments below is passed. **With none of them, everything above is
+unchanged.** `hd-code-review` implements the same arguments.
+
+| Argument | Meaning |
+|---|---|
+| `--range <git range>` | Review `git diff <range>` instead of `[files changed]`. Skip any scoping step and its questions. |
+| `--only <id[,id...]>` | Run only these reviewers. Several ids are dispatched **concurrently** (one message, multiple Agent calls, regardless of `--parallel`); one id runs alone. |
+| `--report-only` | Never modify the working tree and never ask the user anything. No fix pass, no re-check, no QA/doc phases. Where information is missing, choose conservatively and say so in the output. |
+| `--out <file>` | Append findings to this file, creating it if missing. Do not create GitHub issues. |
+| `--registry yes\|no` | Ignored by `/sdlc` (an `hd-code-review` argument). |
+| `--spec <issue numbers or path>` | Ignored by `/sdlc` (the seven reviewers include no spec reviewer). |
+
+**Reviewer ids** are the agent names: `sdlc-code-reviewer`, `sdlc-style-reviewer`,
+`sdlc-security-reviewer`, `sdlc-privacy-reviewer`, `sdlc-accessibility-reviewer`,
+`sdlc-design-reviewer`, `sdlc-test-reviewer`. Without `--only`, all seven run.
+
+**Procedure**
+
+1. **Validate ids first.** If `--only` names any id not in the list above, print
+   `UNSUPPORTED: <id>` (once per unknown id), then stop. Review nothing, write nothing, print
+   no `<reviewed>` lines and no `REVIEW_DONE`.
+2. **Dispatch** the selected reviewers with the Phase 3 prompts, substituting
+   `git diff <range>` for `[files changed]` when `--range` is given. In `--report-only` mode
+   tell each agent not to edit files and to return findings only.
+3. **Skip what does not apply.** A reviewer that does not apply to the change (for example
+   accessibility or design on backend-only changes) is not run: print
+   `SKIPPED: <id>: <reason>`, then its `<reviewed>` line.
+4. **Write findings.** With `--out`, append one block per finding to the file, after each
+   reviewer returns:
+
+   ```
+   ## <title>
+   Severity: <Blocker|Critical|High|Major|Medium|Minor|Low|Nit|Informational>
+   Reviewer: <reviewer id>
+
+   <body>
+   ```
+
+   Without `--out`, print the same blocks to stdout. A reviewer with no findings writes
+   nothing.
+5. **Report completion.** Only after a reviewer's findings are written, print
+   `<reviewed><id></reviewed>` on its own line. A reviewer that errored or returned nothing
+   usable gets no `<reviewed>` line, because the caller counts a reviewer as complete only
+   from that line. Print `REVIEW_DONE` as the very last line, after all `<reviewed>` lines.
+
+In `--report-only` mode, ignore the "Fix all Critical/Blocker issues" instruction above:
+findings are reported, never fixed.
 
 ## Phase 4: QA + Documentation
 
