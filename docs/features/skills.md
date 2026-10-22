@@ -51,6 +51,26 @@ The central workflow orchestrator. Divides work into four phases invocable indep
 
 On first use in a project, `/sdlc` bootstraps `docs/` via `doc-writer` before anything else. The checklist at the bottom of `SKILL.md` serves as a definition of done.
 
+#### Headless review contract
+
+`/sdlc review` also serves as a configured review recipe for the Ralph loop's gate (see
+[run-next-plan.md](run-next-plan.md) and [ADR 0002](../adr/0002-review-recipe-is-repo-config.md)).
+Passing any of these arguments switches it to non-interactive mode; with none, interactive
+behaviour is unchanged. Normative text: `skills/sdlc/SKILL.md` and
+[#69](https://github.com/msmeeks/claude-tools/issues/69).
+
+| Argument | Meaning |
+|---|---|
+| `--range <git range>` | Review `git diff <range>`; no scoping questions |
+| `--only <id[,id...]>` | Run only these reviewers; several ids run concurrently, one alone. Unknown id prints `UNSUPPORTED: <id>` and reviews nothing |
+| `--report-only` | Never edit files or ask questions; no fix pass |
+| `--out <file>` | Append `## <title>` finding blocks (severity, reviewer id, body); no GitHub issues |
+| `--registry yes\|no`, `--spec <issues\|path>` | Ignored by `/sdlc` (used by other skills implementing the contract) |
+
+Output: `<reviewed>id</reviewed>` on its own line once a reviewer's findings are written
+(`SKIPPED: id: <reason>` first for a reviewer that does not apply), and `REVIEW_DONE` last.
+The caller records a reviewer complete only from its `<reviewed>` line.
+
 ### demo
 
 Produces two artifacts per feature: a styled HTML demo script and an MP4 video. Screenshots are captured via a headless Chrome CDP session (Node.js, no external packages beyond built-in WebSocket). Video is assembled with Pillow (text rendering on PNG frames) + ffmpeg (encoding and concatenation). If `demo-gen` is installed at `~/Code/demo-generator/.venv/bin/demo-gen`, the skill delegates to that CLI instead.
