@@ -90,7 +90,9 @@ Name each cluster with a descriptive slug: `feat/<area>`, `fix/<area>`, `refacto
 
 ### Step 6 — /sdlc Plan Review Per Cluster
 
-For each cluster, dispatch four planning-review agents **in series** — wait for each result before starting the next. With `--parallel`, dispatch all four simultaneously:
+**Roster.** Read `<config-root>/ralph.json` if it exists and take `plan_review.reviewers`; with no file or no such key, use the four agents below. Stop and tell the user if a configured name is not an installed agent (`~/.claude/agents/<name>.md`) — do not substitute or skip it. The prompts below are the defaults for the four standard agents; for any other configured agent, reuse the same cluster/files/intent framing with a one-line focus taken from that agent's description. `--parallel` is unchanged.
+
+For each cluster, dispatch the roster's planning-review agents **in series** — wait for each result before starting the next. With `--parallel`, dispatch all of them simultaneously. Default roster:
 
 ```
 Agent(sdlc-security-reviewer): Review planned changes for cluster "<name>".
@@ -111,7 +113,7 @@ Flag component reuse opportunities and design consistency risks.
 ```
 
 Collect all non-empty findings for the `## Pre-Implementation Review` section.
-If all four agents return no findings, omit that section.
+If no agent returns findings, omit that section.
 
 ### Step 7 — Write Plan Files
 
@@ -193,7 +195,7 @@ Size key: `S` (1–3 files), `M` (4–8 files), `L` (9–15 files), `XL` (16+ fi
 ## Review Mode (`/plan-iteration review [plan-name]`)
 
 1. List `<config-root>/plans/*.md`. If a plan name is given, review only that one.
-2. For each plan, dispatch the same four planning-review agents as Step 6 (series by default; parallel with `--parallel`),
+2. For each plan, dispatch the same planning-review roster as Step 6, including `plan_review.reviewers` from `<config-root>/ralph.json` when present (series by default; parallel with `--parallel`),
    using the plan's **Implementation Notes** and **Context** sections as input.
 3. Print a per-plan findings summary. Suggest edits but do not auto-modify plan files.
 

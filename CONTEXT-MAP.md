@@ -65,7 +65,7 @@ the CONTEXT file for vocabulary and boundaries, the feature doc for detail.
 
 - [features/agents.md](./docs/features/agents.md) — subagent definitions and how to use them
 - [features/skills.md](./docs/features/skills.md) — what each skill does
-- [features/run-next-plan.md](./docs/features/run-next-plan.md) — the Ralph loop, the SDLC review gate, session-limit handling, the two-audience PR description
+- [features/run-next-plan.md](./docs/features/run-next-plan.md) — the Ralph loop, the SDLC review gate, per-repo `ralph.json` review recipes, session-limit handling, the two-audience PR description
 - [features/setup.md](./docs/features/setup.md) — `setup-symlinks.sh` and the Desktop variant
 - [features/third-party-skills.md](./docs/features/third-party-skills.md) — the upstream engineering skills, their install, and local mods
 - [features/custom-llm.md](./docs/features/custom-llm.md) — Ollama / Gemini / OpenAI routing

@@ -5,6 +5,10 @@ non-interactive orchestrator that drives an iteration's plans to completion by r
 spawning headless Claude sessions, then runs the SDLC review gate. Stdlib only, Python 3.10+,
 with a pytest suite under `tests/` and ruff configured in `pyproject.toml`.
 
+Per-repo review configuration lives in `<config-root>/ralph.json` (see
+[ADR 0002](../docs/adr/0002-review-recipe-is-repo-config.md)); `load_ralph_config` validates it
+once in `main()` and passes it down like `config_root`.
+
 Run the suite with `cd scripts && python3 -m pytest`; lint with `python3 -m ruff check .`
 (the `ruff` binary may not be on PATH). Full reference:
 [../docs/features/run-next-plan.md](../docs/features/run-next-plan.md).
@@ -40,6 +44,21 @@ The SDLC review gate: the phase that runs once every plan is terminal — review
 triage, docs, PR description. Latched through `prd.json`'s `sdlc_review_status` so an
 interrupted run resumes rather than repeats.
 _Avoid_: review step, final check
+
+**Recipe**:
+How the Gate's review phase produces findings, chosen per repo by `review.recipe` in
+`<config-root>/ralph.json`. `agents` (default) dispatches the roster's `sdlc-*` agents straight
+from Python; `skill` calls a named review skill that follows the headless review contract
+(see [issue #69](https://github.com/msmeeks/claude-tools/issues/69)). A repo with no
+`ralph.json` gets `agents` with the original seven reviewers.
+_Avoid_: mode, strategy, backend
+
+**Roster**:
+The ordered reviewer ids a Recipe runs (`review.reviewers`; `plan_review.reviewers` for
+`/plan-iteration`). Ids are agent names, plus bare `spec` / `compliance` for skills that offer
+them. A reviewer is recorded complete only from its `<reviewed>id</reviewed>` line (skill
+recipe) or after its dispatch returns (agents recipe) — never from having been requested.
+_Avoid_: reviewer list, agent set
 
 **Stalled**:
 A plan that burned `MAX_ATTEMPTS` without reaching `done`. Terminal for the loop's purposes;

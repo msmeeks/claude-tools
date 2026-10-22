@@ -36,7 +36,8 @@ The script treats `<config-root>/plans/prd.json` as the single source of truth f
 | `<config-root>/pr-summary.md` | The two-audience PR summary `_generate_pr_summary` writes, spliced into the PR body by `update_pr_description` |
 | `<config-root>/plans/implementation-logs/run-next-plan-*.log` | Per-invocation log; scrubs credentials before writing. `_ensure_artifacts_gitignored` gitignores (and untracks) this directory, plus `prd.json.lock`, `sdlc-review-findings.md`, and `pr-summary.md`, in the target repo at startup |
 | `<config-root>/plans/implementation-logs/run-next-plan-*-triage.log` | Per-issue triage outcome log written by the SDLC review gate |
-| `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_pr_description.py`, `test_config_root.py` | Test suite; run via `cd scripts && python3 -m pytest`. `test_orchestration.py` covers `_working_tree_dirty`, `_push_branch`, `ensure_committed`, `flush_push`, `exit_flush`, and `_ensure_artifacts_gitignored` against real throwaway git repos (with a bare "remote"), not mocks. `test_config_root.py` covers `resolve_config_root` layout resolution under both `docs/agents/` and `meta/`, including the dual-layout refusal, the symlink/escape refusals, and an end-to-end `main()` run under each layout. |
+| `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_pr_description.py`, `test_config_root.py`, `test_ralph_config.py`, `test_review_recipes.py` | Test suite; run via `cd scripts && python3 -m pytest`. `test_orchestration.py` covers `_working_tree_dirty`, `_push_branch`, `ensure_committed`, `flush_push`, `exit_flush`, and `_ensure_artifacts_gitignored` against real throwaway git repos (with a bare "remote"), not mocks. `test_config_root.py` covers `resolve_config_root` layout resolution under both `docs/agents/` and `meta/`, including the dual-layout refusal, the symlink/escape refusals, and an end-to-end `main()` run under each layout. |
+| `<config-root>/ralph.json` | Optional per-repo review config (see **Review recipe config**); absent means today's behaviour |
 | `skills/close-iteration/skill.md` | Step 2b reads this script's `sdlc_review_status` values (`pending`/`complete`) from `prd.json` as a hard-blocker check before promoting/merging the iteration |
 
 ## Technical Detail
@@ -150,6 +151,48 @@ Once `select_next_plan` finds no eligible plans (or Claude emits the `<promise>C
 
 
 If new plans were created by the triage step, the loop simply `continue`s and picks them up like any other pending plan on the next pass.
+
+### Review recipe config (`ralph.json`)
+
+Optional `<config-root>/ralph.json`, same trust level as `prd.json` (plain schema validation).
+`load_ralph_config` runs once in `main()`, before any Claude call, and a malformed file dies
+with a message naming the field (or, for unparseable JSON, the file). A missing file or key means today's defaults, and with no
+file the `agents` recipe's prompts are byte-identical to before (regression-tested).
+
+```json
+{
+  "review": {
+    "recipe": "skill",
+    "skill": "<skill-name>",
+    "reviewers": ["sdlc-security-reviewer", "sdlc-code-reviewer", "spec"],
+    "registry": true
+  },
+  "plan_review": { "reviewers": ["sdlc-security-reviewer", "sdlc-privacy-reviewer"] }
+}
+```
+
+| Key | Rule |
+|---|---|
+| `review.recipe` | `agents` (default) or `skill` |
+| `review.skill` | Required and non-empty iff `recipe` is `skill`; rejected otherwise |
+| `review.reviewers` | Non-empty, duplicate-free list of ids matching `^[a-z0-9][a-z0-9-]*$`; default is the seven `sdlc-*` agents |
+| `review.registry` | Bool, default `false`; passed to the skill as `--registry yes\|no` |
+| `plan_review.reviewers` | Same list rules; default the four plan-review agents. Read by `/plan-iteration`, not by this script |
+
+Unknown top-level keys warn and are ignored; unknown keys inside `review`/`plan_review` are silently ignored.
+
+**`agents` recipe.** The original dispatch, over the configured roster instead of the fixed
+`SDLC_REVIEW_AGENTS`.
+
+**`skill` recipe.** The review phase calls `/<skill> --range R --only <ids> --report-only --out <findings> --registry yes|no [--spec <issue numbers>]` against a skill that follows the headless review contract ([#69](https://github.com/msmeeks/claude-tools/issues/69) defines it; this doc does not restate it). `--spec` is the PRD issue plus the done plans' issue numbers, integers only; it is omitted when there are none. Python still owns escalation and resume:
+
+- Parallel attempts make one call with every outstanding id; serial attempts one call per id.
+- A reviewer is recorded complete **only** from a `<reviewed>id</reviewed>` line on its own line. Ids outside the roster are ignored with a warning.
+- If a parallel call omits some ids, the gate runs the unreported ones singly in the same attempt; one that still does not report fails the gate loudly, naming it. Nothing is marked complete on trust.
+- A line starting `UNSUPPORTED:` in the output dies with a message pointing at the skill version.
+- A parallel call cut off by a session limit with no reviewer yet complete rotates the findings file before the retry (the retry would otherwise append partial duplicates). If any reviewer is already complete the file is kept; the file-issues phase merges same-problem findings.
+
+`/close-iteration` is unaffected: it reads `sdlc_review_status` and the findings file, both recipe-agnostic. Rationale: [ADR 0002](../adr/0002-review-recipe-is-repo-config.md).
 
 ### `/close-iteration` integration
 
