@@ -113,6 +113,11 @@ Backlog grooming entry point: triages each candidate issue via `/triage`, groups
 plus `<config-root>/plans/prd.json` for `run-next-plan.py` (see
 [run-next-plan.md](run-next-plan.md)) to drive to completion.
 
+The plan-review agents in Step 6 and `review` mode come from `plan_review.reviewers` in
+`<config-root>/ralph.json` when that file exists (default: security, privacy, accessibility,
+design). A configured name that is not an installed agent stops the run rather than being
+skipped. See the **Review recipe config** section of [run-next-plan.md](run-next-plan.md).
+
 When `prd.json` already exists (re-running against a partially-worked iteration), it merges
 rather than overwrites: an existing `plans[]` entry for the same `file` keeps its `status`
 and `attempts`, and — critically — **every existing top-level key is preserved**, not just
