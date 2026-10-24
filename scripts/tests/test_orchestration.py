@@ -335,12 +335,13 @@ def test_ensure_artifacts_gitignored_adds_the_entry_when_absent(tmp_path):
 
 def test_ensure_artifacts_gitignored_appends_below_existing_rules_without_clobbering_them(tmp_path):
     _init_repo(tmp_path)
-    gitignore = tmp_path / ".gitignore"
-    gitignore.write_text("node_modules/\ndist/\n")
+    exclude = tmp_path / ".git" / "info" / "exclude"
+    exclude.parent.mkdir(exist_ok=True)
+    exclude.write_text("node_modules/\ndist/\n")
 
     _ensure_artifacts_gitignored(tmp_path)
 
-    text = gitignore.read_text()
+    text = exclude.read_text()
     assert text.startswith("node_modules/\ndist/\n")
     assert logs_rel(tmp_path) in text
     assert _is_ignored(tmp_path, f"{logs_rel(tmp_path)}some.log")
@@ -671,7 +672,7 @@ def test_safety_net_commit_succeeds_when_the_log_dir_is_gitignored(tmp_path):
         capture_output=True, text=True, cwd=local, check=True,
     ).stdout.split()
     assert "README.md" in committed
-    assert ".gitignore" in committed
+    assert ".gitignore" not in committed
     assert not any("implementation-logs" in path for path in committed)
 
 

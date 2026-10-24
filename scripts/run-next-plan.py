@@ -861,6 +861,20 @@ def _check_ignored(repo_root: Path, rel_path: str) -> bool:
     )
 
 
+def _git_exclude_path(repo_root: Path) -> Path:
+    """The repo-local, untracked ignore file. Unlike `.gitignore` an edit here can never be
+    staged, so it cannot land in the diff the SDLC reviewers read. Resolved via git so a
+    linked worktree writes to the shared common dir rather than a nonexistent `.git/` dir."""
+    r = subprocess.run(
+        ["git", "rev-parse", "--git-path", "info/exclude"],
+        capture_output=True,
+        text=True,
+        cwd=repo_root,
+        check=True,
+    )
+    return (repo_root / r.stdout.strip()).resolve()
+
+
 def _ensure_artifacts_gitignored(repo_root: Path, config_root: Path) -> None:
     """Make the invariant the runner's prompts already assume actually true: every artifact
     the loop writes under the resolved config root is gitignored, and the log directory is
@@ -879,8 +893,9 @@ def _ensure_artifacts_gitignored(repo_root: Path, config_root: Path) -> None:
         if not _check_ignored(repo_root, rel)
     ]
     if missing:
-        gitignore = repo_root / ".gitignore"
-        existing = gitignore.read_text() if gitignore.exists() else ""
+        exclude = _git_exclude_path(repo_root)
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        existing = exclude.read_text() if exclude.exists() else ""
         if not existing.strip():
             separator = ""
         elif existing.endswith("\n"):
@@ -888,10 +903,10 @@ def _ensure_artifacts_gitignored(repo_root: Path, config_root: Path) -> None:
         else:
             separator = "\n\n"
         body = "".join(f"{rel}\n" for rel in missing)
-        gitignore.write_text(
+        exclude.write_text(
             f"{existing}{separator}# run-next-plan.py runtime artifacts — never commit these\n{body}"
         )
-        info(f"Added {len(missing)} run-next-plan artifact path(s) to .gitignore.")
+        info(f"Added {len(missing)} run-next-plan artifact path(s) to .git/info/exclude.")
 
     if not _check_ignored(repo_root, f"{logs}placeholder.log"):
         die(

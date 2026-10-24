@@ -34,7 +34,7 @@ The script treats `<config-root>/plans/prd.json` as the single source of truth f
 | `<config-root>/plans/progress.md` | Human-readable log Claude appends to after each completed plan |
 | `<config-root>/sdlc-review-findings.md` | Per-round scratch file the review phase writes findings into before they're filed as issues; rotated at the start of each fresh round |
 | `<config-root>/pr-summary.md` | The two-audience PR summary `_generate_pr_summary` writes, spliced into the PR body by `update_pr_description` |
-| `<config-root>/plans/implementation-logs/run-next-plan-*.log` | Per-invocation log; scrubs credentials before writing. `_ensure_artifacts_gitignored` gitignores (and untracks) this directory, plus `prd.json.lock`, `sdlc-review-findings.md`, and `pr-summary.md`, in the target repo at startup |
+| `<config-root>/plans/implementation-logs/run-next-plan-*.log` | Per-invocation log; scrubs credentials before writing. `_ensure_artifacts_gitignored` ignores (and untracks) this directory, plus `prd.json.lock`, `sdlc-review-findings.md`, and `pr-summary.md`, via the target repo's `.git/info/exclude` at startup |
 | `<config-root>/plans/implementation-logs/run-next-plan-*-triage.log` | Per-issue triage outcome log written by the SDLC review gate |
 | `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_pr_description.py`, `test_config_root.py`, `test_ralph_config.py`, `test_review_recipes.py` | Test suite; run via `cd scripts && python3 -m pytest`. `test_orchestration.py` covers `_working_tree_dirty`, `_push_branch`, `ensure_committed`, `flush_push`, `exit_flush`, and `_ensure_artifacts_gitignored` against real throwaway git repos (with a bare "remote"), not mocks. `test_config_root.py` covers `resolve_config_root` layout resolution under both `docs/agents/` and `meta/`, including the dual-layout refusal, the symlink/escape refusals, and an end-to-end `main()` run under each layout. |
 | `<config-root>/ralph.json` | Optional per-repo review config (see **Review recipe config**); absent means today's behaviour |
@@ -76,10 +76,10 @@ On `rate_limit`, the script parses a retry delay from the output text via `_pars
 
 The runner writes its live log to `<config-root>/plans/implementation-logs/` *inside the target repo*, and its prompts tell Claude that directory is gitignored. `_ensure_artifacts_gitignored(repo_root)` runs at startup (before the log file is opened) to make that assumption true rather than merely asserted — it also covers `prd.json.lock`, `sdlc-review-findings.md`, and `pr-summary.md`, which have no other backstop against being committed:
 
-1. If `git check-ignore` says the directory isn't ignored, appends `<config-root>/plans/implementation-logs/` (with a comment) to the repo's `.gitignore`, creating it if absent and preserving any existing rules.
+1. If `git check-ignore` says the directory isn't ignored, appends the missing artifact paths (with a comment) to the repo's `.git/info/exclude` (resolved with `git rev-parse --git-path`, so linked worktrees work), creating it if absent and preserving existing rules. It deliberately does **not** edit the tracked `.gitignore`: that edit would be swept into the first work commit and appear in the diff the SDLC reviewers see.
 2. If `git ls-files` shows logs the repo already committed, runs `git rm -r --cached` on them — files stay on disk (one is being written to right now), they just stop being tracked.
 
-Both steps are no-ops on an already-healthy repo, so a steady-state run prints nothing. The resulting `.gitignore` edit and staged untrackings are left uncommitted; the first `ensure_committed` of the run sweeps them into a real commit.
+Both steps are no-ops on an already-healthy repo, so a steady-state run prints nothing. The exclude edit is local and untracked, so it never shows up in a commit; staged untrackings of previously committed logs are left uncommitted and the first `ensure_committed` of the run sweeps them into a real commit.
 
 ### Commit/push enforcement
 

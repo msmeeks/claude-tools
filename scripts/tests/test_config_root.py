@@ -110,6 +110,43 @@ def _init_repo(path):
     subprocess.run(["git", "config", "user.name", "T"], cwd=path, check=True)
 
 
+def _exclude_text(repo_root):
+    exclude = repo_root / ".git" / "info" / "exclude"
+    return exclude.read_text() if exclude.exists() else ""
+
+
+def test_artifact_ignores_never_touch_the_tracked_gitignore(tmp_path):
+    """A .gitignore edit would be swept into the first work commit and show up in the diff
+    the SDLC reviewers see. The ignores must live in .git/info/exclude instead."""
+    _init_repo(tmp_path)
+    (tmp_path / "meta" / "plans").mkdir(parents=True)
+    (tmp_path / ".gitignore").write_text("node_modules/\n")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+
+    run_next_plan._ensure_artifacts_gitignored(tmp_path, resolve_config_root(tmp_path))
+
+    assert (tmp_path / ".gitignore").read_text() == "node_modules/\n"
+    status = subprocess.run(
+        ["git", "status", "--porcelain"], capture_output=True, text=True, cwd=tmp_path, check=True
+    ).stdout
+    assert status == ""
+    assert _is_ignored(tmp_path, "meta/pr-summary.md")
+
+
+def test_artifact_ignores_are_written_inside_a_linked_worktree(tmp_path):
+    _init_repo(tmp_path)
+    subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", "c"], cwd=tmp_path, check=True)
+    wt = tmp_path.parent / (tmp_path.name + "-wt")
+    subprocess.run(["git", "worktree", "add", "-q", str(wt)], cwd=tmp_path, check=True)
+    (wt / "meta" / "plans").mkdir(parents=True)
+
+    run_next_plan._ensure_artifacts_gitignored(wt, resolve_config_root(wt))
+
+    assert _is_ignored(wt, "meta/pr-summary.md")
+    assert not (wt / ".gitignore").exists()
+
+
 def _is_ignored(repo_root, rel_path):
     return (
         subprocess.run(["git", "check-ignore", "-q", rel_path], cwd=repo_root).returncode == 0
@@ -138,17 +175,19 @@ def test_old_layout_repo_does_not_gain_new_layout_ignore_rules(tmp_path):
 
     run_next_plan._ensure_artifacts_gitignored(tmp_path, resolve_config_root(tmp_path))
 
-    assert "docs/agents" not in (tmp_path / ".gitignore").read_text()
+    assert "docs/agents" not in _exclude_text(tmp_path)
 
 
-def test_gitignore_append_separates_from_a_final_line_without_a_trailing_newline(tmp_path):
+def test_exclude_append_separates_from_a_final_line_without_a_trailing_newline(tmp_path):
     _init_repo(tmp_path)
     (tmp_path / "meta" / "plans").mkdir(parents=True)
-    (tmp_path / ".gitignore").write_text("node_modules/")  # no trailing newline
+    exclude = tmp_path / ".git" / "info" / "exclude"
+    exclude.parent.mkdir(exist_ok=True)
+    exclude.write_text("node_modules/")  # no trailing newline
 
     run_next_plan._ensure_artifacts_gitignored(tmp_path, resolve_config_root(tmp_path))
 
-    contents = (tmp_path / ".gitignore").read_text()
+    contents = exclude.read_text()
     assert "node_modules/\nmeta/plans/prd.json.lock" not in contents
     assert _is_ignored(tmp_path, "meta/plans/prd.json.lock")
 
