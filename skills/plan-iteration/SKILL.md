@@ -149,11 +149,17 @@ Size key: `S` (1–3 files), `M` (4–8 files), `L` (9–15 files), `XL` (16+ fi
    cluster's name (e.g., `feat/auth-billing` → `auth-billing`). Sanitize to lowercase
    alphanumeric and hyphens only.
 
-3. Create the branch from the default branch and push:
+3. Create the branch from the default branch, add an empty starter commit, and push:
    ```bash
    git checkout -b <integration_branch> origin/<default_branch>
+   git commit --allow-empty -m "chore: start iteration <primary-slug> (Refs #N, #M)"
    git push -u origin <integration_branch>
    ```
+   The empty commit is required: `gh pr create` refuses a branch with no commits ahead of
+   the base ("No commits between …"). List every `#N` from all plan entries after `Refs` —
+   plain references, never `Closes` — so `/close-iteration`'s untraceable-commit check
+   passes and nothing closes before merge. Do not skip it when the branch already exists
+   with commits; only create the commit on a fresh branch.
 
 4. Detect the smoke test command (check in order, stop at first match):
    - `package.json` → `scripts["test:smoke"]`, then `scripts["test"]`

@@ -146,6 +146,12 @@ and `attempts`, and — critically — **every existing top-level key is preserv
 the SDLC review gate's incremental (per-round) review — e.g. losing `last_reviewed_sha`
 stalls the re-arm check on the next round.
 
+Step 8 creates the integration branch with an empty starter commit
+(`chore: start iteration <slug> (Refs #N, #M)`) before pushing, because `gh pr create`
+rejects a branch with no commits ahead of the base. The commit carries plain `Refs` (not
+`Closes`) for every plan issue so `/close-iteration`'s untraceable-commit check passes and no
+issue closes before merge.
+
 ### triage-pr-comments
 
 Reacts to new PR review comments mid-iteration by re-opening the affected plan(s): resets
