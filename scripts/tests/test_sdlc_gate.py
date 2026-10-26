@@ -221,6 +221,9 @@ FAKE_BASELINE_SHA = "baseline00000000000000000000000000000000"
 def _fake_subprocess_run(cmd, **kwargs):
     if cmd[:2] == ["gh", "auth"]:
         return type("R", (), {"returncode": 0})()
+    if cmd[:3] == ["gh", "issue", "view"]:
+        # Filed issues carry a state label — nothing for the gate to flag.
+        return type("R", (), {"returncode": 0, "stdout": "bug\nready-for-agent\n"})()
     if cmd[:3] == ["gh", "pr", "list"]:
         # No open PR — update_pr_description (run by the docs phase) skips cleanly.
         return type("R", (), {"returncode": 0, "stdout": "[]"})()
@@ -254,7 +257,7 @@ def test_run_sdlc_review_gate_marks_status_complete_after_running(tmp_path):
         calls.append(prompt)
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\nISSUE: #12\n", 0)
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
@@ -279,7 +282,7 @@ def test_gate_persists_head_as_baseline_and_clears_bookkeeping_on_completion(tmp
     def fake_invoke_claude(prompt, repo_root):
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
@@ -305,7 +308,7 @@ def test_gate_first_run_reviews_whole_pr_against_default_branch(tmp_path):
         prompts.append(prompt)
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
@@ -330,7 +333,7 @@ def test_gate_incremental_run_reviews_only_commits_since_baseline(tmp_path):
         prompts.append(prompt)
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
@@ -403,7 +406,7 @@ def test_gate_accumulates_finding_issues_across_rounds(tmp_path):
     def fake_invoke_claude(prompt, repo_root):
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
@@ -427,7 +430,7 @@ def test_gate_dedupes_finding_issues_when_a_number_recurs(tmp_path):
     def fake_invoke_claude(prompt, repo_root):
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)  # same number recurs
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
@@ -455,7 +458,7 @@ def test_gate_reround_files_its_own_issues_despite_prior_cumulative(tmp_path):
         if "file a GitHub issue" in prompt:
             state["file_calls"] += 1
             return ("ISSUE: #11\n", 0)
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
@@ -485,7 +488,7 @@ def test_gate_round_scratch_guard_prevents_refiling_within_a_round(tmp_path):
         if "file a GitHub issue" in prompt:
             state["file_calls"] += 1
             return ("ISSUE: #99\n", 0)
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             state["triage_issues"] = prompt
             return ("TRIAGE_DONE", 0)
         return ("ok", 0)
@@ -513,7 +516,7 @@ def test_gate_rotates_stale_findings_file_at_fresh_round_start(tmp_path):
     def fake_invoke_claude(prompt, repo_root):
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             return ("TRIAGE_DONE", 0)
         return ("ok", 0)  # faked reviewers do not rewrite the file
 
@@ -539,7 +542,7 @@ def test_gate_preserves_findings_file_on_mid_round_resume(tmp_path):
     def fake_invoke_claude(prompt, repo_root):
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
@@ -582,7 +585,7 @@ def test_run_sdlc_review_gate_waits_out_a_session_limit_then_completes(tmp_path)
             return ("ok", 0)
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\nISSUE: #12\n", 0)
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
@@ -609,7 +612,7 @@ def test_run_sdlc_review_gate_ignores_quoted_limit_text_on_successful_review(tmp
             return (f"Flagged: the limit gate quotes `{SAMPLE_LIMIT_MESSAGE}`.", 0)
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
@@ -633,7 +636,7 @@ def test_run_sdlc_review_gate_resumes_triage_after_waiting_out_a_limit(tmp_path)
     state = {"triage_calls": 0, "file_calls": 0}
 
     def fake_invoke_claude(prompt, repo_root):
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             state["triage_calls"] += 1
             if state["triage_calls"] == 1:
                 return (SAMPLE_LIMIT_MESSAGE, 1)  # real limit → CLI exits non-zero
@@ -672,7 +675,7 @@ def test_run_sdlc_review_gate_escalates_to_serial_after_two_parallel_limit_hits(
             return ("ok", 0)
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 
@@ -731,7 +734,7 @@ def test_run_sdlc_review_gate_dies_when_gh_not_authenticated(tmp_path):
 def _fake_gate_claude(prompt, repo_root):
     if "file a GitHub issue" in prompt:
         return ("ISSUE: #11\n", 0)
-    if "run /triage" in prompt:
+    if "labeled at filing" in prompt:
         return ("TRIAGE_DONE", 0)
     return ("ok", 0)
 
@@ -907,7 +910,7 @@ def test_final_round_triage_is_told_not_to_write_plans(tmp_path):
     ):
         run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
-    triage_prompt = next(p for p in prompts if "run /triage" in p)
+    triage_prompt = next(p for p in prompts if "labeled at filing" in p)
     assert "Do NOT write any plan files" in triage_prompt
     assert "Do NOT add any entries to meta/plans/prd.json" in triage_prompt
 
@@ -937,7 +940,7 @@ def test_gate_prompts_name_the_resolved_config_root(tmp_path):
     assert "docs/agents/sdlc-review-findings.md" in file_issues_prompt
     assert "redact any such value as [REDACTED]" in file_issues_prompt
     assert "credentials, tokens, keys, connection strings" in file_issues_prompt
-    triage_prompt = next(p for p in prompts if "run /triage" in p)
+    triage_prompt = next(p for p in prompts if "labeled at filing" in p)
     assert "docs/agents/plans/<slug>.md" in triage_prompt
     assert "docs/agents/plans/implementation-logs/" in triage_prompt
     assert "meta/plans" not in "\n".join(prompts)
@@ -958,7 +961,7 @@ def test_non_final_round_triage_still_clusters_issues_into_plans(tmp_path):
     ):
         run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
-    triage_prompt = next(p for p in prompts if "run /triage" in p)
+    triage_prompt = next(p for p in prompts if "labeled at filing" in p)
     assert "Do NOT write any plan files" not in triage_prompt
     assert "write one" in triage_prompt
 
@@ -992,7 +995,7 @@ def _triage_appends(prd_path, new_entry):
     a real session edits the file — bypassing save_prd's schema check."""
 
     def fake(prompt, repo_root):
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             raw = json.loads(prd_path.read_text())
             raw["plans"].append(new_entry)
             prd_path.write_text(json.dumps(raw))
@@ -1035,7 +1038,7 @@ def test_non_final_triage_prompt_spells_out_a_pending_entry_shape(tmp_path):
     ):
         run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
-    triage_prompt = next(p for p in prompts if "run /triage" in p)
+    triage_prompt = next(p for p in prompts if "labeled at filing" in p)
     assert '"status": "pending"' in triage_prompt
     assert '"attempts": 0' in triage_prompt
     assert "non-null" not in triage_prompt
@@ -1049,7 +1052,7 @@ def test_gate_survives_triage_appending_a_null_status_plan_then_hitting_a_limit(
     state = {"triage_calls": 0}
 
     def fake(prompt, repo_root):
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             state["triage_calls"] += 1
             if state["triage_calls"] == 1:
                 raw = json.loads(prd_path.read_text())
@@ -1077,7 +1080,7 @@ def test_triage_nulling_an_existing_plans_status_still_fails_loudly(tmp_path):
     save_prd(prd_path, data)
 
     def fake(prompt, repo_root):
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             raw = json.loads(prd_path.read_text())
             raw["plans"][0]["status"] = None
             prd_path.write_text(json.dumps(raw))
@@ -1089,7 +1092,7 @@ def test_triage_nulling_an_existing_plans_status_still_fails_loudly(tmp_path):
         run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
 
 
-def _record_gate_prompts(prd_path, tmp_path, fake=_fake_gate_claude):
+def _record_gate_prompts(prd_path, tmp_path, fake=_fake_gate_claude, run=_fake_subprocess_run):
     prompts = []
 
     def recording(prompt, repo_root):
@@ -1097,7 +1100,7 @@ def _record_gate_prompts(prd_path, tmp_path, fake=_fake_gate_claude):
         return fake(prompt, repo_root)
 
     with patch.object(run_next_plan, "invoke_claude", side_effect=recording), patch.object(
-        run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
+        run_next_plan.subprocess, "run", side_effect=run
     ):
         run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
     return prompts
@@ -1128,7 +1131,7 @@ def test_minor_rollup_is_neither_triaged_nor_claimed_by_the_pr(tmp_path):
 
     prompts = _record_gate_prompts(prd_path, tmp_path, fake)
 
-    triage_prompt = next(p for p in prompts if "run /triage" in p)
+    triage_prompt = next(p for p in prompts if "labeled at filing" in p)
     assert "#11" in triage_prompt
     assert "#12" not in triage_prompt
     assert load_prd(prd_path)["sdlc_finding_issues"] == [11]
@@ -1145,7 +1148,7 @@ def test_round_with_only_minor_findings_completes_without_triage(tmp_path):
 
     prompts = _record_gate_prompts(prd_path, tmp_path, fake)
 
-    assert not any("run /triage" in p for p in prompts)
+    assert not any("labeled at filing" in p for p in prompts)
     loaded = load_prd(prd_path)
     assert loaded["sdlc_review_status"] == "complete"
     assert loaded["sdlc_review_rounds"] == 1
@@ -1163,15 +1166,59 @@ def test_filing_skips_findings_already_covered_by_an_open_issue(tmp_path):
     assert "DUPLICATE:" in file_issues_prompt
 
 
-def test_triage_closes_cosmetic_findings_instead_of_planning_them(tmp_path):
+def test_filing_drops_cosmetic_findings_instead_of_filing_them(tmp_path):
+    # Nothing triages a filed issue afterwards, so the bar is applied before filing.
     prd_path = tmp_path / "prd.json"
     save_prd(prd_path, _valid_prd())
 
     prompts = _record_gate_prompts(prd_path, tmp_path)
 
-    triage_prompt = next(p for p in prompts if "run /triage" in p)
-    assert "cosmetic churn" in triage_prompt
-    assert "close it as wontfix" in triage_prompt
+    file_issues_prompt = next(p for p in prompts if "file a GitHub issue" in p)
+    assert "cosmetic churn" in file_issues_prompt
+
+
+def test_filing_labels_each_issue_with_a_category_and_a_state(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    prompts = _record_gate_prompts(prd_path, tmp_path)
+
+    file_issues_prompt = next(p for p in prompts if "file a GitHub issue" in p)
+    for label in ("bug", "enhancement", "ready-for-agent", "ready-for-human", "needs-info"):
+        assert f"`{label}`" in file_issues_prompt
+
+
+def test_no_gate_prompt_invokes_the_user_only_triage_skill(tmp_path):
+    # /triage is user-invoked; a headless session asked to run it is refused.
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    prompts = _record_gate_prompts(prd_path, tmp_path)
+
+    assert not any("/triage" in p for p in prompts)
+
+
+def test_filed_issue_without_a_state_label_is_flagged_for_the_user_to_triage(tmp_path, capsys):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    def fake(prompt, repo_root):
+        if "file a GitHub issue" in prompt:
+            return ("ISSUE: #11\nISSUE: #12\n", 0)
+        return _fake_gate_claude(prompt, repo_root)
+
+    def run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "view"]:
+            labels = "bug\n" if cmd[3] == "11" else "bug\nready-for-agent\n"
+            return type("R", (), {"returncode": 0, "stdout": labels})()
+        return _fake_subprocess_run(cmd, **kwargs)
+
+    _record_gate_prompts(prd_path, tmp_path, fake, run)
+
+    err = capsys.readouterr().err
+    assert "/triage #11" in err
+    assert "#12" not in err
+    assert load_prd(prd_path)["sdlc_review_status"] == "complete"
 
 
 def test_finding_on_an_issue_this_pr_claims_to_fix_is_not_deduped_away(tmp_path):

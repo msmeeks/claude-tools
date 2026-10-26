@@ -1,13 +1,17 @@
 ---
 name: plan-iteration
-description: Backlog grooming entry point. Triages open GitHub issues one-by-one using /triage, groups ready-for-agent issues into logical implementation clusters, runs /sdlc plan review, and writes a plan file per cluster to <config-root>/plans/. Use when asked to groom the backlog, plan the iteration, triage issues into plans, or group issues into workstreams.
+description: Backlog grooming entry point. Flags untriaged open GitHub issues for the user to /triage, groups ready-for-agent issues into logical implementation clusters, runs /sdlc plan review, and writes a plan file per cluster to <config-root>/plans/. Use when asked to groom the backlog, plan the iteration, triage issues into plans, or group issues into workstreams.
 ---
 
 # Plan Iteration
 
-Grooms the open backlog end-to-end: triages each issue using `/triage`, groups
+Grooms the open backlog end-to-end: checks that every open issue has been triaged, groups
 `ready-for-agent` issues into logical clusters, and writes a ready-to-execute plan
 file per cluster to `<config-root>/plans/`.
+
+This skill never triages. `/triage` is user-invoked, so no skill can call it; issues filed by
+a session are labeled at filing (see "Filing issues" in `~/.claude/CLAUDE.md`), and anything
+still unlabeled goes back to the user.
 
 ## Usage
 
@@ -42,24 +46,30 @@ gh issue list --state open --limit 100 --json number,title,labels,body,assignees
 
 Print a compact table (number, title, current labels) so the triage pass is visible.
 
-### Step 3 — Triage Each Issue
+### Step 3 — Check for Untriaged Issues
 
-For every issue that lacks both a category label (`bug`/`enhancement`) and a state label
-(`ready-for-agent`/`needs-info`/`wontfix`), invoke the `/triage` skill to run it through
-the state machine:
+Sort every open issue by its state label (strings from `<config-root>/triage-labels.md`):
 
-- Gather context from the issue body and codebase.
-- Recommend a category (`bug` / `enhancement`) and state.
-- Check for redundancy (already implemented?) and prior rejection (`.out-of-scope/`).
-- Apply the outcome:
-  - `ready-for-agent` — post an agent brief; issue enters the planning pool.
-  - `needs-info` — post triage notes; skip for this iteration.
-  - `wontfix` — close with appropriate comment; skip for this iteration.
+| State label | Outcome |
+|---|---|
+| `ready-for-agent` | Planning pool |
+| `ready-for-human`, `needs-info`, `wontfix` | Excluded from this iteration |
+| none, or `needs-triage` | **Untriaged** |
 
-Issues already labeled `ready-for-agent` skip triage and go straight to the pool.
-Issues labeled `needs-info` or `wontfix` are excluded from the planning pool.
+Do not triage untriaged issues yourself — not by invoking `/triage` (it is user-invoked and
+the call is refused) and not by judging and labeling them inline. If there are any:
 
-After triage, print a summary table: pool of `ready-for-agent` issues and skipped issues.
+1. Print them as a table (number, title, current labels).
+2. Tell the user how to triage them, then re-run `/plan-iteration`:
+   > Run `/triage` and name the issues, e.g. `/triage #12 #14 — read each issue's comments
+   > before deciding`. Each one ends with a category (`bug`/`enhancement`) and a state
+   > (`ready-for-agent`, `ready-for-human`, `needs-info`, or `wontfix`).
+3. Ask whether to **stop here** (default, recommended) or **plan only the issues already
+   labeled `ready-for-agent`**, leaving the untriaged ones for the next iteration. Stop if
+   there's no one to ask.
+
+Then print a summary table: the pool, and the excluded and untriaged issues with the reason
+for each.
 
 ### Step 4 — Explore Codebase
 

@@ -22,15 +22,15 @@ Options:
                         Override prd.json's integration_branch (authoritative by default).
 
 SDLC review gate: once every plan is done/stalled, runs a /sdlc review of the integration
-branch, files findings as GitHub issues, triages them into new plans, and resumes the loop.
+branch, files findings as GitHub issues labeled at filing, plans the ready-for-agent ones, and resumes the loop.
 The first review covers the whole PR (default_branch...HEAD); after that the review is
 incremental — each round reviews only the commits since the last completed review
 (last_reviewed_sha..HEAD), and appending new plans after a "complete" review re-arms the gate
 for another incremental round — up to MAX_REVIEW_ROUNDS rounds, after which findings are still
-filed and triaged as issues but left for a human rather than turned into more plans. Gated by prd.json's top-level "sdlc_review_status" field,
+filed as labeled issues but left for a human rather than turned into more plans. Gated by prd.json's top-level "sdlc_review_status" field,
 which ends up one of:
     "pending"       — gate hasn't run yet (or a run was interrupted and needs resuming)
-    "complete"      — gate ran and every finding was triaged
+    "complete"      — gate ran and every filed finding was planned or left for a human
 
 Session-limit resilience: a session/usage limit hitting any gate step leaves the status
 non-terminal. Like the main plan loop, the gate waits out the reset and retries
@@ -117,7 +117,7 @@ PLAN_REVIEW_AGENTS = (
 REVIEW_PARALLEL_ATTEMPTS = 2
 MAX_REVIEW_ATTEMPTS = 5
 # Review rounds the gate runs before it stops re-arming. Findings from the final round are
-# still filed and triaged as GitHub issues, but produce no new plans and no new work — an
+# still filed and labeled as GitHub issues, but produce no new plans and no new work — an
 # unbounded re-arm chain is what let one iteration walk 185 finding issues without converging.
 MAX_REVIEW_ROUNDS = 2
 
@@ -1456,7 +1456,20 @@ none, judge it yourself on the same scale.
   finding (file and symbol plus a one-sentence description). Drop purely informational
   notes that ask for no change. Skip the rollup if nothing is left to put in it.
 
-Add label "sdlc-finding" to each issue, the rollup included.
+Nothing triages these issues after you file them, so each must be ready to work on as filed.
+Hold every finding to a bar before filing it on its own: fixing it must change behaviour,
+correctness, security, privacy, accessibility or user-facing copy, or close a test gap on a
+risky path. Never file cosmetic churn on its own — naming, comment wording, style the
+linter already accepts, an alternative phrasing of working code — at most a rollup line.
+
+Write each individually filed body as an agent brief: Context, Change, Acceptance criteria,
+How to verify. Label it at filing with "sdlc-finding", one category (`bug` or `enhancement`)
+and one state:
+- `ready-for-agent` — the brief is complete and an agent can fix it unattended;
+- `ready-for-human` — fixing it needs a person's judgment, access, or manual testing;
+- `needs-info` — you could not complete the brief (say what is missing in the body).
+Label the rollup "sdlc-finding", `enhancement` and `ready-for-human`.
+Create any of these labels that the repo lacks with `gh label create` first.
 
 These issue bodies leave this machine and land in a tracker that may be public, and the
 automation cannot retract one once filed. Before filing, rewrite each body so it:
@@ -1468,7 +1481,7 @@ automation cannot retract one once filed. Before filing, rewrite each body so it
 
 Output the numbers of the individually filed issues, one per line, prefixed with "ISSUE:".
 Output the rollup's number on its own line prefixed with "MINOR_ROLLUP:", never "ISSUE:" —
-it is left for a human to schedule, not triaged or fixed in this iteration."""
+it is left for a human to schedule, not planned or fixed in this iteration."""
     issues_output = _gate_invoke("issue filing", file_issues_prompt, repo_root)
     issue_numbers = parse_issue_numbers(issues_output)
     issue_ints = [int(n.lstrip("#")) for n in issue_numbers]
@@ -1577,7 +1590,7 @@ def run_sdlc_review_gate(
             if not round_filed:
                 round_filed = _run_file_issues_phase(prd_path, repo_root, config_root, final_round)
             # A round whose findings were all minor files only the rollup, which is left for
-            # a human — nothing to triage.
+            # a human — nothing to plan.
             if round_filed:
                 _run_triage_phase(
                     prd_path, repo_root, config_root, round_filed, triage_log_path, final_round
@@ -1634,7 +1647,7 @@ def run_sdlc_review_gate(
 
 
 def _triage_planning_instructions(plans_rel: str) -> str:
-    return f"""Then, for every issue that reached ready-for-agent (and only those), group them into
+    return f"""Then, for every issue labeled ready-for-agent (and only those), group them into
 logical clusters the same way /plan-iteration's Step 5 does, and write one
 {plans_rel}/<slug>.md plan file per cluster using /plan-iteration's Standard Plan Template.
 Append one entry per new plan to the "plans" list in {plans_rel}/prd.json, in exactly this
@@ -1650,8 +1663,33 @@ def _triage_deferral_instructions(plans_rel: str) -> str:
 to a human rather than folded into the current PR.
 Do NOT write any plan files.
 Do NOT add any entries to {plans_rel}/prd.json.
-Triage is where your work on them ends — leave each issue open with its triage outcome
-recorded so a human can schedule it later."""
+Leave each issue open with the labels it was filed with so a human can schedule it later."""
+
+
+# State labels from triage-labels.md. A filed issue carrying none of these was not labeled at
+# filing; the runner cannot triage it (/triage is user-invoked), so it flags it instead.
+_TRIAGE_STATE_LABELS = frozenset(
+    {"needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"}
+)
+
+
+def _unlabeled_issues(issue_ints: list[int], repo_root: Path) -> list[int]:
+    """Filed issues with no state label (needs-triage counts as none). An issue whose labels
+    can't be read is skipped rather than flagged — a gh hiccup must not cry wolf."""
+    unlabeled = []
+    for n in issue_ints:
+        result = subprocess.run(
+            ["gh", "issue", "view", str(n), "--json", "labels", "--jq", ".labels[].name"],
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+        )
+        if result.returncode != 0:
+            continue
+        labels = set(result.stdout.split())
+        if not labels & (_TRIAGE_STATE_LABELS - {"needs-triage"}):
+            unlabeled.append(n)
+    return unlabeled
 
 
 def _run_triage_phase(
@@ -1664,23 +1702,10 @@ def _run_triage_phase(
 ) -> None:
     issue_numbers = [f"#{n}" for n in issue_ints]
     plans_rel = f"{config_root_rel(repo_root, config_root)}/plans"
-    triage_prompt = f"""For each of these newly filed issues, run /triage to evaluate it: {issue_numbers}
-
-For any issue where the request is ambiguous or under-specified, walk it through the same
-design-space exploration /grilling and /domain-modeling would use — but this is a
-non-interactive run, so do NOT ask the user questions. Answer each question yourself with
-your best-supported recommendation (state the recommendation and a one-line rationale as
-you go), the same way /triage's step 2 already asks you to "recommend... with reasoning" —
-just skip the "wait for direction" pause.
-
-Hold each issue to a bar before marking it ready-for-agent: fixing it must change
-behaviour, correctness, security, privacy, accessibility or user-facing copy, or close a
-test gap on a risky path. If it is cosmetic churn (naming, comment wording, style the linter
-already accepts, an alternative phrasing of working code) or duplicates another open issue,
-close it as wontfix with a one-line reason.
-
-Apply the outcome per /triage's state machine as usual (post agent brief / needs-info
-notes / close).
+    triage_prompt = f"""These issues were filed this round and labeled at filing: {issue_numbers}
+Read each one's labels, body and comments with `gh issue view N --comments`.
+Act on the state label each already carries — do not relabel, re-evaluate or close any of
+them, and do not try to triage an issue that has no state label; just log it.
 
 {_triage_deferral_instructions(plans_rel) if final_round else _triage_planning_instructions(plans_rel)}
 
@@ -1692,8 +1717,7 @@ IMMUTABILITY CONSTRAINTS — you must not violate these:
 
 LOGGING — write to {triage_log_path} (create {plans_rel}/implementation-logs/ if missing;
 this directory is gitignored, so do not try to commit the log itself) one line per issue
-in {issue_numbers}:
-  "#N: ready-for-agent", "#N: wontfix", or "#N: needs-info — <one-line reason>".
+in {issue_numbers}: "#N: <state label>", or "#N: unlabeled".
 Commit any new plan files (but not the log) to the current branch. Do not push — the
 runner publishes the branch itself.
 
@@ -1706,6 +1730,14 @@ Finish by printing "TRIAGE_DONE" on its own line."""
     finally:
         # Also on ReviewInterrupted: the gate reloads prd.json before waiting out the limit.
         _fill_new_plan_defaults(prd_path, preexisting)
+    unlabeled = _unlabeled_issues(issue_ints, repo_root)
+    if unlabeled:
+        refs = " ".join(f"#{n}" for n in unlabeled)
+        warn(
+            f"Filed without a state label, so not planned: {refs}. Triage them yourself: "
+            f"`/triage {refs} — read each issue's comments before deciding`, then re-run "
+            "/plan-iteration or run-next-plan.py to pick up any that become ready-for-agent."
+        )
 
 
 # Fields a triage session may leave null or omit on a plan it appends (#66). Filled before
