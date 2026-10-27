@@ -19,3 +19,12 @@
 - Accessibility and design prompts and agent files re-scoped (design: UI/CLI/API; a11y: UI/HTML/docs + terminal check, N/A for APIs/backend); N/A reply added to both output formats.
 - `## Pre-Implementation Review` is never omitted; templates and Review Modes list every agent. Nothing in `scripts/` parses it.
 - Docs: skills.md, run-next-plan.md. Prose-only change, so no new tests; 295 passed, ruff clean.
+
+## 2026-10-26 — chore-third-party-skills.md (#81)
+
+- Reviewed upstream `5beb35b` (plugin v1.3.1). `third-party-skills.md`: plugin + skills.sh install, supply-chain review, single rename table, refreshed skill table, no local mods. README points to it.
+- plan-iteration Step 8.6 finds the parent spec via `## Parent` (verified open, labelled, not a PR; legacy `prd` fallback); close-iteration Step 6/9a use `prd_issue` first with a closure allow-list.
+- Runner prompt: `/qa` if installed, else `sdlc-qa-engineer` (static literal; 2 tests). global/CLAUDE.md in its own commit. PRIVACY.md notes `prd_issue` is a bare int; stale `/triage-issues` fixed.
+- Follow-up filed: #84 (GLOSSARY.md decision). Labels verified present. Downstream search found no `to-prd`/`to-issues` hits. Plugin `/tdd` bare-vs-namespaced resolution unverified; prompts keep bare names.
+- Human steps for PR: install plugin after source review; remove/choose skills.sh copy; decide #84.
+- Tests: 297 passed; ruff clean.

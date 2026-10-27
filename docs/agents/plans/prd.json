@@ -30,7 +30,7 @@
       ],
       "size": "M",
       "status": "done",
-      "attempts": 1,
+      "attempts": 2,
       "blocked_by": []
     },
     {
@@ -39,7 +39,7 @@
         81
       ],
       "size": "L",
-      "status": "pending",
+      "status": "done",
       "attempts": 0,
       "blocked_by": [
         "fix-iteration-state.md",
