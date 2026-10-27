@@ -84,8 +84,9 @@ in `prd.json`'s `sdlc_deferred_issues`, never in `sdlc_finding_issues`, so it ca
 _Avoid_: leftover, backlog item
 
 **Finished iteration**:
-A `prd.json` whose integration PR was merged or whose branch is gone from origin.
-`_iteration_finished` makes the runner refuse it; `/plan-iteration` archives it.
+A `prd.json` whose integration PR was merged or closed, or whose pushed branch is gone from
+origin. `_iteration_finished` makes the runner refuse it; `/plan-iteration` backs it up to
+`prd.json.<date>.bak` and writes a fresh one.
 _Avoid_: stale prd, old run
 
 ## Boundaries

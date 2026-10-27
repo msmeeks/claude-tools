@@ -164,9 +164,12 @@ Plans are preserved in git history on <integration_branch>."
 git push origin <integration_branch>
 ```
 
-**Archive fallback.** If anything remains under `<config-root>/plans/` afterwards (untracked
-plans), archive it — never delete untracked plans outright. Move everything except `archive/`
-itself, including `implementation-logs/`, into `<config-root>/plans/archive/<slug>/`:
+**Archive fallback.** If `prd.json` or any plan `.md` file remains under `<config-root>/plans/`
+afterwards (untracked plans), archive it — never delete untracked plans outright. Gitignored
+runtime artifacts (`implementation-logs/`, `prd.json.lock`) always survive `git rm`; on their own
+they are not a trigger — leave them and report `removed: yes`. When archiving, move everything
+except `archive/` itself, including `implementation-logs/`, into
+`<config-root>/plans/archive/<slug>/`:
 
 - `<slug>` is `integration_branch` with `/` replaced by `-`, restricted to `[A-Za-z0-9._-]`,
   with no leading `.` or `-`. Fall back to `iteration-<YYYY-MM-DD>` if nothing is left.
