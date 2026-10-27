@@ -104,6 +104,11 @@ def test_derived_paths_follow_the_resolved_root(tmp_path, layout, prefix):
     assert run_next_plan.pr_summary_path(config_root).parent == tmp_path.joinpath(*layout).resolve()
 
 
+@pytest.fixture(autouse=True)
+def _no_network_finished_iteration_guard(monkeypatch):
+    monkeypatch.setattr(run_next_plan, "_iteration_finished", lambda *a, **kw: None)
+
+
 def _init_repo(path):
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
     subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=path, check=True)

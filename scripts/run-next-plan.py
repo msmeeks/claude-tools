@@ -615,6 +615,40 @@ def resolve_pr_number(data: dict, integration_branch: str) -> int | None:
     return prs[0]["number"]
 
 
+def _iteration_finished(data: dict, integration_branch: str) -> str | None:
+    """Why this prd.json's iteration is over, or None if it isn't (or can't be told).
+
+    Over means the integration PR was merged from `integration_branch`, or the branch is gone
+    from origin. A lookup failure warns and returns None so offline runs aren't blocked.
+    /plan-iteration describes the same rule (Step 1.2)."""
+    try:
+        pr_number = resolve_pr_number(data, integration_branch)
+        if pr_number is not None:
+            r = subprocess.run(
+                ["gh", "pr", "view", str(pr_number), "--json", "state,headRefName"],
+                capture_output=True,
+                text=True,
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                pr = json.loads(r.stdout)
+                if pr.get("state") == "MERGED" and pr.get("headRefName") == integration_branch:
+                    return f"PR #{pr_number} was merged"
+            else:
+                warn(f"finished-iteration check: gh pr view #{pr_number} failed — continuing")
+        r = subprocess.run(
+            ["git", "ls-remote", "--exit-code", "--heads", "origin", f"refs/heads/{integration_branch}"],
+            capture_output=True,
+            text=True,
+        )
+        if r.returncode == 2:
+            return f"branch {integration_branch} no longer exists on origin"
+        if r.returncode != 0:
+            warn(f"finished-iteration check: git ls-remote exited {r.returncode} — continuing")
+    except (json.JSONDecodeError, KeyError, OSError, subprocess.CalledProcessError) as e:
+        warn(f"finished-iteration check failed ({type(e).__name__}) — continuing")
+    return None
+
+
 def _fetch_pr_body(pr_number: int) -> str:
     r = subprocess.run(
         ["gh", "pr", "view", str(pr_number), "--json", "body"],
@@ -1930,6 +1964,13 @@ def main() -> None:
 
     integration_branch = resolve_integration_branch(load_prd(prd_path), args.integration_branch)
     info(f"Integration branch: {integration_branch}")
+    # Before the exit flush is registered: its atexit push would recreate a deleted branch.
+    finished = _iteration_finished(load_prd(prd_path), integration_branch)
+    if finished:
+        die(
+            f"prd.json at {prd_path} belongs to a finished iteration ({finished}); "
+            "run /plan-iteration to start a new one"
+        )
     _register_exit_flush(repo_root, config_root, integration_branch, args.dry_run)
 
     # Latched once the round cap declines a re-arm, so the policy-stop line is logged once

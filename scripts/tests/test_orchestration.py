@@ -26,6 +26,14 @@ flush_push = run_next_plan.flush_push
 resolve_config_root = run_next_plan.resolve_config_root
 
 
+@pytest.fixture(autouse=True)
+def _no_network_finished_iteration_guard(request, monkeypatch):
+    """main() consults gh and git ls-remote to detect a finished iteration. Existing main()
+    tests must not hit the real network; the guard's own tests (test_iteration_guard_*) do."""
+    if not request.node.name.startswith("test_iteration_guard"):
+        monkeypatch.setattr(run_next_plan, "_iteration_finished", lambda *a, **kw: None)
+
+
 def logs_rel(repo_root):
     return run_next_plan.logs_rel(repo_root, resolve_config_root(repo_root))
 
@@ -725,3 +733,144 @@ def test_main_does_not_print_unsandboxed_trust_model_warning_under_dry_run(
     run_next_plan._log_fh = None
 
     assert "unsandboxed" not in capsys.readouterr().err
+
+
+# --- #76: a finished iteration's prd.json must not drive another run ------------------------
+
+
+def _fake_gh_and_ls_remote(pr=None, ls_remote_rc=0, gh_error=None, pr_stdout=None):
+    """Stub subprocess.run for the guard: `gh pr view` returns `pr` (a dict) as JSON,
+    `git ls-remote` returns `ls_remote_rc`."""
+    calls = []
+
+    def fake(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[0] == "gh":
+            if gh_error is not None:
+                raise gh_error
+            out = pr_stdout if pr_stdout is not None else json.dumps(pr or {})
+            return type("R", (), {"returncode": 0, "stdout": out, "stderr": ""})()
+        if cmd[:2] == ["git", "ls-remote"]:
+            return type("R", (), {"returncode": ls_remote_rc, "stdout": "", "stderr": ""})()
+        raise AssertionError(f"unexpected command {cmd}")
+
+    return fake, calls
+
+
+def _finished(data, branch="integration/x", **kw):
+    fake, calls = _fake_gh_and_ls_remote(**kw)
+    with patch.object(run_next_plan.subprocess, "run", side_effect=fake):
+        return run_next_plan._iteration_finished(data, branch), calls
+
+
+def test_iteration_guard_merged_pr_with_matching_head_is_finished():
+    reason, _ = _finished(
+        {"pr_number": 5}, pr={"state": "MERGED", "headRefName": "integration/x"}
+    )
+    assert reason and "merged" in reason.lower()
+
+
+def test_iteration_guard_merged_pr_with_other_head_is_not_finished():
+    reason, _ = _finished({"pr_number": 5}, pr={"state": "MERGED", "headRefName": "other"})
+    assert reason is None
+
+
+def test_iteration_guard_open_pr_is_not_finished():
+    reason, _ = _finished(
+        {"pr_number": 5}, pr={"state": "OPEN", "headRefName": "integration/x"}
+    )
+    assert reason is None
+
+
+def test_iteration_guard_branch_gone_from_origin_is_finished():
+    reason, calls = _finished(
+        {"pr_number": 5}, pr={"state": "OPEN", "headRefName": "integration/x"}, ls_remote_rc=2
+    )
+    assert reason and "integration/x" in reason
+    ls = next(c for c in calls if c[:2] == ["git", "ls-remote"])
+    assert ls == [
+        "git", "ls-remote", "--exit-code", "--heads", "origin", "refs/heads/integration/x"
+    ]
+
+
+@pytest.mark.parametrize("failure", [
+    {"gh_error": FileNotFoundError("gh")},
+    {"pr_stdout": "not json"},
+    {"pr": {"state": "OPEN"}},  # no headRefName key is fine; state is what matters
+])
+def test_iteration_guard_warns_and_continues_when_gh_fails(failure, capsys):
+    reason, _ = _finished({"pr_number": 5}, **failure)
+    assert reason is None
+
+
+def test_iteration_guard_warns_and_continues_when_ls_remote_errors(capsys):
+    reason, _ = _finished(
+        {"pr_number": 5}, pr={"state": "OPEN", "headRefName": "integration/x"}, ls_remote_rc=128
+    )
+    assert reason is None
+    assert "ls-remote" in capsys.readouterr().err
+
+
+def test_iteration_guard_looks_the_pr_up_by_branch_when_prd_has_no_number():
+    seen = []
+
+    def fake(cmd, **kwargs):
+        seen.append(cmd)
+        if cmd[:3] == ["gh", "pr", "list"]:
+            return type("R", (), {"returncode": 0, "stdout": "[]", "stderr": ""})()
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    with patch.object(run_next_plan.subprocess, "run", side_effect=fake):
+        assert run_next_plan._iteration_finished({}, "integration/x") is None
+    assert any(c[:3] == ["gh", "pr", "list"] for c in seen)
+
+
+def _run_main_with_guard(tmp_path, monkeypatch, argv, finished):
+    _init_repo(tmp_path)
+    plans_dir = tmp_path / "docs" / "agents" / "plans"
+    plans_dir.mkdir(parents=True)
+    (plans_dir / "prd.json").write_text(json.dumps({
+        "plans": [], "integration_branch": "integration/x",
+        "sdlc_review_status": "complete", "sdlc_review_rounds": 99,
+    }))
+    order = []
+    monkeypatch.setattr(sys, "argv", ["run-next-plan.py", *argv])
+    monkeypatch.setattr(run_next_plan.shutil, "which", lambda _cmd: "/usr/bin/claude")
+    monkeypatch.setattr(run_next_plan, "sync_pr_closes", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        run_next_plan, "_iteration_finished", lambda *a, **kw: order.append("guard") or finished
+    )
+    monkeypatch.setattr(
+        run_next_plan, "_register_exit_flush", lambda *a, **kw: order.append("flush")
+    )
+    monkeypatch.chdir(tmp_path)
+    try:
+        with pytest.raises(SystemExit) as exc:
+            run_next_plan.main()
+    finally:
+        run_next_plan._log_fh = None
+    return exc.value.code, order
+
+
+@pytest.mark.parametrize("argv", [[], ["--dry-run"]])
+def test_iteration_guard_dies_before_the_exit_flush_is_registered(
+    tmp_path, monkeypatch, capsys, argv
+):
+    code, order = _run_main_with_guard(
+        tmp_path, monkeypatch, argv, finished="its PR was merged"
+    )
+
+    assert code != 0
+    assert order == ["guard"]  # a registered flush would re-push a deleted branch
+    err = capsys.readouterr().err
+    assert "finished iteration" in err
+    assert "its PR was merged" in err
+    assert "prd.json" in err
+    assert "/plan-iteration" in err
+
+
+def test_iteration_guard_lets_an_open_iteration_run(tmp_path, monkeypatch):
+    code, order = _run_main_with_guard(tmp_path, monkeypatch, [], finished=None)
+
+    assert code == 0
+    assert order[:2] == ["guard", "flush"]
