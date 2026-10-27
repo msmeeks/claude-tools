@@ -40,15 +40,61 @@
       ],
       "size": "L",
       "status": "done",
-      "attempts": 0,
+      "attempts": 1,
       "blocked_by": [
         "fix-iteration-state.md",
         "feat-commit-refs.md"
       ]
+    },
+    {
+      "file": "fix-finished-iteration-guard.md",
+      "issues": [
+        85,
+        86
+      ],
+      "size": "M",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
+    },
+    {
+      "file": "test-commit-refs-coverage.md",
+      "issues": [
+        87,
+        88,
+        89
+      ],
+      "size": "M",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
     }
   ],
   "integration_branch": "integration/2026-10-26-iteration-state",
   "pr_number": 83,
   "smoke_test": "cd scripts && python3 -m pytest",
-  "feature_branches": []
+  "feature_branches": [],
+  "sdlc_review_completed_agents": [
+    "sdlc-code-reviewer",
+    "sdlc-style-reviewer",
+    "sdlc-security-reviewer",
+    "sdlc-privacy-reviewer",
+    "sdlc-accessibility-reviewer",
+    "sdlc-design-reviewer",
+    "sdlc-test-reviewer"
+  ],
+  "sdlc_round_filed_issues": [
+    85,
+    86,
+    87,
+    88,
+    89
+  ],
+  "sdlc_finding_issues": [
+    85,
+    86,
+    87,
+    88,
+    89
+  ]
 }
