@@ -912,8 +912,10 @@ def _load_commit_ref_template(config_root: Path) -> str:
         return DEFAULT_COMMIT_REF_TEMPLATE
     problem = _commit_ref_template_problem(candidate)
     if problem:
+        # resolve_config_root only ever returns <repo>/meta or <repo>/docs/agents.
+        layout = CONFIG_ROOT_OLD if config_root.name == CONFIG_ROOT_OLD else CONFIG_ROOT_NEW
         warn(
-            f"{path.parent.name}/{path.name}: commit reference template invalid ({problem}); "
+            f"{layout}/{path.name}: commit reference template invalid ({problem}); "
             f"using '{DEFAULT_COMMIT_REF_TEMPLATE}'"
         )
         return DEFAULT_COMMIT_REF_TEMPLATE

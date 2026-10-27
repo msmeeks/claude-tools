@@ -136,7 +136,8 @@ Print a warning table and ask for explicit confirmation before proceeding:
   ```bash
   git log origin/<default_branch>..origin/<integration_branch> --oneline
   ```
-  Flag any commit whose message has no `#` reference.
+  Flag any commit whose message has no match for that pattern. Don't look for a literal `#`:
+  a custom template such as `Tracks: GH-{n}` has none.
 
 ---
 

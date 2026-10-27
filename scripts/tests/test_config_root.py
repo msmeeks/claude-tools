@@ -379,12 +379,15 @@ def test_commit_ref_template_custom_is_used(tracker_root):
         ("R" * 41 + " {n}\n", "too long"),
     ],
 )
-def test_commit_ref_template_invalid_warns_with_reason_and_defaults(tracker_root, capsys, body, reason):
+def test_commit_ref_template_invalid_warns_with_reason_and_defaults(
+    tracker_root, tmp_path, capsys, body, reason
+):
     _write_tracker(tracker_root, body)
 
     assert run_next_plan._load_commit_ref_template(tracker_root) == DEFAULT_REF
     err = capsys.readouterr().err
-    assert "issue-tracker.md" in err
+    # #97: the repo-relative path, not just the config root's last component ("agents/").
+    assert f"{tracker_root.relative_to(tmp_path.resolve()).as_posix()}/issue-tracker.md:" in err
     assert reason in err
     assert f"'{body.strip()}'" not in err and f"({body.strip()}" not in err
 
