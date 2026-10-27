@@ -220,3 +220,26 @@ def test_sync_pr_closes_writes_again_once_a_new_plan_completes(tmp_path):
         run_next_plan.sync_pr_closes(prd_path, plans_dir, "integration/x")
 
     assert len(edits) == 2
+
+
+def test_sync_pr_closes_never_claims_deferred_issues(tmp_path):
+    prd_path, plans_dir = _prd_with_done_plan(tmp_path)
+    data = run_next_plan.load_prd(prd_path)
+    data["sdlc_deferred_issues"] = [41, 42]
+    run_next_plan.save_prd(prd_path, data)
+    run_next_plan._reset_pr_closes_cache()
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:3] == ["gh", "pr", "view"]:
+            return type("R", (), {"returncode": 0, "stdout": '{"body": ""}'})()
+        return type("R", (), {"returncode": 0, "stdout": ""})()
+
+    with patch.object(run_next_plan.subprocess, "run", side_effect=fake_run):
+        run_next_plan.sync_pr_closes(prd_path, plans_dir, "integration/x")
+
+    body = next(c for c in calls if c[:3] == ["gh", "pr", "edit"])
+    body = body[body.index("--body") + 1]
+    assert "Closes #7" in body
+    assert "#41" not in body and "#42" not in body

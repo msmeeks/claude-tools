@@ -813,7 +813,7 @@ def test_rearm_is_suppressed_once_the_round_cap_is_reached(tmp_path):
 def test_rearm_suppression_logs_the_deferred_issue_numbers(tmp_path, capsys):
     prd_path = tmp_path / "prd.json"
     data = _completed_round_prd(2)
-    data["sdlc_round_filed_issues"] = [31, 32]
+    data["sdlc_deferred_issues"] = [31, 32]
     save_prd(prd_path, data)
 
     run_next_plan._rearm_sdlc_review_gate(prd_path)
@@ -1239,3 +1239,160 @@ def test_finding_on_an_issue_this_pr_claims_to_fix_is_not_deduped_away(tmp_path)
     file_issues_prompt = next(p for p in prompts if "file a GitHub issue" in p)
     assert "[63, 112]" in file_issues_prompt
     assert "is NOT a duplicate" in file_issues_prompt
+
+
+# --- #78: deferred and rollup issues are recorded in sdlc_deferred_issues -------------------
+
+
+def _final_round_prd():
+    data = _valid_prd()
+    data["sdlc_review_rounds"] = 1  # the round about to run is the last one
+    data["last_reviewed_sha"] = FAKE_BASELINE_SHA
+    data["sdlc_finding_issues"] = [99]
+    return data
+
+
+def _run_gate_with_filing_output(prd_path, tmp_path, filing_output):
+    def fake(prompt, repo_root):
+        if "file a GitHub issue" in prompt:
+            return (filing_output, 0)
+        return _fake_gate_claude(prompt, repo_root)
+
+    return _record_gate_prompts(prd_path, tmp_path, fake)
+
+
+def test_final_round_issues_are_recorded_as_deferred_not_finding_issues(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _final_round_prd())
+
+    _run_gate(prd_path, tmp_path)
+
+    loaded = load_prd(prd_path)
+    assert loaded["sdlc_deferred_issues"] == [11]
+    assert loaded["sdlc_finding_issues"] == [99]
+
+
+def test_non_final_round_issues_are_not_deferred(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    _run_gate(prd_path, tmp_path)
+
+    assert load_prd(prd_path).get("sdlc_deferred_issues", []) == []
+
+
+def test_minor_rollup_is_recorded_as_deferred_on_a_non_final_round(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    _run_gate_with_filing_output(prd_path, tmp_path, "ISSUE: #11\nMINOR_ROLLUP: #12\n")
+
+    loaded = load_prd(prd_path)
+    assert loaded["sdlc_deferred_issues"] == [12]
+    assert loaded["sdlc_finding_issues"] == [11]
+
+
+def test_minor_rollup_is_recorded_alongside_final_round_issues(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _final_round_prd())
+
+    _run_gate_with_filing_output(prd_path, tmp_path, "ISSUE: #11\nMINOR_ROLLUP: #12\n")
+
+    assert load_prd(prd_path)["sdlc_deferred_issues"] == [11, 12]
+
+
+def test_missing_rollup_line_is_fine(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    _run_gate_with_filing_output(prd_path, tmp_path, "ISSUE: #11\n")
+
+    assert load_prd(prd_path)["sdlc_review_status"] == "complete"
+
+
+def test_deferred_issues_are_deduped_across_rounds(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    data = _final_round_prd()
+    data["sdlc_deferred_issues"] = [12]
+    save_prd(prd_path, data)
+
+    _run_gate_with_filing_output(prd_path, tmp_path, "ISSUE: #11\nMINOR_ROLLUP: #12\n")
+
+    assert load_prd(prd_path)["sdlc_deferred_issues"] == [12, 11]
+
+
+def test_gate_completion_keeps_deferred_issues(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _final_round_prd())
+
+    _run_gate(prd_path, tmp_path)
+
+    loaded = load_prd(prd_path)
+    assert loaded["sdlc_round_filed_issues"] == []
+    assert loaded["sdlc_deferred_issues"] == [11]
+
+
+def test_parse_minor_rollup_takes_the_last_match():
+    assert run_next_plan.parse_minor_rollup("MINOR_ROLLUP: #5\nMINOR_ROLLUP: 7\n") == 7
+
+
+def test_parse_minor_rollup_rejects_zero_and_trailing_junk_and_absence():
+    assert run_next_plan.parse_minor_rollup("MINOR_ROLLUP: #0") is None
+    assert run_next_plan.parse_minor_rollup("MINOR_ROLLUP: #5 extra") is None
+    assert run_next_plan.parse_minor_rollup("ISSUE: #5") is None
+
+
+def test_rollup_number_never_reaches_issue_parsing():
+    assert run_next_plan.parse_issue_numbers("ISSUE: #11\nMINOR_ROLLUP: #12\n") == ["#11"]
+
+
+def test_rearm_keeps_deferred_issues(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    data = _completed_round_prd(1)
+    data["sdlc_deferred_issues"] = [41]
+    save_prd(prd_path, data)
+
+    assert run_next_plan._rearm_sdlc_review_gate(prd_path) is True
+    assert load_prd(prd_path)["sdlc_deferred_issues"] == [41]
+
+
+def test_cap_message_lists_deferred_issues_not_finding_issues(tmp_path, capsys):
+    prd_path = tmp_path / "prd.json"
+    data = _completed_round_prd(2)  # sdlc_finding_issues == [11, 12]
+    data["sdlc_deferred_issues"] = [41, 42]
+    save_prd(prd_path, data)
+
+    run_next_plan._rearm_sdlc_review_gate(prd_path)
+
+    out = capsys.readouterr().out
+    assert "#41" in out and "#42" in out
+    assert "#11" not in out and "#12" not in out
+
+
+def test_cap_message_says_none_when_nothing_was_deferred(tmp_path, capsys):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _completed_round_prd(2))
+
+    run_next_plan._rearm_sdlc_review_gate(prd_path)
+
+    assert "deferred to a human: none" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("bad", ["seven", [True], ["7"]])
+def test_load_prd_rejects_malformed_deferred_issues(tmp_path, bad):
+    prd_path = tmp_path / "prd.json"
+    data = _valid_prd()
+    data["sdlc_deferred_issues"] = bad
+    save_prd(prd_path, data)
+
+    with pytest.raises(SystemExit):
+        load_prd(prd_path)
+
+
+def test_load_prd_accepts_deferred_issues(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    data = _valid_prd()
+    data["sdlc_deferred_issues"] = [3, 4]
+    save_prd(prd_path, data)
+
+    assert load_prd(prd_path)["sdlc_deferred_issues"] == [3, 4]

@@ -206,6 +206,10 @@ def _validate_prd_schema(data: object) -> dict:
         sfi = data["sdlc_finding_issues"]
         if not isinstance(sfi, list) or not all(isinstance(n, int) and not isinstance(n, bool) for n in sfi):
             die("prd.json: 'sdlc_finding_issues' must be a list of integers")
+    if "sdlc_deferred_issues" in data:
+        sdi = data["sdlc_deferred_issues"]
+        if not isinstance(sdi, list) or not all(isinstance(n, int) and not isinstance(n, bool) for n in sdi):
+            die("prd.json: 'sdlc_deferred_issues' must be a list of integers")
     if "sdlc_round_filed_issues" in data:
         srfi = data["sdlc_round_filed_issues"]
         if not isinstance(srfi, list) or not all(isinstance(n, int) and not isinstance(n, bool) for n in srfi):
@@ -560,11 +564,21 @@ Repo root: {repo_root}"""
 
 
 ISSUE_NUMBER_RE = re.compile(r"^ISSUE:\s*#?(\d+)$", re.MULTILINE)
+MINOR_ROLLUP_RE = re.compile(r"^MINOR_ROLLUP:\s*#?(\d+)\s*$", re.MULTILINE)
 PLAN_ISSUE_RE = re.compile(r"#(\d+)")
 
 
 def parse_issue_numbers(output: str) -> list[str]:
     return [f"#{m.group(1)}" for m in ISSUE_NUMBER_RE.finditer(output)]
+
+
+def parse_minor_rollup(text: str) -> int | None:
+    """The rollup issue number (last `MINOR_ROLLUP:` line wins), or None if absent or 0.
+    Kept apart from parse_issue_numbers so a rollup can never reach a `Closes` line."""
+    matches = MINOR_ROLLUP_RE.findall(text)
+    if not matches or int(matches[-1]) == 0:
+        return None
+    return int(matches[-1])
 
 
 def extract_plan_issue_numbers(plan_path: Path) -> list[int]:
@@ -1485,6 +1499,7 @@ it is left for a human to schedule, not planned or fixed in this iteration."""
     issues_output = _gate_invoke("issue filing", file_issues_prompt, repo_root)
     issue_numbers = parse_issue_numbers(issues_output)
     issue_ints = [int(n.lstrip("#")) for n in issue_numbers]
+    rollup = parse_minor_rollup(issues_output)
 
     # Persist immediately so a triage interruption can resume against the filed issues
     # instead of re-filing them (which would duplicate). The per-round scratch field
@@ -1492,6 +1507,15 @@ it is left for a human to schedule, not planned or fixed in this iteration."""
     # is the iteration-cumulative record — append this round's numbers, deduped (#47/#48).
     def mutate(data: dict) -> None:
         data["sdlc_round_filed_issues"] = issue_ints
+        # sdlc_deferred_issues is the iteration-cumulative record of filed issues this PR
+        # does not fix (final-round findings, minor rollups). /close-iteration reconciles
+        # against it so it neither re-files them nor reports "Issues left open: none".
+        deferred = list(data.get("sdlc_deferred_issues", []))
+        for n in ([*issue_ints] if final_round else []) + ([rollup] if rollup else []):
+            if n not in deferred:
+                deferred.append(n)
+        if deferred:
+            data["sdlc_deferred_issues"] = deferred
         if final_round:
             # The cap means nothing will fix these before the PR merges. They stay filed as
             # issues for a human, but must not enter sdlc_finding_issues — /close-iteration
@@ -1801,7 +1825,7 @@ def _rearm_sdlc_review_gate(prd_path: Path) -> bool:
     rounds = get_sdlc_review_rounds(data)
     cap = max_review_rounds()
     if rounds >= cap:
-        deferred = data.get("sdlc_round_filed_issues") or data.get("sdlc_finding_issues") or []
+        deferred = data.get("sdlc_deferred_issues") or []
         deferred_str = ", ".join(f"#{n}" for n in deferred) or "none"
         info(
             f"SDLC review gate stopped by policy after {rounds} round(s) (cap {cap}), not by "
