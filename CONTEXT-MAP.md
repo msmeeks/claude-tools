@@ -4,10 +4,9 @@
 developer tooling, not a product: everything here is consumed by the CLI on the developer's
 own machine, mostly through symlinks created by `setup-symlinks.sh`.
 
-> **Not publishable.** `docs/agents/` holds this repo's project-scoped agent config. Four
-> paths under it are gitignored, may contain raw session transcripts, and must never be
-> committed, published, or swept into a docs pipeline: `docs/agents/plans/`,
-> `docs/agents/plans/implementation-logs/`, `docs/agents/sdlc-review-findings.md`, and
+> **Not publishable.** `docs/agents/` holds this repo's project-scoped agent config. Plan `.md` files, `prd.json` and `progress.md` are **tracked**: committed on the integration branch while an iteration runs, and removed by `/close-iteration` with a commit before merge (still never swept into a docs-publishing pipeline). `implementation-logs/`, `prd.json.lock`, `sdlc-review-findings.md` and `pr-summary.md` are **gitignored** and never committed or published. The `plans/archive/` fallback and `prd.json.*.bak` are kept out of git locally via `info/exclude`.
+> The gitignored ones may contain raw session transcripts: `docs/agents/plans/implementation-logs/`,
+> `docs/agents/plans/prd.json.lock`, `docs/agents/sdlc-review-findings.md`, and
 > `docs/agents/pr-summary.md`. See [docs/agents/README.md](./docs/agents/README.md) and
 > [docs/agents/PRIVACY.md](./docs/agents/PRIVACY.md).
 

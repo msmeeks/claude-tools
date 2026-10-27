@@ -15,4 +15,6 @@ One additional label, outside the state machine: **`sdlc-finding`** marks an iss
 the SDLC review gate rather than reported by a person. Findings deferred at the review-round
 cap keep this label and stay open for a human to schedule — they are deliberately *not*
 listed in `prd.json`'s `sdlc_finding_issues`, because the integration PR must not claim to
-close findings nobody fixed.
+close findings nobody fixed. They (and each round's minor-findings rollup) are recorded in
+`sdlc_deferred_issues` instead, which `/close-iteration` reconciles against and never turns
+into `Closes`.

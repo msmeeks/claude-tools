@@ -123,6 +123,10 @@ Print a warning table and ask for explicit confirmation before proceeding:
   Step 7 `Closes` list, so they stay open after merge (correct behaviour). Print each stalled
   plan's `file` and its still-open issue numbers so the user can consciously confirm leaving
   them for a future iteration. These carry through to the Step 10 `Issues left open:` line.
+- **Deferred review issues** — each still-open `prd.json.sdlc_deferred_issues` entry (check with
+  `gh issue view <N> --json state`). Print one per line as `#N — deferred by round cap` (filed
+  on the final review round) or `#N — minor rollup` (the rollup issue). They stay open after
+  merge and carry through to the Step 10 `Issues left open:` line.
 - **Untraceable commits** — commits on `integration_branch` that contain no `#N` issue
   reference in their message. Mine with:
   ```bash
@@ -143,11 +147,33 @@ git switch <integration_branch>
 git fetch origin
 git pull origin <integration_branch>
 git status
-git rm -r <config-root>/plans/
+git rm -r --ignore-unmatch <config-root>/plans/
+```
+
+If `git rm` staged anything (`git diff --cached --quiet` exits non-zero), commit and push.
+A `git rm` that matches nothing (plans were never tracked) is not an error — skip the commit
+and push.
+```bash
 git commit -m "chore: remove iteration plans from <integration_branch>
 
 Plans are preserved in git history on <integration_branch>."
 git push origin <integration_branch>
+```
+
+**Archive fallback.** If anything remains under `<config-root>/plans/` afterwards (untracked
+plans), archive it — never delete untracked plans outright. Move everything except `archive/`
+itself, including `implementation-logs/`, into `<config-root>/plans/archive/<slug>/`:
+
+- `<slug>` is `integration_branch` with `/` replaced by `-`, restricted to `[A-Za-z0-9._-]`,
+  with no leading `.` or `-`. Fall back to `iteration-<YYYY-MM-DD>` if nothing is left.
+- If the destination exists, append `-2`, `-3`, and so on.
+- Quote every path and pass `--` to `mv`. The resolved destination must sit inside the repo.
+- Before moving, if `git check-ignore -q <config-root>/plans/archive/` fails, append
+  `<config-root>/plans/archive/` to the file named by `git rev-parse --git-path info/exclude`.
+  Use the exclude file, not `.gitignore`. Exclude only `archive/`, never `plans/`, so
+  `git status` stays clean and the archive is never committed or published.
+
+```bash
 git switch <default_branch> || git switch -c <default_branch> --track origin/<default_branch>
 ```
 
@@ -171,6 +197,10 @@ while.
 
 Read `<config-root>/sdlc-review-findings.md`. For each finding section:
 
+0. **Reconcile before filing.** Before filing a follow-up for any finding, check
+   `gh issue list --label sdlc-finding --state open --json number,title` and
+   `prd.json.sdlc_deferred_issues`. A finding already covered by either is not re-filed;
+   name the existing issue instead.
 1. Identify the corresponding issue number from `prd.json.sdlc_finding_issues`.
 2. Check whether that issue is closed (covered by 2c, but here inspect *why*: code change vs
    won't-fix comment).
@@ -210,7 +240,8 @@ Compile the `Closes` list from **`done` plans only** — `prd.json.plans[?status
 — plus `prd.json.sdlc_finding_issues`. Do **not** include issues from `stalled` plans: a
 stalled plan did no work, so auto-closing its issues on merge would silently mark unimplemented
 work as resolved. Those issues stay deliberately open (surfaced in Step 3 and Step 10).
-Including the SDLC finding issues here guarantees they auto-close on merge even if the
+`prd.json.sdlc_deferred_issues` is **never** added to the `Closes` block: those issues were
+filed but not fixed in this iteration. Including the SDLC finding issues here guarantees they auto-close on merge even if the
 commit(s) that addressed them didn't happen to use a closing keyword.
 
 Optionally cross-check the computed list against the PR's `closingIssuesReferences` (fetched
@@ -297,10 +328,16 @@ PR:                  #<N> <title> (<url>)
 Plans:               <done> done, <stalled> stalled, <total> total
 Issues closed:       #N, #M, ...
 Issues left open:    #N, #M (stalled plans — no work done)
+                     #N — deferred by round cap / #N — minor rollup (one per line; never "none"
+                     while any is open)
 PRD issues closed:   #N, ...
 PRD issues skipped:  #N (reason: <gap>)
 
 Branches deleted:    <list>
 Worktrees removed:   <list>
-<config-root>/plans/ removed: yes (history on <integration_branch>)
+<config-root>/plans/:  removed: yes (history on <integration_branch>)
+                      — or — archived to <path>
 ```
+
+Report exactly one of `removed: yes (history on <integration_branch>)` or `archived to <path>`;
+never "removed: no".

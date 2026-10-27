@@ -35,8 +35,19 @@ still unlabeled goes back to the user.
 2. Resolve the config root: `docs/agents/` if it exists, else `meta/` (see ADR 0001 /
    `resolve_config_root` in `run-next-plan.py`). Ensure `<config-root>/plans/` directory
    exists (`mkdir -p <config-root>/plans`). Check whether `<config-root>/plans/prd.json`
-   already exists — if so, its `plans` entries must be preserved/merged in Step 7, not
-   overwritten.
+   already exists — if so, decide whether its iteration is over (below). While it is still
+   open, its `plans` entries must be preserved/merged in Step 7, not overwritten.
+
+   **Finished-iteration check** (same rule as `_iteration_finished` in `run-next-plan.py`).
+   Over means the integration PR (`pr_number`, or a lookup by `integration_branch`) is
+   `MERGED` with a matching `headRefName` (`gh pr view <N> --json state,headRefName`), or
+   `integration_branch` is gone on origin
+   (`git ls-remote --exit-code --heads origin refs/heads/<branch>` exits 2). Do **not** treat
+   "all plans terminal + `sdlc_review_status: complete`" as finished: adding plans to an open
+   iteration after review is supported (that is what the runner's re-arm is for). If `gh` or
+   `git` can't answer, warn and fall back to the merge. Print which case applied:
+   `fresh prd.json (previous iteration finished: <reason>)` or
+   `merging into existing prd.json (iteration still open)`.
 
 ### Step 2 — Fetch Open Issues
 
@@ -131,13 +142,23 @@ Write one `<config-root>/plans/<slug>.md` per cluster using the **Standard Plan 
 
 Then write (or update) `<config-root>/plans/prd.json` — the plan index that `run-next-plan.py` reads:
 
-1. Read `<config-root>/plans/prd.json` if it exists; parse as JSON.
+1. Read `<config-root>/plans/prd.json` if it exists; parse as JSON. If Step 1.2 found the
+   previous iteration finished, take the **fresh case** (step 5a) instead of merging.
 2. For each cluster, build a plan entry: `{"file": "<slug>.md", "issues": [N, M, ...], "size": "S|M|L|XL", "status": "pending", "attempts": 0, "blocked_by": []}`.
 3. Merge: if an entry with the same `file` already exists, preserve its `status` and `attempts`; overwrite all other fields. If no entry exists, add it as-is.
 4. Populate each entry's `blocked_by` array from the dependency analysis in Step 5 — list the `file` values of clusters that must merge first.
-5. **Preserve all existing top-level prd.json keys** — only modify `plans[]`. When rebuilding
+5a. **Fresh case** (previous iteration finished). Move the old file to
+   `prd.json.<YYYY-MM-DD>.bak` beside it, and ensure `<config-root>/plans/prd.json.*.bak` is in
+   the file named by `git rev-parse --git-path info/exclude` (never `.gitignore`). Then write a
+   new object with no `sdlc_*` keys, no `last_reviewed_sha`, no `pr_number` and no old plans —
+   at least `sdlc_review_status`, `sdlc_review_rounds`, `sdlc_finding_issues`,
+   `sdlc_deferred_issues`, `sdlc_round_filed_issues` and `sdlc_review_completed_agents` are
+   dropped. This write is not under the runner's `_with_prd_lock`, so it assumes no runner is
+   active.
+5. **Merge case: preserve all existing top-level prd.json keys** — only modify `plans[]`. When rebuilding
    the object, carry through every key already present, including `last_reviewed_sha`,
-   `sdlc_review_status`, `sdlc_finding_issues`, `sdlc_review_completed_agents`, `pr_number`,
+   `sdlc_review_status`, `sdlc_review_rounds`, `sdlc_finding_issues`, `sdlc_deferred_issues`,
+   `sdlc_round_filed_issues`, `sdlc_review_completed_agents`, `pr_number`,
    `prd_issue`, `feature_branches`, and `smoke_test`. Dropping any of these desyncs the runner's
    incremental review gate — e.g. losing `last_reviewed_sha` stalls the re-arm on the next round.
 6. Write the merged object back to `<config-root>/plans/prd.json`. (`integration_branch` is set by Step 8 below, once the real date-slugged branch name exists — don't stamp a placeholder here.)
