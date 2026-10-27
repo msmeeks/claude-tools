@@ -759,10 +759,17 @@ def test_main_does_not_print_unsandboxed_trust_model_warning_under_dry_run(
 # --- #76: a finished iteration's prd.json must not drive another run ------------------------
 
 
-def _fake_gh_and_ls_remote(pr=None, ls_remote_rc=0, gh_error=None, pr_stdout=None):
+def _fake_gh_and_ls_remote(
+    pr=None, ls_remote_rc=0, gh_error=None, pr_stdout=None, gh_rc=0,
+    upstream=True, unpushed="", probe_rc=0,
+):
     """Stub subprocess.run for the guard: `gh pr view` returns `pr` (a dict) as JSON,
-    `git ls-remote` returns `ls_remote_rc`."""
+    `git rev-parse @{u}` succeeds iff `upstream`, `git rev-list @{u}..HEAD` prints
+    `unpushed`, and `git ls-remote` returns `ls_remote_rc`."""
     calls = []
+
+    def result(rc, out=""):
+        return type("R", (), {"returncode": rc, "stdout": out, "stderr": ""})()
 
     def fake(cmd, **kwargs):
         calls.append(cmd)
@@ -770,9 +777,13 @@ def _fake_gh_and_ls_remote(pr=None, ls_remote_rc=0, gh_error=None, pr_stdout=Non
             if gh_error is not None:
                 raise gh_error
             out = pr_stdout if pr_stdout is not None else json.dumps(pr or {})
-            return type("R", (), {"returncode": 0, "stdout": out, "stderr": ""})()
+            return result(gh_rc, out)
+        if cmd[:2] == ["git", "rev-parse"]:
+            return result(0 if upstream else 128)
+        if cmd[:2] == ["git", "rev-list"]:
+            return result(probe_rc, unpushed)
         if cmd[:2] == ["git", "ls-remote"]:
-            return type("R", (), {"returncode": ls_remote_rc, "stdout": "", "stderr": ""})()
+            return result(ls_remote_rc)
         raise AssertionError(f"unexpected command {cmd}")
 
     return fake, calls
@@ -784,29 +795,41 @@ def _finished(data, branch="integration/x", **kw):
         return run_next_plan._iteration_finished(data, branch), calls
 
 
-def test_iteration_guard_merged_pr_with_matching_head_is_finished():
-    reason, _ = _finished(
-        {"pr_number": 5}, pr={"state": "MERGED", "headRefName": "integration/x"}
-    )
-    assert reason and "merged" in reason.lower()
+def _pr(state, head="integration/x", **extra):
+    return {"state": state, "headRefName": head, **extra}
 
 
-def test_iteration_guard_merged_pr_with_other_head_is_not_finished():
-    reason, _ = _finished({"pr_number": 5}, pr={"state": "MERGED", "headRefName": "other"})
+@pytest.mark.parametrize("state", ["MERGED", "CLOSED"])
+def test_iteration_guard_merged_or_closed_pr_with_matching_head_is_finished(state):
+    reason, _ = _finished({"pr_number": 5}, pr=_pr(state))
+    assert reason == f"PR #5 was {state.lower()}"
+
+
+@pytest.mark.parametrize("state", ["MERGED", "CLOSED"])
+def test_iteration_guard_merged_or_closed_pr_with_other_head_is_not_finished(state):
+    reason, _ = _finished({"pr_number": 5}, pr=_pr(state, head="other"))
     assert reason is None
 
 
+@pytest.mark.parametrize("state", ["MERGED", "CLOSED"])
+def test_iteration_guard_cross_repository_pr_is_not_finished(state):
+    reason, _ = _finished({"pr_number": 5}, pr=_pr(state, isCrossRepository=True))
+    assert reason is None
+
+
+def test_iteration_guard_requests_cross_repository_field():
+    _, calls = _finished({"pr_number": 5}, pr=_pr("OPEN"))
+    view = next(c for c in calls if c[:3] == ["gh", "pr", "view"])
+    assert "state,headRefName,isCrossRepository" in view
+
+
 def test_iteration_guard_open_pr_is_not_finished():
-    reason, _ = _finished(
-        {"pr_number": 5}, pr={"state": "OPEN", "headRefName": "integration/x"}
-    )
+    reason, _ = _finished({"pr_number": 5}, pr=_pr("OPEN"))
     assert reason is None
 
 
 def test_iteration_guard_branch_gone_from_origin_is_finished():
-    reason, calls = _finished(
-        {"pr_number": 5}, pr={"state": "OPEN", "headRefName": "integration/x"}, ls_remote_rc=2
-    )
+    reason, calls = _finished({"pr_number": 5}, pr=_pr("OPEN"), ls_remote_rc=2)
     assert reason and "integration/x" in reason
     ls = next(c for c in calls if c[:2] == ["git", "ls-remote"])
     assert ls == [
@@ -814,20 +837,52 @@ def test_iteration_guard_branch_gone_from_origin_is_finished():
     ]
 
 
-@pytest.mark.parametrize("failure", [
-    {"gh_error": FileNotFoundError("gh")},
-    {"pr_stdout": "not json"},
-    {"pr": {"state": "OPEN"}},  # no headRefName key is fine; state is what matters
-])
-def test_iteration_guard_warns_and_continues_when_gh_fails(failure, capsys):
-    reason, _ = _finished({"pr_number": 5}, **failure)
+def test_iteration_guard_local_only_branch_is_not_finished_and_skips_ls_remote():
+    reason, calls = _finished({}, pr=None, pr_stdout="", gh_rc=1, upstream=False, ls_remote_rc=2)
+    assert reason is None
+    assert not any(c[:2] == ["git", "ls-remote"] for c in calls)
+
+
+def test_iteration_guard_branch_with_unpushed_commits_is_not_finished(capsys):
+    reason, calls = _finished(
+        {"pr_number": 5}, pr=_pr("OPEN"), unpushed="abc123\n", ls_remote_rc=2
+    )
+    assert reason is None
+    assert not any(c[:2] == ["git", "ls-remote"] for c in calls)
+    assert capsys.readouterr().err == ""
+
+
+def test_iteration_guard_unpushed_probe_error_is_unknown_not_finished():
+    reason, _ = _finished({"pr_number": 5}, pr=_pr("OPEN"), probe_rc=128, ls_remote_rc=2)
     assert reason is None
 
 
+def test_iteration_guard_warns_and_continues_when_gh_is_missing(capsys):
+    reason, _ = _finished({"pr_number": 5}, gh_error=FileNotFoundError("gh"))
+    assert reason is None
+    assert "FileNotFoundError" in capsys.readouterr().err
+
+
+def test_iteration_guard_warns_and_continues_on_malformed_gh_json(capsys):
+    reason, _ = _finished({"pr_number": 5}, pr_stdout="not json")
+    assert reason is None
+    assert "JSONDecodeError" in capsys.readouterr().err
+
+
+def test_iteration_guard_warns_when_gh_pr_view_fails_with_no_output(capsys):
+    reason, _ = _finished({"pr_number": 5}, pr_stdout="", gh_rc=1)
+    assert reason is None
+    assert "gh pr view" in capsys.readouterr().err
+
+
+def test_iteration_guard_merged_pr_without_head_falls_through_to_ls_remote():
+    reason, calls = _finished({"pr_number": 5}, pr={"state": "MERGED"})
+    assert reason is None
+    assert any(c[:2] == ["git", "ls-remote"] for c in calls)
+
+
 def test_iteration_guard_warns_and_continues_when_ls_remote_errors(capsys):
-    reason, _ = _finished(
-        {"pr_number": 5}, pr={"state": "OPEN", "headRefName": "integration/x"}, ls_remote_rc=128
-    )
+    reason, _ = _finished({"pr_number": 5}, pr=_pr("OPEN"), ls_remote_rc=128)
     assert reason is None
     assert "ls-remote" in capsys.readouterr().err
 

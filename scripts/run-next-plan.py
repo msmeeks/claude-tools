@@ -628,26 +628,44 @@ def resolve_pr_number(data: dict, integration_branch: str) -> int | None:
     return prs[0]["number"]
 
 
+def _branch_is_pushed(integration_branch: str) -> bool:
+    """True only when HEAD has an upstream and no commits beyond it. A probe error counts as
+    not pushed: the origin-absence check below must never fire on a branch we can't vouch for."""
+    r = subprocess.run(["git", "rev-parse", "@{u}"], capture_output=True, text=True)
+    if r.returncode != 0:
+        return False
+    r = subprocess.run(["git", "rev-list", "@{u}..HEAD"], capture_output=True, text=True)
+    return r.returncode == 0 and not r.stdout.strip()
+
+
 def _iteration_finished(data: dict, integration_branch: str) -> str | None:
     """Why this prd.json's iteration is over, or None if it isn't (or can't be told).
 
-    Over means the integration PR was merged from `integration_branch`, or the branch is gone
-    from origin. A lookup failure warns and returns None so offline runs aren't blocked.
-    /plan-iteration describes the same rule (Step 1.2)."""
+    Over means the integration PR was merged or closed from `integration_branch` (same
+    repository), or the branch was pushed and is now gone from origin. A never-pushed or
+    unpushed-ahead branch is not "gone". A lookup failure warns and returns None so offline
+    runs aren't blocked. /plan-iteration describes the same rule (Step 1.2)."""
     try:
         pr_number = resolve_pr_number(data, integration_branch)
         if pr_number is not None:
             r = subprocess.run(
-                ["gh", "pr", "view", str(pr_number), "--json", "state,headRefName"],
+                ["gh", "pr", "view", str(pr_number), "--json", "state,headRefName,isCrossRepository"],
                 capture_output=True,
                 text=True,
             )
             if r.returncode == 0 and r.stdout.strip():
                 pr = json.loads(r.stdout)
-                if pr.get("state") == "MERGED" and pr.get("headRefName") == integration_branch:
-                    return f"PR #{pr_number} was merged"
+                state = pr.get("state")
+                if (
+                    state in ("MERGED", "CLOSED")
+                    and pr.get("headRefName") == integration_branch
+                    and not pr.get("isCrossRepository")
+                ):
+                    return f"PR #{pr_number} was {state.lower()}"
             else:
                 warn(f"finished-iteration check: gh pr view #{pr_number} failed — continuing")
+        if not _branch_is_pushed(integration_branch):
+            return None
         r = subprocess.run(
             ["git", "ls-remote", "--exit-code", "--heads", "origin", f"refs/heads/{integration_branch}"],
             capture_output=True,

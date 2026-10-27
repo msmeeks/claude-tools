@@ -40,9 +40,11 @@ still unlabeled goes back to the user.
 
    **Finished-iteration check** (same rule as `_iteration_finished` in `run-next-plan.py`).
    Over means the integration PR (`pr_number`, or a lookup by `integration_branch`) is
-   `MERGED` with a matching `headRefName` (`gh pr view <N> --json state,headRefName`), or
-   `integration_branch` is gone on origin
-   (`git ls-remote --exit-code --heads origin refs/heads/<branch>` exits 2). Do **not** treat
+   `MERGED` or `CLOSED` with a matching `headRefName` and `isCrossRepository` false
+   (`gh pr view <N> --json state,headRefName,isCrossRepository`), or the branch was pushed
+   (it has an upstream and no unpushed commits) and is gone on origin
+   (`git ls-remote --exit-code --heads origin refs/heads/<branch>` exits 2). A local-only or
+   unpushed-ahead branch is not finished. Do **not** treat
    "all plans terminal + `sdlc_review_status: complete`" as finished: adding plans to an open
    iteration after review is supported (that is what the runner's re-arm is for). If `gh` or
    `git` can't answer, warn and fall back to the merge. Print which case applied:

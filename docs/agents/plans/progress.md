@@ -28,3 +28,10 @@
 - Follow-up filed: #84 (GLOSSARY.md decision). Labels verified present. Downstream search found no `to-prd`/`to-issues` hits. Plugin `/tdd` bare-vs-namespaced resolution unverified; prompts keep bare names.
 - Human steps for PR: install plugin after source review; remove/choose skills.sh copy; decide #84.
 - Tests: 297 passed; ruff clean.
+
+## 2026-10-26 — fix-finished-iteration-guard.md (#85, #86)
+
+- `_iteration_finished`: finished on a MERGED or CLOSED same-repo PR with matching head (`isCrossRepository` fetched); `ls-remote` fallback runs only via new `_branch_is_pushed` (upstream, no unpushed commits; probe errors = unknown). Local-only/unpushed branches no longer die.
+- Tests: guard helper extended; added CLOSED, cross-repo, local-only, unpushed, probe-error, gh no-output, missing-head cases; warning text asserted; duplicate OPEN case removed.
+- Docs: plan-iteration Step 1.2, run-next-plan.md.
+- Tests: 306 passed; ruff clean.
