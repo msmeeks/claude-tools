@@ -138,6 +138,8 @@ The plan-review agents in Step 6 and `review` mode come from `plan_review.review
 design). A configured name that is not an installed agent stops the run rather than being
 skipped. See the **Review recipe config** section of [run-next-plan.md](run-next-plan.md).
 
+Every roster agent is always dispatched, whatever the change looks like. Each reply is recorded as one of its findings, `no findings`, `N/A: <reason>` or `ERROR: <reason>`, and `## Pre-Implementation Review` is never omitted, so a skipped reviewer is visible. Design covers UI, CLI and API surfaces; accessibility covers rendered UI, generated HTML, published docs and a narrow terminal-output check, and is N/A for APIs and backend-only changes. `/triage-pr-comments` Step 5 reads the same roster and follows the same rule.
+
 It never triages. `/triage` is user-invoked (`disable-model-invocation`), so no skill or
 headless session can call it. Issues are labeled by whoever files them (the "Filing issues"
 rule in `global/CLAUDE.md`); any open issue with no state label (or `needs-triage`) is listed

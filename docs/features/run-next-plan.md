@@ -179,7 +179,7 @@ file the `agents` recipe's prompts are byte-identical to before (regression-test
 | `review.skill` | Required and non-empty iff `recipe` is `skill`; rejected otherwise |
 | `review.reviewers` | Non-empty, duplicate-free list of ids matching `^[a-z0-9][a-z0-9-]*$`; default is the seven `sdlc-*` agents |
 | `review.registry` | Bool, default `false`; passed to the skill as `--registry yes\|no` |
-| `plan_review.reviewers` | Same list rules; default the four plan-review agents. Read by `/plan-iteration`, not by this script |
+| `plan_review.reviewers` | Same list rules; default the four plan-review agents. Read by `/plan-iteration` and `/triage-pr-comments`, not by this script |
 
 Unknown top-level keys warn and are ignored; unknown keys inside `review`/`plan_review` are silently ignored.
 
