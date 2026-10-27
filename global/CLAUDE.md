@@ -78,6 +78,6 @@ Keep this file under 100 lines. Brief rules here, detail in files referenced by 
 ## Skill disambiguation
 
 - `/qa` *during a conversation about bugs/features* → conversational QA session that files GitHub issues
-- `/qa` *after code changes are written* → run automated tests/lint/smoke checks
+- `/qa` *after code changes are written* → run automated tests/lint/smoke checks (`/qa` exists on the skills.sh install only; otherwise the `sdlc-qa-engineer` agent)
 - `/triage` → user-invoked only; evaluates issues that arrived unlabeled, marks them `ready-for-agent` / `ready-for-human` / etc.
 - `/plan-iteration` → backlog grooming: stops on unlabeled issues and tells you to `/triage` them, then clusters the `ready-for-agent` ones and writes plans to the project's `plans/` directory
