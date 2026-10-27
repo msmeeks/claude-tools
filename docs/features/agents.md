@@ -25,8 +25,8 @@ Each file in `agents/` is a standalone `.md` with a YAML frontmatter block follo
 | `agents/sdlc-style-reviewer.md` | Naming, comments, idiomatic constructs, linting compliance |
 | `agents/sdlc-security-reviewer.md` | OWASP Top 10, auth/authz, CVEs, injection risks; has WebFetch + WebSearch tools |
 | `agents/sdlc-privacy-reviewer.md` | GDPR, PII handling, consent flows, data minimization |
-| `agents/sdlc-accessibility-reviewer.md` | WCAG 2.2 AA, keyboard navigation, ARIA, color contrast |
-| `agents/sdlc-design-reviewer.md` | Design brief adherence, component reuse, spacing/color tokens |
+| `agents/sdlc-accessibility-reviewer.md` | WCAG 2.2 AA for rendered UI, generated HTML, published docs; narrow terminal-output check; replies `N/A: <reason>` otherwise |
+| `agents/sdlc-design-reviewer.md` | UI, CLI and API surface consistency, design brief, component reuse; replies `N/A: <reason>` when no such surface |
 | `agents/sdlc-doc-writer.md` | Creates/updates docs/features/ and the context index |
 | `agents/sdlc-qa-engineer.md` | Runs automated tests, lint, API smoke tests, regression checks |
 | `agents/sdlc-test-reviewer.md` | Test value, edge cases, branch coverage, 90%+ line coverage target |

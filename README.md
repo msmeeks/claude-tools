@@ -222,8 +222,8 @@ All SDLC agents are prefixed `sdlc-` to avoid name collisions.
 | sdlc-style-reviewer | Naming, comments, idiomatic style, linting |
 | sdlc-security-reviewer | OWASP Top 10, auth/authz, CVEs, injection risks |
 | sdlc-privacy-reviewer | GDPR, PII handling, consent flows, data minimization |
-| sdlc-accessibility-reviewer | WCAG 2.2 AA, keyboard nav, ARIA, color contrast |
-| sdlc-design-reviewer | Design brief adherence, component reuse, spacing/color tokens |
+| sdlc-accessibility-reviewer | WCAG 2.2 AA (UI, HTML, docs, terminal output); `N/A` when none apply |
+| sdlc-design-reviewer | UI/CLI/API consistency, design brief, component reuse; `N/A` when no surface |
 | sdlc-doc-writer | Maintains `docs/features/` and the context index (`CONTEXT-MAP.md`/`CONTEXT.md`, or `docs/llms.md` in un-migrated repos) |
 | sdlc-qa-engineer | Automated tests, smoke tests, regression checks |
 | sdlc-test-reviewer | Test value, edge cases, branch coverage, 90%+ line coverage, FE+BE parity, boundary cases |

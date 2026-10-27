@@ -71,6 +71,23 @@ stdout/stderr with best-effort — explicitly not guaranteed — credential scru
 under both layouts, and the runner refuses to write one to a path the repo does not ignore.
 _Avoid_: output, transcript file
 
+**Commit reference**:
+The `Refs #N` trailer every runner-made commit carries, rendered from the `## Commit references`
+template in `<config-root>/issue-tracker.md` (default `Refs #{n}`). Only validated ints ever
+reach it. `exit_flush` is the one commit without one.
+_Avoid_: issue link, footer
+
+**Deferred issue**:
+A filed review finding this PR will not fix — final-round findings and minor rollups — recorded
+in `prd.json`'s `sdlc_deferred_issues`, never in `sdlc_finding_issues`, so it can't reach a
+`Closes` line.
+_Avoid_: leftover, backlog item
+
+**Finished iteration**:
+A `prd.json` whose integration PR was merged or whose branch is gone from origin.
+`_iteration_finished` makes the runner refuse it; `/plan-iteration` archives it.
+_Avoid_: stale prd, old run
+
 ## Boundaries
 
 - **Python decides mechanics; Claude decides work.** The script tracks attempts, detects
