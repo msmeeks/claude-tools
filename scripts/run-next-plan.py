@@ -1172,6 +1172,28 @@ any existing plan entry. Do not push."""
             )
 
 
+def commit_attempt_bookkeeping(repo_root: Path, prd_path: Path, plan_file: str, refs: str) -> None:
+    """Commit account_attempt's prd.json write with the plan's refs. Left uncommitted, it
+    would ride into exit_flush's ref-less wip commit, which /close-iteration Step 3 flags as
+    untraceable (#94). Commits prd.json alone — no Claude call, nothing else swept in — and
+    is a no-op when the file is unchanged or ignored."""
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--", str(prd_path)],
+        capture_output=True,
+        text=True,
+        cwd=repo_root,
+    )
+    if status.returncode != 0 or not status.stdout.strip():
+        return
+    message = f"chore: record attempt for plan {plan_file}"
+    if refs:
+        message += f"\n\n{refs}"
+    subprocess.run(["git", "add", "--", str(prd_path)], cwd=repo_root, check=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", message, "--", str(prd_path)], cwd=repo_root, check=True
+    )
+
+
 def exit_flush(repo_root: Path, config_root: Path, integration_branch: str) -> None:
     """Last-resort publish, registered once by `main` and fired on every termination path
     (normal exit, resume exit, session-limit give-up, error exit, KeyboardInterrupt, die()).
@@ -2305,11 +2327,16 @@ def main() -> None:
             repo_root, config_root, integration_branch, f"plan {selected['file']}",
             refs=_format_refs(commit_ref_template, _coerce_refs(selected.get("issues") or [])),
         )
-        flush_push(repo_root, integration_branch)
 
         outcome = scan_output(output_text, claude_exit)
 
-        _, stalled = account_attempt(prd_path, outcome, pre_run_status, output_text, plans)
+        charged, stalled = account_attempt(prd_path, outcome, pre_run_status, output_text, plans)
+        charged_entry = _find_plan_entry(load_prd(prd_path), charged) if charged else selected
+        commit_attempt_bookkeeping(
+            repo_root, prd_path, charged or selected["file"],
+            _format_refs(commit_ref_template, _coerce_refs(charged_entry.get("issues") or [])),
+        )
+        flush_push(repo_root, integration_branch)
         if stalled:
             continue
         data = load_prd(prd_path)
