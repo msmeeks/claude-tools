@@ -74,7 +74,8 @@ _Avoid_: output, transcript file
 **Commit reference**:
 The `Refs #N` trailer every runner-made commit carries, rendered from the `## Commit references`
 template in `<config-root>/issue-tracker.md` (default `Refs #{n}`). Only validated ints ever
-reach it. `exit_flush` is the one commit without one.
+reach it. Each attempt's prd.json bookkeeping is committed with the charged plan's refs, so
+`exit_flush` — the one commit without one — only fires after an interrupted run.
 _Avoid_: issue link, footer
 
 **Deferred issue**:
@@ -85,7 +86,9 @@ _Avoid_: leftover, backlog item
 
 **Finished iteration**:
 A `prd.json` whose integration PR was merged or closed, or whose pushed branch is gone from
-origin. `_iteration_finished` makes the runner refuse it; `/plan-iteration` backs it up to
+origin (a `[gone]` upstream after a pruning fetch still counts as pushed). With no
+`pr_number`, the PR is found by a same-repo `--state all` lookup on the branch name.
+`_iteration_finished` makes the runner refuse it; `/plan-iteration` backs it up to
 `prd.json.<date>.bak` and writes a fresh one.
 _Avoid_: stale prd, old run
 
