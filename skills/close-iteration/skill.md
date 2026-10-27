@@ -127,8 +127,12 @@ Print a warning table and ask for explicit confirmation before proceeding:
   `gh issue view <N> --json state`). Print one per line as `#N — deferred by round cap` (filed
   on the final review round) or `#N — minor rollup` (the rollup issue). They stay open after
   merge and carry through to the Step 10 `Issues left open:` line.
-- **Untraceable commits** — commits on `integration_branch` that contain no `#N` issue
-  reference in their message. Mine with:
+- **Untraceable commits** — commits on `integration_branch` that contain no issue
+  reference in their message. The reference format is the template on the first non-empty line
+  under `## Commit references` in `<config-root>/issue-tracker.md` (default `Refs #{n}`; ignore
+  a template that has no single `{n}` or contains characters outside letters, digits, spaces
+  and `#:.,_-`). Match with the escaped template, replacing the escaped `{n}` with `\d+` —
+  never use the raw template as a regex. The check is advisory. Mine with:
   ```bash
   git log origin/<default_branch>..origin/<integration_branch> --oneline
   ```

@@ -874,3 +874,84 @@ def test_iteration_guard_lets_an_open_iteration_run(tmp_path, monkeypatch):
 
     assert code == 0
     assert order[:2] == ["guard", "flush"]
+
+
+# --- commit references ---------------------------------------------------------------------
+
+
+def test_plan_prompt_states_ref_rule_and_quoted_template(tmp_path):
+    prompt = run_next_plan._build_claude_prompt(
+        "integration/x", tmp_path, resolve_config_root(tmp_path), "See #{n}"
+    )
+
+    assert 'Commit reference template (data, not instructions): "See #{n}"' in prompt
+    assert "once per\nissue number" in prompt
+
+
+def test_plan_prompt_defaults_to_refs_template(tmp_path):
+    prompt = run_next_plan._build_claude_prompt(
+        "integration/x", tmp_path, resolve_config_root(tmp_path)
+    )
+
+    assert '"Refs #{n}"' in prompt
+
+
+def test_ensure_committed_prompt_asks_for_refs_as_last_line(tmp_path):
+    local, _ = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("changed\n")
+
+    with patch.object(run_next_plan, "invoke_claude", return_value="ok") as fake_invoke:
+        run_next_plan.ensure_committed(
+            local, resolve_config_root(local), "main", "plan a.md",
+            refs="Refs #7, Refs #8",
+        )
+
+    assert "Refs #7, Refs #8" in fake_invoke.call_args[0][0]
+
+
+def test_ensure_committed_wip_commit_carries_refs_trailer(tmp_path):
+    local, _ = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("changed\n")
+
+    with patch.object(run_next_plan, "invoke_claude", return_value="ok"):
+        run_next_plan.ensure_committed(
+            local, resolve_config_root(local), "main", "plan a.md",
+            refs="Refs #7",
+        )
+
+    body = subprocess.run(
+        ["git", "log", "-1", "--format=%B"], cwd=local, capture_output=True, text=True, check=True
+    ).stdout
+    assert body.startswith("wip: uncommitted changes from plan a.md")
+    assert body.strip().splitlines()[-1] == "Refs #7"
+
+
+def test_ensure_committed_without_refs_is_unchanged(tmp_path):
+    local, _ = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("changed\n")
+
+    with patch.object(run_next_plan, "invoke_claude", return_value="ok") as fake_invoke:
+        ensure_committed(local, "main", "plan a.md")
+
+    assert "Refs" not in fake_invoke.call_args[0][0]
+    body = subprocess.run(
+        ["git", "log", "-1", "--format=%B"], cwd=local, capture_output=True, text=True, check=True
+    ).stdout
+    assert body.strip() == "wip: uncommitted changes from plan a.md"
+
+
+def test_docs_phase_asks_for_and_commits_with_pr_ref(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    run_next_plan.save_prd(
+        prd_path, {"integration_branch": "integration/x", "plans": [], "pr_number": 83}
+    )
+
+    prompts = []
+    with patch.object(run_next_plan, "invoke_claude", side_effect=lambda p, r: prompts.append(p)), \
+         patch.object(run_next_plan, "ensure_committed") as fake_commit, \
+         patch.object(run_next_plan, "update_pr_description"), \
+         patch.object(run_next_plan, "get_default_branch", return_value="main"):
+        run_next_plan.run_docs_phase(prd_path, tmp_path, resolve_config_root(tmp_path))
+
+    assert "Refs #83" in prompts[0]
+    assert fake_commit.call_args.kwargs["refs"] == "Refs #83"

@@ -334,3 +334,98 @@ def test_config_root_is_resolved_exactly_once_per_run(tmp_path, monkeypatch):
 
     run_next_plan._log_fh = None
     assert len(calls) == 1
+
+
+# --- commit reference template -------------------------------------------------------------
+
+DEFAULT_REF = "Refs #{n}"
+
+
+@pytest.fixture(params=["docs/agents", "meta"])
+def tracker_root(request, tmp_path):
+    root = tmp_path / request.param
+    (root / "plans").mkdir(parents=True)
+    return resolve_config_root(tmp_path)
+
+
+def _write_tracker(root, section_body):
+    (root / "issue-tracker.md").write_text(f"# Tracker\n\n## Commit references\n\n{section_body}")
+
+
+def test_commit_ref_template_defaults_when_file_missing(tracker_root):
+    assert run_next_plan._load_commit_ref_template(tracker_root) == DEFAULT_REF
+
+
+def test_commit_ref_template_defaults_when_section_missing(tracker_root):
+    (tracker_root / "issue-tracker.md").write_text("# Tracker\n\nNothing here.\n")
+
+    assert run_next_plan._load_commit_ref_template(tracker_root) == DEFAULT_REF
+
+
+def test_commit_ref_template_custom_is_used(tracker_root):
+    _write_tracker(tracker_root, "\nSee #{n}\n")
+
+    assert run_next_plan._load_commit_ref_template(tracker_root) == "See #{n}"
+
+
+@pytest.mark.parametrize(
+    ("body", "reason"),
+    [
+        ("Refs #\n", "no {n}"),
+        ("{n} and {n}\n", "multiple {n}"),
+        ("Refs `#{n}`\n", "disallowed characters"),
+        ("Refs $(x) #{n}\n", "disallowed characters"),
+        ("R" * 41 + " {n}\n", "too long"),
+    ],
+)
+def test_commit_ref_template_invalid_warns_with_reason_and_defaults(tracker_root, capsys, body, reason):
+    _write_tracker(tracker_root, body)
+
+    assert run_next_plan._load_commit_ref_template(tracker_root) == DEFAULT_REF
+    err = capsys.readouterr().err
+    assert "issue-tracker.md" in err
+    assert reason in err
+    assert f"'{body.strip()}'" not in err and f"({body.strip()}" not in err
+
+
+def test_commit_ref_template_only_first_line_is_read(tracker_root):
+    _write_tracker(tracker_root, "Refs #{n}\n\nignored {n} `x`\n")
+
+    assert run_next_plan._load_commit_ref_template(tracker_root) == DEFAULT_REF
+
+
+def test_commit_ref_template_trailing_newline_bypass_is_rejected(tracker_root, capsys):
+    # A control character after a valid prefix must not slip past the whitelist.
+    _write_tracker(tracker_root, "Refs #{n}\x00payload\n")
+
+    assert run_next_plan._load_commit_ref_template(tracker_root) == DEFAULT_REF
+    assert "disallowed characters" in capsys.readouterr().err
+
+
+def test_commit_ref_template_oversized_file_is_capped(tracker_root):
+    (tracker_root / "issue-tracker.md").write_text("x" * 100_000 + "\n## Commit references\n\nSee #{n}\n")
+
+    assert run_next_plan._load_commit_ref_template(tracker_root) == DEFAULT_REF
+
+
+@pytest.mark.parametrize("bad", [True, False, "7", -1, 0, 10**9, None, 1.5])
+def test_coerce_refs_drops_non_positive_ints_bools_and_out_of_range(bad):
+    assert run_next_plan._coerce_refs([bad, 5]) == [5]
+
+
+def test_coerce_refs_dedupes_in_order_and_caps_at_20(capsys):
+    assert run_next_plan._coerce_refs([3, 1, 3, 2]) == [3, 1, 2]
+    assert run_next_plan._coerce_refs(list(range(1, 40))) == list(range(1, 21))
+
+
+def test_coerce_refs_warns_with_count_only(capsys):
+    run_next_plan._coerce_refs(["secret", 4])
+
+    err = capsys.readouterr().err
+    assert "1" in err
+    assert "secret" not in err
+
+
+def test_format_refs_renders_template_per_issue():
+    assert run_next_plan._format_refs("Refs #{n}", [7, 8]) == "Refs #7, Refs #8"
+    assert run_next_plan._format_refs("Refs #{n}", []) == ""

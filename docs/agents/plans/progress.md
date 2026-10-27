@@ -6,3 +6,9 @@
 - #76: `_iteration_finished` + runner guard before `_register_exit_flush`; close-iteration Step 4 archive fallback; plan-iteration finished-iteration check and fresh-vs-merge `prd.json`.
 - Docs updated (run-next-plan, triage-labels, agents README, CONTEXT-MAP, global/CLAUDE.md L72 in its own commit).
 - Tests: 256 passed; ruff clean.
+
+## 2026-10-26 23:05 — feat-commit-refs.md (#80)
+
+- Runner: `_load_commit_ref_template` (whitelist-validated, cached, default `Refs #{n}`), `_coerce_refs`, `_format_refs`; plan prompt carries the rule and quoted template; `ensure_committed(refs=)` adds it to the commit prompt and wip trailer; plan, docs-phase and SDLC call sites pass refs (plan `issues` / integration PR number). `exit_flush` unchanged by design.
+- `docs/agents/issue-tracker.md` gets `## Commit references`; close-iteration Step 3 matches against the same template; run-next-plan feature doc updated; global/CLAUDE.md L66 in its own commit.
+- Tests: 295 passed; ruff clean.
