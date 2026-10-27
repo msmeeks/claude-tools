@@ -63,7 +63,7 @@ New projects under `~/Code/` get this layout. **Existing projects keep theirs** 
 | `CONTEXT-MAP.md` / `CONTEXT.md` | Context index and per-area glossaries | `sdlc-doc-writer` |
 | `docs/adr/` | Architecture decision records | — |
 | `docs/features/<name>.md` | Per-feature reference | `sdlc-doc-writer` |
-| `docs/agents/` | `issue-tracker.md`, `triage-labels.md`, `domain.md`, `PRIVACY.md`, `plans/`, brand/design docs if the project needs them | — |
+| `docs/agents/` | `issue-tracker.md` (incl. its `## Commit references` template), `triage-labels.md`, `domain.md`, `PRIVACY.md`, `plans/`, brand/design docs if the project needs them | — |
 | `help-docs/` | Customer-facing docs | `/help-docs` on setup + each major feature |
 | `.claudeignore` | `node_modules/`, `dist/`, `.venv/`, `__pycache__/`, build artifacts, coverage, lock files, large media, logs, uploads | — |
 
