@@ -81,14 +81,14 @@
     86,
     87,
     88,
-    89
+    89,
+    91
   ],
   "sdlc_review_status": "complete",
   "last_reviewed_sha": "af697c79e908df15457dec2a3af332facae40638",
   "sdlc_review_rounds": 2,
   "sdlc_deferred_issues": [
     90,
-    91,
     92,
     93
   ]
