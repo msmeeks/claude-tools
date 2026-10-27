@@ -28,6 +28,14 @@ Several things encourage the skip:
 The `ralph.json` `plan_review.reviewers` contract is unchanged. "Roster" still means the configured
 list or the four defaults.
 
+**Maintainer scope decision (2026-10-26):** design and accessibility are human-computer-interaction
+reviewers, not general reviewers.
+- **Design** covers UI, CLI (commands, flags, messages, output shape) and API (naming, request and
+  response shape, errors) surfaces.
+- **Accessibility** covers rendered UI, generated HTML and published docs, plus a narrow check of
+  human-facing terminal output (WCAG2ICT applies WCAG to non-web software).
+- APIs, backend-only and internal changes are N/A for accessibility.
+
 ---
 
 ## Implementation Notes
@@ -62,10 +70,24 @@ list or the four defaults.
 2. **Roster names.** In the plan-iteration roster paragraph, require roster entries to be bare agent
    file names: reject anything with `/`, `..` or whitespace. When building a prompt for a non-standard
    agent, quote its description as a data focus line.
-3. **Accessibility prompt.** In plan-iteration (L116) and triage-pr-comments (L167), replace "Review
-   planned UI changes" / "planned UI comment responses" with wording that covers all user-facing
-   output. For example: "Review planned changes … Review rendered UI, CLI/terminal output, generated
-   HTML, and human-read docs." No prompt may describe a reviewer's scope as UI-only.
+3. **Reviewer scopes in dispatch prompts.** Update both skills to match the scope decision above.
+   - In plan-iteration (L116) and triage-pr-comments (L167), replace "Review planned UI changes" and
+     "planned UI comment responses".
+   - Extend the design prompt just below each one.
+   - Neither prompt may describe its scope as UI-only.
+
+   The prompts should say:
+   - **Accessibility:** "Review rendered UI, generated HTML and published docs against WCAG 2.2 AA. For
+     human-facing terminal output, check only that:
+     - no meaning is carried by colour alone;
+     - `NO_COLOR` and non-TTY output are respected;
+     - nothing is unusable with a screen reader (for example spinners, or tables drawn only with
+       box-drawing characters).
+
+     APIs, backend-only and internal changes: reply N/A."
+   - **Design:** "Review UI, CLI (commands, flags, messages, output shape) and API (naming,
+     request/response shape, errors) surfaces for consistency with the design brief and existing
+     conventions."
 4. **Collection rule.** Replace plan-iteration L125-126 and triage-pr-comments L176-177 ("omit that
    section") with: "Always write `## Pre-Implementation Review`, one entry per roster agent." Remove
    stale "four"/"all four" wording (plan-iteration L103/L105; triage-pr-comments L156, L177, L208).
@@ -89,16 +111,26 @@ list or the four defaults.
    In triage-pr-comments, keep the `<!-- reactions: -->` line (~L283) untouched, because
    `run-next-plan.py` parses it.
 8. **Agent files.**
-   - `agents/sdlc-accessibility-reviewer.md`: reword the frontmatter description to "Reviews
-     user-facing output (UI, CLI/terminal output, generated HTML, human-read docs) for WCAG 2.2 AA …"
-     and delete "Use for any UI/frontend change." At the end of `## Output format` (L50-52), add one
-     paragraph in the existing bold style:
-     > **N/A:** if the change touches no user-facing output, reply exactly `N/A: <one-sentence reason
-     > naming what the change touches>` and stop. Don't reply N/A just because the change is not a
-     > web UI.
-   - `agents/sdlc-design-reviewer.md`: in the description, replace "Use for any UI/frontend change."
-     with "Replies N/A when the change has no visual or UI surface." At the end of `## Output format`
-     (L48-50), add the same N/A paragraph, with "no visual or UI surface" as the condition.
+   - `agents/sdlc-accessibility-reviewer.md`:
+     - Reword the frontmatter description to "Reviews rendered UI, generated HTML and published docs
+       for WCAG 2.2 AA (keyboard, contrast, semantics, ARIA, focus), plus a narrow check of
+       human-facing terminal output." Delete "Use for any UI/frontend change."
+     - Add a short terminal-output checklist with the three checks from Step 3.
+     - At the end of `## Output format` (L50-52), add one paragraph in the existing bold style:
+       > **N/A:** if the change touches no rendered UI, generated HTML, published docs or human-facing
+       > terminal output (for example an API, backend-only or internal change), reply exactly
+       > `N/A: <one-sentence reason naming what the change touches>` and stop.
+   - `agents/sdlc-design-reviewer.md`:
+     - Reword the description to "Reviews UI, CLI and API surfaces for consistency, component and
+       pattern reuse, and adherence to the project's design brief." Replace "Use for any UI/frontend
+       change." with "Replies N/A when the change has no UI, CLI or API surface."
+     - Add a short `CLI and API surfaces` checklist covering four things:
+       - names and flags are consistent with the existing commands and endpoints;
+       - an error says what failed and how to fix it;
+       - output is stable, and parseable where scripts consume it;
+       - request and response shapes follow the existing ones.
+     - At the end of `## Output format` (L48-50), add the same N/A paragraph, with "no UI, CLI or API
+       surface" as the condition.
    - Don't add N/A wording to the security or privacy agents. The issue puts this out of scope, and the
      security review advised against it. The dispatch-prompt line in Step 1 already covers every agent.
 9. **Docs.**
@@ -128,7 +160,8 @@ list or the four defaults.
 - [ ] Both reviewer agent files define the N/A reply in their output format
 - [ ] The skills feature doc mentions the always-dispatch rule for `/plan-iteration`
 - [ ] `cd scripts && python3 -m pytest` and `python3 -m ruff check .` still pass; no script parses the Pre-Implementation Review section
-- [ ] Post-merge (maintainer): `/plan-iteration` on a scratch CLI-only repo with no `ralph.json` shows four reviewer Agent calls, and the plan lists accessibility and design as `N/A`
+- [ ] Accessibility and design agent files and dispatch prompts state the scopes in the maintainer scope decision (design: UI/CLI/API; accessibility: UI/HTML/docs plus narrow terminal check, N/A for APIs and backend)
+- [ ] Post-merge (maintainer): `/plan-iteration` on a scratch CLI-only repo with no `ralph.json` shows four reviewer Agent calls, and the plan records a result for every reviewer (design reviews the CLI surface; accessibility gives either the terminal check or `N/A`)
 
 ---
 

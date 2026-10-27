@@ -220,7 +220,7 @@ repos where plans end up untracked anyway, plus a stale-`prd.json` guard.
   - Low: the guard catches JSONDecodeError/KeyError/OSError. `gh pr view --json state,headRefName`, matching the head. Step 10.
   - Info: the cap message reads `sdlc_deferred_issues`. The archive and `.bak` must never be staged by `git add -A` (they are excluded). Steps 5, 13, 16.
 - **sdlc-privacy-reviewer:** findings
-  - High: archiving `implementation-logs/` (raw transcripts) into an unpruned archive conflicts with PRIVACY.md's 30-day log retention. **Not applied.** The #76 maintainer brief says to move everything including `implementation-logs/`, and puts `PRIVACY.md` out of scope. Flagged to the maintainer in the PR for a decision (follow-up: a retention line for `plans/archive/` and `.bak`, or archiving only plans/prd/progress).
+  - High: archiving `implementation-logs/` (raw transcripts) into an unpruned archive conflicts with PRIVACY.md's 30-day log retention. **Dismissed by maintainer (2026-10-26):** the archive is a local, gitignored file store, not production or a shared service, so the retention policy doesn't apply. Archive everything as the #76 brief says; no PRIVACY.md change.
   - Medium: `.bak` files are disposable and kept out of git via path-specific `info/exclude` entries. Step 16.
   - Medium: verify with `git check-ignore` before moving. Step 13.
   - Medium: docs keep the four runtime artifacts "never publishable". Step 17.

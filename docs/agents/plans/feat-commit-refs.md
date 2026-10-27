@@ -161,4 +161,4 @@ the change is trivial.
   - **Info:** an optional PRIVACY.md line. Not needed, since no new data is stored.
 - **sdlc-accessibility-reviewer:** findings (CLI output only)
   - **Minor:** a single startup `warn()` naming the reason and the fallback. It uses no colour and doesn't print the resolved template every run. The reviewer suggested echoing the value via `_strip_unsafe_chars`; that was **not applied**, because the privacy finding takes precedence. *(Step 2)*
-- **sdlc-design-reviewer:** `N/A: runner prompt strings, commit-message format and the issue-tracker doc; no UI or visual surface.`
+- **sdlc-design-reviewer:** `N/A: runner prompt strings, commit-message format and the issue-tracker doc; no UI or visual surface.` This review predates the 2026-10-26 scope decision in `fix-plan-review-roster.md`, under which design also covers CLI surfaces. So the startup `warn()` must match the shape of the existing `warn()` lines (path, reason, fallback).
