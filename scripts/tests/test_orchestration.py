@@ -756,6 +756,29 @@ def test_main_does_not_print_unsandboxed_trust_model_warning_under_dry_run(
     assert "unsandboxed" not in capsys.readouterr().err
 
 
+def test_main_does_not_edit_the_pr_under_dry_run_when_the_iteration_is_complete(
+    tmp_path, monkeypatch, capsys
+):
+    """#96: the all-terminal, review-complete exit synced the PR's Closes list even in a dry run."""
+    _init_repo(tmp_path)
+    _write_empty_complete_prd(tmp_path / "docs" / "agents" / "plans")
+    synced = []
+
+    monkeypatch.setattr(sys, "argv", ["run-next-plan.py", "--dry-run"])
+    monkeypatch.setattr(run_next_plan.shutil, "which", lambda _cmd: "/usr/bin/claude")
+    monkeypatch.setattr(run_next_plan, "_register_exit_flush", lambda *a, **kw: None)
+    monkeypatch.setattr(run_next_plan, "sync_pr_closes", lambda *a, **kw: synced.append(a))
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit) as exc:
+        run_next_plan.main()
+    run_next_plan._log_fh = None
+
+    assert exc.value.code == 0
+    assert synced == []
+    assert "DRY RUN" in capsys.readouterr().out
+
+
 # --- #76: a finished iteration's prd.json must not drive another run ------------------------
 
 

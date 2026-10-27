@@ -714,15 +714,20 @@ def _iteration_finished(data: dict, integration_branch: str) -> str | None:
     return None
 
 
-def _fetch_pr_body(pr_number: int) -> str:
-    r = subprocess.run(
-        ["gh", "pr", "view", str(pr_number), "--json", "body"],
-        capture_output=True,
-        text=True,
-    )
-    if r.returncode != 0 or not r.stdout.strip():
-        return ""
-    return json.loads(r.stdout).get("body") or ""
+def _fetch_pr_body(pr_number: int) -> str | None:
+    """The PR's current body, or None when it can't be read. Callers rewrite the whole body,
+    so a failed read must never pass for an empty one — that edit would erase the PR text."""
+    try:
+        r = subprocess.run(
+            ["gh", "pr", "view", str(pr_number), "--json", "body"],
+            capture_output=True,
+            text=True,
+        )
+        if r.returncode != 0 or not r.stdout.strip():
+            return None
+        return json.loads(r.stdout).get("body") or ""
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 def splice_summary_block(body: str, summary: str) -> str:
@@ -777,6 +782,9 @@ def sync_pr_closes(prd_path: Path, plans_dir: Path, integration_branch: str) -> 
         return
 
     body = _fetch_pr_body(pr_number)
+    if body is None:
+        warn(f"sync_pr_closes: couldn't read PR #{pr_number}'s body — leaving it unchanged")
+        return
     body_lower = body.lower()
 
     new_closes = [
@@ -795,7 +803,16 @@ def sync_pr_closes(prd_path: Path, plans_dir: Path, integration_branch: str) -> 
         new_body = body.rstrip() + "\n\n## Closes\n\n" + "\n".join(new_closes) + "\n"
     new_body = _scrub_credentials(new_body)
 
-    subprocess.run(["gh", "pr", "edit", str(pr_number), "--body", new_body], check=True)
+    r = subprocess.run(
+        ["gh", "pr", "edit", str(pr_number), "--body", new_body], capture_output=True, text=True
+    )
+    if r.returncode != 0:
+        # Not cached as synced, so the next call retries.
+        warn(
+            f"sync_pr_closes: gh pr edit #{pr_number} failed — Closes list not updated: "
+            f"{_scrub_credentials((r.stderr or '').strip())}"
+        )
+        return
     _synced_closes = closes
     info(f"sync_pr_closes: PR #{pr_number} updated with {len(new_closes)} new Closes entries")
 
@@ -1445,7 +1462,11 @@ def update_pr_description(prd_path: Path, repo_root: Path, config_root: Path) ->
         warn("update_pr_description: Claude produced no summary — leaving PR body unchanged")
         return
 
-    new_body = _scrub_credentials(splice_summary_block(_fetch_pr_body(pr_number), summary))
+    body = _fetch_pr_body(pr_number)
+    if body is None:
+        warn(f"update_pr_description: couldn't read PR #{pr_number}'s body — leaving it unchanged")
+        return
+    new_body = _scrub_credentials(splice_summary_block(body, summary))
     subprocess.run(["gh", "pr", "edit", str(pr_number), "--body", new_body], check=True)
     info(f"update_pr_description: PR #{pr_number} summary updated")
 
@@ -2221,6 +2242,11 @@ def main() -> None:
                 info("All plans done or stalled. Running SDLC review gate...")
                 _run_gate_and_continue(prd_path, repo_root, config_root, ralph_config)
                 continue
+            if args.dry_run:
+                print()
+                print("=== DRY RUN ===")
+                print("All plans done or stalled and SDLC review complete; would sync the PR's Closes list and exit.")
+                sys.exit(0)
             sync_pr_closes(prd_path, plans_dir, integration_branch)
             info("All plans done or stalled. SDLC review already complete.")
             sys.exit(0)
