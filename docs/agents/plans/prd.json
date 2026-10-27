@@ -2,7 +2,10 @@
   "plans": [
     {
       "file": "fix-iteration-state.md",
-      "issues": [78, 76],
+      "issues": [
+        78,
+        76
+      ],
       "size": "L",
       "status": "pending",
       "attempts": 0,
@@ -10,15 +13,21 @@
     },
     {
       "file": "feat-commit-refs.md",
-      "issues": [80],
+      "issues": [
+        80
+      ],
       "size": "M",
       "status": "pending",
       "attempts": 0,
-      "blocked_by": ["fix-iteration-state.md"]
+      "blocked_by": [
+        "fix-iteration-state.md"
+      ]
     },
     {
       "file": "fix-plan-review-roster.md",
-      "issues": [79],
+      "issues": [
+        79
+      ],
       "size": "M",
       "status": "pending",
       "attempts": 0,
@@ -26,11 +35,20 @@
     },
     {
       "file": "chore-third-party-skills.md",
-      "issues": [81],
+      "issues": [
+        81
+      ],
       "size": "L",
       "status": "pending",
       "attempts": 0,
-      "blocked_by": ["fix-iteration-state.md", "feat-commit-refs.md"]
+      "blocked_by": [
+        "fix-iteration-state.md",
+        "feat-commit-refs.md"
+      ]
     }
-  ]
+  ],
+  "integration_branch": "integration/2026-10-26-iteration-state",
+  "pr_number": 83,
+  "smoke_test": "cd scripts && python3 -m pytest",
+  "feature_branches": []
 }
