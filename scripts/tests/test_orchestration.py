@@ -764,7 +764,7 @@ def _fake_gh_and_ls_remote(
     upstream=True, unpushed="", probe_rc=0,
 ):
     """Stub subprocess.run for the guard: `gh pr view` returns `pr` (a dict) as JSON,
-    `git rev-parse @{u}` succeeds iff `upstream`, `git rev-list @{u}..HEAD` prints
+    `git rev-parse <branch>@{u}` succeeds iff `upstream`, `git rev-list` prints
     `unpushed`, and `git ls-remote` returns `ls_remote_rc`."""
     calls = []
 
@@ -855,6 +855,51 @@ def test_iteration_guard_branch_with_unpushed_commits_is_not_finished(capsys):
 def test_iteration_guard_unpushed_probe_error_is_unknown_not_finished():
     reason, _ = _finished({"pr_number": 5}, pr=_pr("OPEN"), probe_rc=128, ls_remote_rc=2)
     assert reason is None
+
+
+def _finished_in_real_repo(local, monkeypatch, branch="integration/x"):
+    """Run the guard against a real git repo, with only `gh` stubbed (no PR found)."""
+    real_run = subprocess.run
+
+    def run(cmd, **kwargs):
+        if cmd[0] == "gh":
+            return type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.chdir(local)
+    with patch.object(run_next_plan.subprocess, "run", side_effect=run):
+        return run_next_plan._iteration_finished({}, branch)
+
+
+def _git(local, *args):
+    subprocess.run(["git", *args], cwd=local, check=True, capture_output=True)
+
+
+def test_iteration_guard_never_pushed_branch_is_not_finished_while_head_is_pushed(
+    tmp_path, monkeypatch
+):
+    local, _ = _init_repo_with_remote(tmp_path)
+    _git(local, "push", "-q", "-u", "origin", "main")
+    _git(local, "branch", "integration/x")
+    assert _finished_in_real_repo(local, monkeypatch) is None
+
+
+def test_iteration_guard_pushed_then_deleted_branch_is_finished_from_any_checkout(
+    tmp_path, monkeypatch
+):
+    local, remote = _init_repo_with_remote(tmp_path)
+    _git(local, "push", "-q", "-u", "origin", "main")
+    _git(local, "checkout", "-q", "-b", "integration/x")
+    _git(local, "push", "-q", "-u", "origin", "integration/x")
+    _git(local, "checkout", "-q", "main")
+    _git(remote, "branch", "-D", "integration/x")
+    assert "integration/x" in _finished_in_real_repo(local, monkeypatch)
+
+
+def test_iteration_guard_probes_the_integration_branch_not_head():
+    _, calls = _finished({"pr_number": 5}, pr=_pr("OPEN"))
+    assert ["git", "rev-parse", "integration/x@{u}"] in calls
+    assert ["git", "rev-list", "integration/x@{u}..integration/x"] in calls
 
 
 def test_iteration_guard_warns_and_continues_when_gh_is_missing(capsys):

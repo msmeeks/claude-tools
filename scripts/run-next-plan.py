@@ -629,12 +629,16 @@ def resolve_pr_number(data: dict, integration_branch: str) -> int | None:
 
 
 def _branch_is_pushed(integration_branch: str) -> bool:
-    """True only when HEAD has an upstream and no commits beyond it. A probe error counts as
-    not pushed: the origin-absence check below must never fire on a branch we can't vouch for."""
-    r = subprocess.run(["git", "rev-parse", "@{u}"], capture_output=True, text=True)
+    """True only when the integration branch (not whatever HEAD is) has an upstream and no
+    commits beyond it. A probe error counts as not pushed: the origin-absence check below must
+    never fire on a branch we can't vouch for."""
+    upstream = f"{integration_branch}@{{u}}"
+    r = subprocess.run(["git", "rev-parse", upstream], capture_output=True, text=True)
     if r.returncode != 0:
         return False
-    r = subprocess.run(["git", "rev-list", "@{u}..HEAD"], capture_output=True, text=True)
+    r = subprocess.run(
+        ["git", "rev-list", f"{upstream}..{integration_branch}"], capture_output=True, text=True
+    )
     return r.returncode == 0 and not r.stdout.strip()
 
 
