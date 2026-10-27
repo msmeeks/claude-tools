@@ -1396,3 +1396,57 @@ def test_load_prd_accepts_deferred_issues(tmp_path):
     save_prd(prd_path, data)
 
     assert load_prd(prd_path)["sdlc_deferred_issues"] == [3, 4]
+
+
+# --- commit reference wiring ----------------------------------------------------------------
+
+
+def _run_gate_recording_commits(tmp_path, *, interrupt_first_review, prd_extra=None):
+    prd_path = tmp_path / "prd.json"
+    data = _valid_prd()
+    data.update(prd_extra or {})
+    save_prd(prd_path, data)
+
+    commits = []  # (context, refs)
+    prompts = []
+    state = {"limited": not interrupt_first_review}
+
+    def fake_invoke_claude(prompt, repo_root):
+        prompts.append(prompt)
+        if "Dispatch these review agents" in prompt and not state["limited"]:
+            state["limited"] = True
+            return (SAMPLE_LIMIT_MESSAGE, 1)
+        if "file a GitHub issue" in prompt:
+            return ("ISSUE: #11\n", 0)
+        if "labeled at filing" in prompt:
+            return ("TRIAGE_DONE", 0)
+        return ("ok", 0)
+
+    def fake_ensure_committed(repo_root, config_root, branch, context, refs=""):
+        commits.append((context, refs))
+
+    with patch.object(run_next_plan, "invoke_claude", side_effect=fake_invoke_claude), patch.object(
+        run_next_plan, "ensure_committed", side_effect=fake_ensure_committed
+    ), patch.object(run_next_plan.time, "sleep"), patch.object(
+        run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
+    ):
+        run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
+    return dict(commits), commits, prompts
+
+
+def test_gate_passes_pr_ref_to_interrupt_triage_and_docs_commits(tmp_path):
+    by_context, commits, prompts = _run_gate_recording_commits(
+        tmp_path, interrupt_first_review=True, prd_extra={"pr_number": 4242}
+    )
+
+    for context in ("SDLC review (interrupted)", "SDLC review triage", "docs phase", "SDLC review docs phase"):
+        assert by_context[context] == "Refs #4242", context
+    assert any("Refs #4242" in p and "documentation" in p.lower() for p in prompts)
+
+
+def test_gate_commits_carry_empty_refs_when_no_pr_resolves(tmp_path):
+    # gh finds no PR for the branch (empty stdout) and prd.json has no pr_number.
+    by_context, _, _ = _run_gate_recording_commits(tmp_path, interrupt_first_review=False)
+
+    assert by_context["SDLC review triage"] == ""
+    assert by_context["SDLC review docs phase"] == ""

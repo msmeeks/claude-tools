@@ -870,18 +870,22 @@ def _load_commit_ref_template(config_root: Path) -> str:
 
 
 def _coerce_refs(values: object) -> list[int]:
-    """Only genuine positive ints survive (no bools or strs), deduped in order and capped, so
-    nothing but digits can reach a commit message or prompt."""
+    """Only genuine positive ints survive, deduped in order and capped, so nothing but digits
+    can reach a commit message or prompt. The cap bounds commit-message and prompt size.
+    Warnings carry counts only, never the values."""
     kept: list[int] = []
     items = list(values) if isinstance(values, (list, tuple)) else []
     for x in items:
+        # `type(x) is int`, not isinstance: bool is an int subclass and must be excluded.
         if type(x) is int and 0 < x < 10**9 and x not in kept:
             kept.append(x)
-    dropped = len(items) - len(kept)
-    kept = kept[:_MAX_REFS]
-    if dropped:
-        warn(f"dropped {dropped} invalid or duplicate issue reference(s)")
-    return kept
+    invalid = len(items) - len(kept)
+    overflow = max(0, len(kept) - _MAX_REFS)
+    if invalid:
+        warn(f"issue references: dropped {invalid} invalid or duplicate — continuing without them")
+    if overflow:
+        warn(f"issue references: {overflow} over the cap of {_MAX_REFS} — dropped")
+    return kept[:_MAX_REFS]
 
 
 def _format_refs(template: str, nums: list[int]) -> str:

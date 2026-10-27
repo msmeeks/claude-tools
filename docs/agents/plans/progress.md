@@ -35,3 +35,10 @@
 - Tests: guard helper extended; added CLOSED, cross-repo, local-only, unpushed, probe-error, gh no-output, missing-head cases; warning text asserted; duplicate OPEN case removed.
 - Docs: plan-iteration Step 1.2, run-next-plan.md.
 - Tests: 306 passed; ruff clean.
+
+## 2026-10-26 22:28 — test-commit-refs-coverage.md (#87, #88, #89)
+
+- #87: `_coerce_refs` now warns (counts only, via `warn()`) about invalid/duplicate refs and, separately, cap overflow after truncation; comment on `type(x) is int` excluding bool.
+- #88: template tests for the 40/41 length boundary, empty section (blank/EOF), shell and lookalike characters, invalid UTF-8; cache cleared in the `tracker_root` fixture.
+- #89: `main()` wiring (plan `issues` → `refs=`, no key → empty, cap + warning) and gate wiring (PR ref reaches interrupt, triage, docs commits; empty when no PR). Mutation-checked: removing `refs=` at each call site or `>`→`>=` fails a test.
+- Docs: run-next-plan.md. Tests: 347 passed; ruff clean.
