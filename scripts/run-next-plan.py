@@ -567,7 +567,7 @@ Update {plans}/prd.json — set status to "done" for the completed plan.
 
 ONLY DO ONE PLAN AT A TIME.
 Use /tdd to drive implementation (write failing test first).
-Use /qa after changes (automated tests, lint, smoke checks).
+Run automated tests, lint and smoke checks: use /qa if that skill is installed, otherwise dispatch the sdlc-qa-engineer agent.
 
 If all plans are complete, output on its own line:
 <promise>COMPLETE</promise>
