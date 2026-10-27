@@ -100,7 +100,7 @@ Scoring algorithm weights: epic completed/nevered (+100), zero customer impact (
 
 The bookend to `/plan-iteration`. Verifies hard blockers (all plans terminal, SDLC review
 complete, findings addressed, no merge conflicts, smoke test passes), surfaces soft
-warnings for confirmation, checks PRD issue coverage, then promotes and merges the
+warnings for confirmation, checks spec issue coverage, then promotes and merges the
 integration PR, closes linked issues, and deletes branches/worktrees.
 
 The hard-blocker check on `sdlc_review_status` treats a transient `pending` reading as
@@ -123,7 +123,7 @@ behind, tying back to the stalled-plan warnings raised earlier in the run.
 (Step 8) — this lets the removal commit pass through the same diff-based review as the
 rest of the iteration's work, and ride along in the normal merge commit instead of
 requiring a separate direct push to the default branch afterward. Post-merge cleanup
-(Step 9) only closes PRD issues, deletes branches/worktrees, and pulls the default branch
+(Step 9) only closes spec issues, deletes branches/worktrees, and pulls the default branch
 before deleting the local integration branch; it no longer touches `<config-root>/plans/`.
 
 ### plan-iteration
@@ -137,6 +137,8 @@ The plan-review agents in Step 6 and `review` mode come from `plan_review.review
 `<config-root>/ralph.json` when that file exists (default: security, privacy, accessibility,
 design). A configured name that is not an installed agent stops the run rather than being
 skipped. See the **Review recipe config** section of [run-next-plan.md](run-next-plan.md).
+
+Every roster agent is always dispatched, whatever the change looks like. Each reply is recorded as one of its findings, `no findings`, `N/A: <reason>` or `ERROR: <reason>`, and `## Pre-Implementation Review` is never omitted, so a skipped reviewer is visible. Design covers UI, CLI and API surfaces; accessibility covers rendered UI, generated HTML, published docs and a narrow terminal-output check, and is N/A for APIs and backend-only changes. `/triage-pr-comments` Step 5 reads the same roster and follows the same rule.
 
 It never triages. `/triage` is user-invoked (`disable-model-invocation`), so no skill or
 headless session can call it. Issues are labeled by whoever files them (the "Filing issues"

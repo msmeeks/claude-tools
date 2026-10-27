@@ -120,15 +120,24 @@ Print a warning table and ask for explicit confirmation before proceeding:
 - **Stalled plans with closed issues** — the work landed outside the runner; confirm the
   plan's scope is actually covered by inspecting the PR diff.
 - **Stalled plans with open issues** — the plan did no work and its issues are *not* in the
-  Step 7 `Closes` list, so they stay open after merge (correct behaviour). Print each stalled
+  Step 7 Closes set, so they stay open after merge (correct behaviour). Print each stalled
   plan's `file` and its still-open issue numbers so the user can consciously confirm leaving
   them for a future iteration. These carry through to the Step 10 `Issues left open:` line.
-- **Untraceable commits** — commits on `integration_branch` that contain no `#N` issue
-  reference in their message. Mine with:
+- **Deferred review issues** — each still-open `prd.json.sdlc_deferred_issues` entry (check with
+  `gh issue view <N> --json state`). Print one per line as `#N — deferred by round cap` (filed
+  on the final review round) or `#N — minor rollup` (the rollup issue). They stay open after
+  merge and carry through to the Step 10 `Issues left open:` line.
+- **Untraceable commits** — commits on `integration_branch` that contain no issue
+  reference in their message. The reference format is the template on the first non-empty line
+  under `## Commit references` in `<config-root>/issue-tracker.md` (default `Refs #{n}`; ignore
+  a template that has no single `{n}` or contains characters outside letters, digits, spaces
+  and `#:.,_-`). Match with the escaped template, replacing the escaped `{n}` with `\d+` —
+  never use the raw template as a regex. The check is advisory. Mine with:
   ```bash
   git log origin/<default_branch>..origin/<integration_branch> --oneline
   ```
-  Flag any commit whose message has no `#` reference.
+  Flag any commit whose message has no match for that pattern. Don't look for a literal `#`:
+  a custom template such as `Tracks: GH-{n}` has none.
 
 ---
 
@@ -143,11 +152,36 @@ git switch <integration_branch>
 git fetch origin
 git pull origin <integration_branch>
 git status
-git rm -r <config-root>/plans/
+git rm -r --ignore-unmatch <config-root>/plans/
+```
+
+If `git rm` staged anything (`git diff --cached --quiet` exits non-zero), commit and push.
+A `git rm` that matches nothing (plans were never tracked) is not an error — skip the commit
+and push.
+```bash
 git commit -m "chore: remove iteration plans from <integration_branch>
 
 Plans are preserved in git history on <integration_branch>."
 git push origin <integration_branch>
+```
+
+**Archive fallback.** If `prd.json` or any plan `.md` file remains under `<config-root>/plans/`
+afterwards (untracked plans), archive it — never delete untracked plans outright. Gitignored
+runtime artifacts (`implementation-logs/`, `prd.json.lock`) always survive `git rm`; on their own
+they are not a trigger — leave them and report `removed: yes`. When archiving, move everything
+except `archive/` itself, including `implementation-logs/`, into
+`<config-root>/plans/archive/<slug>/`:
+
+- `<slug>` is `integration_branch` with `/` replaced by `-`, restricted to `[A-Za-z0-9._-]`,
+  with no leading `.` or `-`. Fall back to `iteration-<YYYY-MM-DD>` if nothing is left.
+- If the destination exists, append `-2`, `-3`, and so on.
+- Quote every path and pass `--` to `mv`. The resolved destination must sit inside the repo.
+- Before moving, if `git check-ignore -q <config-root>/plans/archive/` fails, append
+  `<config-root>/plans/archive/` to the file named by `git rev-parse --git-path info/exclude`.
+  Use the exclude file, not `.gitignore`. Exclude only `archive/`, never `plans/`, so
+  `git status` stays clean and the archive is never committed or published.
+
+```bash
 git switch <default_branch> || git switch -c <default_branch> --track origin/<default_branch>
 ```
 
@@ -171,6 +205,10 @@ while.
 
 Read `<config-root>/sdlc-review-findings.md`. For each finding section:
 
+0. **Reconcile before filing.** Before filing a follow-up for any finding, check
+   `gh issue list --label sdlc-finding --state open --json number,title` and
+   `prd.json.sdlc_deferred_issues`. A finding already covered by either is not re-filed;
+   name the existing issue instead.
 1. Identify the corresponding issue number from `prd.json.sdlc_finding_issues`.
 2. Check whether that issue is closed (covered by 2c, but here inspect *why*: code change vs
    won't-fix comment).
@@ -184,33 +222,41 @@ If gaps exist, surface them and ask the user to confirm before continuing.
 
 ---
 
-## Step 6 — PRD Issue Coverage Check
+## Step 6 — Spec Issue Coverage Check
 
-Fetch all open issues with the `PRD` label:
+Take the spec issue from `prd.json.prd_issue` first (the identifier keeps its name; the
+value is a bare integer from `/plan-iteration` Step 8.6). Only if it is absent, fall back to
+the legacy `prd` label (June `to-prd` install; lowercase), never to all `ready-for-agent`
+issues:
 ```bash
-gh issue list --label PRD --state open --limit 100 --json number,title,body
+gh issue view <prd_issue> --json number,title,body
+gh issue list --label prd --state open --limit 100 --json number,title,body
 ```
 
-For each PRD issue, run all three checks:
+For each spec issue, run all three checks:
 
-1. **Child issues closed** — parse every `#N` reference from the issue body; verify each is
-   closed: `gh issue view <N> --json state`
+1. **Child issues covered** — parse every `#N` reference from the issue body. Each must be
+   closed (`gh issue view <N> --json state`) or in this PR's **Closes set** (defined in Step 7),
+   which the Step 8 merge closes. Check the set, not the PR body: Step 7 hasn't written it yet.
+   A child that is open and outside the set — a stalled plan's or deferred issue, say — fails.
 2. **Plan entries done** — verify the corresponding `prd.json` plan entry has `status: "done"`
-3. **Scope covered** — inspect the PR diff for changes that implement the PRD issue's stated
+3. **Scope covered** — inspect the PR diff for changes that implement the spec issue's stated
    goals; use Claude's judgment to assess coverage
 
-Mark a PRD issue **ready to close** only if all three pass. Surface any failures with
-the specific gap (which child issue is open, which plan is not done, what scope is missing).
+Mark a spec issue **ready to close** only if all three pass. Surface any failures with
+the specific gap (which child issue is open and not in the Closes set, which plan is not done,
+what scope is missing).
 
 ---
 
 ## Step 7 — Issue Linking and PR Promotion
 
-Compile the `Closes` list from **`done` plans only** — `prd.json.plans[?status=="done"].issues`
-— plus `prd.json.sdlc_finding_issues`. Do **not** include issues from `stalled` plans: a
-stalled plan did no work, so auto-closing its issues on merge would silently mark unimplemented
+Compile the **Closes set** from **`done` plans only** — `prd.json.plans[?status=="done"].issues`
+— plus `prd.json.sdlc_finding_issues`. Step 6 counts spec children against this same set.
+Do **not** include issues from `stalled` plans: a stalled plan did no work, so auto-closing its issues on merge would silently mark unimplemented
 work as resolved. Those issues stay deliberately open (surfaced in Step 3 and Step 10).
-Including the SDLC finding issues here guarantees they auto-close on merge even if the
+`prd.json.sdlc_deferred_issues` is **never** added to the `Closes` block: those issues were
+filed but not fixed in this iteration. Including the SDLC finding issues here guarantees they auto-close on merge even if the
 commit(s) that addressed them didn't happen to use a closing keyword.
 
 Optionally cross-check the computed list against the PR's `closingIssuesReferences` (fetched
@@ -249,9 +295,14 @@ integration branch automatically.
 
 Run all sub-steps in order.
 
-### 9a — Close PRD issues
+### 9a — Close spec issues
 
-For each PRD issue that passed all three checks in Step 6:
+Closure allow-list: only `prd.json.prd_issue` or a legacy `prd`-labelled issue, and only
+after it passed all three checks in Step 6. Child `#N` refs in a spec body are state checks,
+never closed here. A child Step 6 counted as covered by the Closes set should have closed on
+the merge; if one is still open, list it on the Step 10 `Issues left open:` line rather than
+closing it.
+
 ```bash
 gh issue close <N> --comment "Closed by iteration <integration_branch>. All scoped work merged in PR #<pr-number>."
 ```
@@ -297,10 +348,17 @@ PR:                  #<N> <title> (<url>)
 Plans:               <done> done, <stalled> stalled, <total> total
 Issues closed:       #N, #M, ...
 Issues left open:    #N, #M (stalled plans — no work done)
-PRD issues closed:   #N, ...
-PRD issues skipped:  #N (reason: <gap>)
+                     #N — deferred by round cap / #N — minor rollup (one per line; never "none"
+                     while any is open)
+                     #N — spec child, still open after merge (Step 9a)
+Spec issues closed:  #N, ...
+Spec issues skipped: #N (reason: <gap>)
 
 Branches deleted:    <list>
 Worktrees removed:   <list>
-<config-root>/plans/ removed: yes (history on <integration_branch>)
+<config-root>/plans/:  removed: yes (history on <integration_branch>)
+                      — or — archived to <path>
 ```
+
+Report exactly one of `removed: yes (history on <integration_branch>)` or `archived to <path>`;
+never "removed: no".

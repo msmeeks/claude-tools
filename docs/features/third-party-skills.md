@@ -12,14 +12,41 @@ and are not symlinked by `setup-symlinks.sh`.
 
 ### Installation
 
-Install all skills globally via the `skills` CLI (requires Node.js):
+Installing is a human step, on each machine. Reviewed upstream commit: `5beb35b` (plugin v1.3.1).
+
+#### Plugin (current)
+
+Run in a shell:
 
 ```bash
-npx skills add mattpocock/skills -y -g
+claude plugin install mattpocock-skills@claude-plugins-official
 ```
 
-Full catalog and docs: https://www.aihero.dev/skills  
-Source: https://github.com/mattpocock/skills
+The plugin updates itself by default. Whether its skills resolve bare (`/tdd`) or namespaced
+(`/mattpocock-skills:tdd`) is not verified here; this repo's prompts keep the bare names.
+
+#### skills.sh (June install, legacy)
+
+Run in a shell (requires Node.js). Unpinned; add `-y` only if you have already reviewed the source:
+
+```bash
+npx skills add mattpocock/skills -g
+```
+
+If both installs are present, remove one. Which wins is not guaranteed, so don't rely on it.
+
+#### Supply-chain review
+
+Plugin skills run with the session's full permissions, and the Ralph runner uses
+`bypassPermissions`. Before the first install and on each update, read the plugin source:
+`hooks/`, `.mcp.json`, scripts and `allowed-tools`, looking for network or `curl | sh` calls.
+Check that the marketplace entry resolves to `github.com/mattpocock/skills`; that is a
+check, not a claim the marketplace is vetted. Pin a version if the marketplace allows it.
+
+Links:
+
+- [Skills catalog and docs (AI Hero)](https://www.aihero.dev/skills)
+- [Source repository (mattpocock/skills)](https://github.com/mattpocock/skills)
 
 ### Per-project setup
 
@@ -30,7 +57,7 @@ that will use them. This writes three config files that the other skills read:
 |---|---|
 | `docs/agents/issue-tracker.md` | Where issues are tracked and how to interact with them |
 | `docs/agents/triage-labels.md` | Label strings for the five triage states |
-| `docs/agents/domain.md` | Whether the repo uses a single or multi `CONTEXT.md` layout |
+| `docs/agents/domain.md` | Whether the repo uses a single or multi `CONTEXT.md` layout (upstream now says `GLOSSARY.md`; see below) |
 
 It also adds an `## Agent skills` block to `CLAUDE.md` (or `AGENTS.md`) summarising the above.
 
@@ -38,9 +65,11 @@ It also adds an `## Agent skills` block to `CLAUDE.md` (or `AGENTS.md`) summaris
 
 Matt's skills form a connected workflow for taking an idea all the way to shipped issues:
 
+```text
+/grill-with-docs → /to-spec → /to-tickets → /implement (per ticket)
 ```
-/grill-with-docs → /to-prd → /to-issues → /implement (per issue)
-```
+
+Older installs call these `/to-prd` and `/to-issues`.
 
 For bug/request intake: `/triage` → produces agent-ready issues → `/implement`
 
@@ -48,56 +77,77 @@ For ad-hoc architecture work: `/improve-codebase-architecture`
 
 See `/ask-matt` for the full routing guide with branches and context-hygiene rules.
 
-### Installed skills
+#### Renamed upstream
+
+Single source of truth for the rename map; other docs link here.
+
+| June name (skills.sh) | Current name (plugin) | Notes |
+|---|---|---|
+| `/to-prd` | `/to-spec` | Applies `ready-for-agent`, no `prd` label |
+| `/to-issues` | `/to-tickets` | Writes a `## Parent` section |
+| `CONTEXT.md` | `GLOSSARY.md` | Upstream rename; this repo keeps `CONTEXT.md` (see #84) |
+| `/qa` | Removed upstream | skills.sh install only; use the `sdlc-qa-engineer` agent otherwise |
+| `/review` | `/code-review` | Replaced upstream |
+| `/resolving-merge-conflicts` | Removed upstream | skills.sh install only |
+
+In this repo "spec" is the new term; the identifiers `prd_issue` and `prd.json` keep their names.
+
+### Skills
+
+New name first, June name in parentheses.
 
 | Skill | Description |
 |---|---|
 | `/ask-matt` | Router over all Matt's skills — start here if unsure which to use |
+| `/code-review` (`/review`) | Review changes against standards and spec |
 | `/codebase-design` | Vocabulary for designing deep modules; used by other skills |
-| `/decision-mapping` | Turn a loose idea into sequenced investigation tickets |
-| `/design-an-interface` | Generate multiple radically different interface designs via parallel agents |
 | `/diagnosing-bugs` | Diagnosis loop for hard bugs and performance regressions |
 | `/domain-modeling` | Build/sharpen a project domain model and ubiquitous language |
-| `/edit-article` | Edit and improve article drafts |
-| `/find-skills` | Help discover and install skills for a given need |
-| `/grill-me` | Relentless interview to sharpen a plan — stateless, no codebase needed |
-| `/grill-with-docs` | Same relentless interview but stateful — writes `CONTEXT.md` and ADRs |
+| `/grill-me` | Relentless interview to sharpen a plan — stateless |
+| `/grill-with-docs` | Stateful interview — writes the glossary (`GLOSSARY.md`; `CONTEXT.md` on older installs) and ADRs |
 | `/grilling` | Core interview engine used by other skills |
-| `/handoff` | Compact a conversation into a file for pickup in a fresh context window |
-| `/implement` | Implement a piece of work from a PRD or set of issues |
-| `/improve-codebase-architecture` | Scan codebase for deepening opportunities; pick one to improve |
-| `/prototype` | Build a throwaway prototype to answer design questions with runnable code |
-| `/qa` | Conversational QA session — user reports bugs, skill files GitHub issues |
-| `/review` | Review changes against standards and spec in parallel sub-agents |
-| `/scaffold-exercises` | Create exercise directory structures with problems, solutions, explainers |
+| `/handoff` | Compact a conversation into a file for a fresh context window |
+| `/implement` | Implement a piece of work from a spec or set of tickets |
+| `/implement-spec` | Implement the result of `/to-spec` and `/to-tickets` (new upstream) |
+| `/improve-codebase-architecture` | Scan for deepening opportunities; pick one |
+| `/pr` | Write a PR body (new upstream) |
+| `/prototype` | Throwaway prototype to answer design questions |
+| `/research` | Research a question against primary sources into a Markdown file (new upstream) |
+| `/retro` | Retrospective on a coding session (new upstream) |
 | `/setup-matt-pocock-skills` | Per-project bootstrap — run once before using other skills in a repo |
-| `/tdd` | Test-driven development — write failing test first, then implement |
-| `/teach` | Teach a concept over multiple sessions using current directory as workspace |
-| `/to-issues` | Break a PRD into independently-grabbable vertical-slice issues |
-| `/to-prd` | Turn the current conversation into a PRD and publish to issue tracker |
-| `/triage` | Move incoming issues through triage state machine; produce agent-ready briefs |
-| `/ubiquitous-language` | Extract DDD-style glossary from conversation; save to `UBIQUITOUS_LANGUAGE.md` |
-| `/writing-beats` | Shape an article beat-by-beat, choose-your-own-adventure style |
-| `/writing-fragments` | Mine raw fragments and half-thoughts as material for a future article |
-| `/writing-great-skills` | Reference for writing skills well — vocabulary and principles |
-| `/writing-shape` | Turn raw notes/draft into a publishable article conversationally |
+| `/tdd` | Test-driven development — failing test first |
+| `/teach` | Teach a concept over multiple sessions |
+| `/to-spec` (`/to-prd`) | Turn the conversation into a spec and publish it to the issue tracker |
+| `/to-tickets` (`/to-issues`) | Break a spec into vertical-slice tickets |
+| `/triage` | Move incoming issues through the triage state machine |
+| `/wayfinder` | Plan huge work as a map of decision tickets (new upstream) |
+| `/wizard` | Generate a bash wizard for human-only steps (new upstream) |
+| `/qa` | skills.sh install only; removed upstream |
+| `/resolving-merge-conflicts` | skills.sh install only; removed upstream |
+
+The June install also carries writing and utility skills (`/edit-article`, `/writing-*`,
+`/scaffold-exercises`, `/ubiquitous-language`, `/design-an-interface`) that the plugin no longer ships.
 
 ### Local modifications
 
-| Skill | Change |
-|---|---|
-| `/to-prd` | Step 3 now also applies a `prd` label to the created issue (creates the label if absent) |
-
-If Matt's upstream changes a skill that has a local mod, re-apply the mod manually after updating.
+None. A plugin update would silently overwrite any local edit, so don't make them; put
+behaviour changes in this repo's own skills instead. (`/plan-iteration` and `/close-iteration`
+find the parent spec via `## Parent` and accept the legacy `prd` label.)
 
 ---
 
 ## Keeping skills up to date
 
-Re-run the install command to pull the latest version:
+Review the source diff first (see Supply-chain review), then update.
+
+Plugin, in a shell:
 
 ```bash
-npx skills add mattpocock/skills -y -g
+claude plugin update mattpocock-skills@claude-plugins-official
 ```
 
-Local modifications (see above) must be re-applied manually after updating a modified skill.
+skills.sh, in a shell:
+
+```bash
+npx skills add mattpocock/skills -g
+```

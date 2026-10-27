@@ -63,13 +63,13 @@ New projects under `~/Code/` get this layout. **Existing projects keep theirs** 
 | `CONTEXT-MAP.md` / `CONTEXT.md` | Context index and per-area glossaries | `sdlc-doc-writer` |
 | `docs/adr/` | Architecture decision records | — |
 | `docs/features/<name>.md` | Per-feature reference | `sdlc-doc-writer` |
-| `docs/agents/` | `issue-tracker.md`, `triage-labels.md`, `domain.md`, `PRIVACY.md`, `plans/`, brand/design docs if the project needs them | — |
+| `docs/agents/` | `issue-tracker.md` (incl. its `## Commit references` template), `triage-labels.md`, `domain.md`, `PRIVACY.md`, `plans/`, brand/design docs if the project needs them | — |
 | `help-docs/` | Customer-facing docs | `/help-docs` on setup + each major feature |
 | `.claudeignore` | `node_modules/`, `dist/`, `.venv/`, `__pycache__/`, build artifacts, coverage, lock files, large media, logs, uploads | — |
 
 Older layout equivalents: `docs/llms.md` + `docs/overview.md` for the index, `meta/` for everything under `docs/agents/`.
 
-Anything under `plans/` — plan files, `prd.json`, `implementation-logs/`, `sdlc-review-findings.md`, `pr-summary.md` — is gitignored and never publishable, under either layout.
+Under `plans/`, plan files, `prd.json` and `progress.md` are git-tracked on the integration branch (removed before merge); `implementation-logs/`, `prd.json.lock`, `sdlc-review-findings.md` and `pr-summary.md` are gitignored and never publishable, under either layout.
 
 Read the project's brand voice doc, if it has one, before writing user-facing copy (demo scripts, help docs, UI text). Run `/demo <feature>` when creating or significantly changing a feature. Release history lives in GitHub Releases, generated from merged PR titles by `deploy-prod.yml`.
 
@@ -78,6 +78,6 @@ Keep this file under 100 lines. Brief rules here, detail in files referenced by 
 ## Skill disambiguation
 
 - `/qa` *during a conversation about bugs/features* → conversational QA session that files GitHub issues
-- `/qa` *after code changes are written* → run automated tests/lint/smoke checks
+- `/qa` *after code changes are written* → run automated tests/lint/smoke checks (`/qa` exists on the skills.sh install only; otherwise the `sdlc-qa-engineer` agent)
 - `/triage` → user-invoked only; evaluates issues that arrived unlabeled, marks them `ready-for-agent` / `ready-for-human` / etc.
 - `/plan-iteration` → backlog grooming: stops on unlabeled issues and tells you to `/triage` them, then clusters the `ready-for-agent` ones and writes plans to the project's `plans/` directory

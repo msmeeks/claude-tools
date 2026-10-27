@@ -19,6 +19,10 @@ must be paraphrased rather than pasted: name the file and symbol, quote at most 
 identifier-level excerpt, and redact any credential, token, key, connection string, email
 address, or other personal data as `[REDACTED]`.
 
+## Commit references
+
+Refs #{n}
+
 ## Relationship to plans
 
 `/plan-iteration` clusters `ready-for-agent` issues into plan files under

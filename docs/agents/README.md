@@ -5,12 +5,14 @@ documentation and none of that part is publishable.**
 
 ## Not publishable, ever
 
-These are gitignored by name pattern in `.gitignore` (and `.claudeignore`), and must be
+Plan `.md` files, `prd.json` and `progress.md` are **tracked**: committed on the integration branch while an iteration runs, and removed by `/close-iteration` with a commit before merge (still never swept into a docs-publishing pipeline). `implementation-logs/`, `prd.json.lock`, `sdlc-review-findings.md` and `pr-summary.md` are **gitignored** and never committed or published. The `plans/archive/` fallback and `prd.json.*.bak` are kept out of git locally via `info/exclude`.
+
+The gitignored ones are ignored by name pattern in `.gitignore` (and `.claudeignore`), and must be
 excluded from any future docs-publishing or GitHub Pages pipeline:
 
 | Path | Contents |
 |---|---|
-| `plans/` | the current iteration's plan files and `prd.json` |
+| `plans/` (tracked, removed before merge) | the current iteration's plan files, `prd.json` and `progress.md` — never published |
 | `plans/implementation-logs/` | raw Claude session transcripts — full stdout/stderr, best-effort credential scrubbing only |
 | `plans/prd.json.lock` | the prd mutex |
 | `sdlc-review-findings.md` | review findings before they are filed as issues |

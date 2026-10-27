@@ -1,6 +1,6 @@
 ---
 name: sdlc-design-reviewer
-description: Reviews UI code for visual consistency, component reuse, and adherence to the project's design brief. Ensures consistent spacing, color tokens, typography, and layout patterns across all pages. Use for any UI/frontend change.
+description: Reviews UI, CLI and API surfaces for consistency, component and pattern reuse, and adherence to the project's design brief. Replies N/A when the change has no UI, CLI or API surface.
 model: sonnet
 tools:
   - Read
@@ -45,6 +45,14 @@ Read the project's `DESIGN_BRIEF.md` (at the project root) to understand the est
 - Consistent icon library — don't mix Heroicons, Lucide, and Font Awesome on the same page
 - Icon sizes consistent with surrounding text
 
+**CLI and API surfaces**
+- Names and flags are consistent with the existing commands and endpoints
+- An error says what failed and how to fix it
+- Output is stable, and parseable where scripts consume it
+- Request and response shapes follow the existing ones
+
 ## Output format
 
 **Critical** (breaks brand/design system) → **Major** (visible inconsistency) → **Minor** (polish). Each finding: file + line, what design rule is violated, reference to design brief section, concrete fix.
+
+**N/A:** if the change touches no UI, CLI or API surface, reply exactly `N/A: <one-sentence reason naming what the change touches>` and stop.

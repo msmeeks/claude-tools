@@ -220,3 +220,89 @@ def test_sync_pr_closes_writes_again_once_a_new_plan_completes(tmp_path):
         run_next_plan.sync_pr_closes(prd_path, plans_dir, "integration/x")
 
     assert len(edits) == 2
+
+
+def test_sync_pr_closes_never_claims_deferred_issues(tmp_path):
+    prd_path, plans_dir = _prd_with_done_plan(tmp_path)
+    data = run_next_plan.load_prd(prd_path)
+    data["sdlc_deferred_issues"] = [41, 42]
+    run_next_plan.save_prd(prd_path, data)
+    run_next_plan._reset_pr_closes_cache()
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd[:3] == ["gh", "pr", "view"]:
+            return type("R", (), {"returncode": 0, "stdout": '{"body": ""}'})()
+        return type("R", (), {"returncode": 0, "stdout": ""})()
+
+    with patch.object(run_next_plan.subprocess, "run", side_effect=fake_run):
+        run_next_plan.sync_pr_closes(prd_path, plans_dir, "integration/x")
+
+    body = next(c for c in calls if c[:3] == ["gh", "pr", "edit"])
+    body = body[body.index("--body") + 1]
+    assert "Closes #7" in body
+    assert "#41" not in body and "#42" not in body
+
+
+def _sync_with_gh(tmp_path, view_rc=0, edit_rc=0, view_stdout='{"body": "Existing body\\n"}'):
+    """Run sync_pr_closes once with `gh pr view` / `gh pr edit` exiting as given."""
+    prd_path, plans_dir = _prd_with_done_plan(tmp_path)
+    run_next_plan._reset_pr_closes_cache()
+    calls = []
+
+    def fake_run(cmd, **kwargs):
+        calls.append(cmd)
+        if kwargs.get("check") and cmd[:3] == ["gh", "pr", "edit"] and edit_rc:
+            raise run_next_plan.subprocess.CalledProcessError(edit_rc, cmd)
+        if cmd[:3] == ["gh", "pr", "view"]:
+            return type("R", (), {"returncode": view_rc, "stdout": view_stdout,
+                                  "stderr": "HTTP 502"})()
+        return type("R", (), {"returncode": edit_rc, "stdout": "", "stderr": "HTTP 502"})()
+
+    with patch.object(run_next_plan.subprocess, "run", side_effect=fake_run):
+        run_next_plan.sync_pr_closes(prd_path, plans_dir, "integration/x")
+    return prd_path, plans_dir, calls
+
+
+def test_sync_pr_closes_never_edits_the_body_after_a_failed_read(tmp_path, capsys):
+    """#96: a failed `gh pr view` read as an empty body, so the edit replaced the whole PR
+    description with a bare Closes section."""
+    _, _, calls = _sync_with_gh(tmp_path, view_rc=1, view_stdout="")
+
+    assert not any(c[:3] == ["gh", "pr", "edit"] for c in calls)
+    assert "sync_pr_closes" in capsys.readouterr().err
+
+
+def test_sync_pr_closes_warns_and_retries_later_when_the_edit_fails(tmp_path, capsys):
+    """#96: a failed `gh pr edit` crashed the runner mid-loop. It must warn, and the next
+    sync must try again rather than treat the set as already published."""
+    prd_path, plans_dir, _ = _sync_with_gh(tmp_path, edit_rc=1)
+    assert "sync_pr_closes" in capsys.readouterr().err
+
+    edits = []
+
+    def ok_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "pr", "edit"]:
+            edits.append(cmd)
+        out = '{"body": ""}' if cmd[:3] == ["gh", "pr", "view"] else ""
+        return type("R", (), {"returncode": 0, "stdout": out, "stderr": ""})()
+
+    with patch.object(run_next_plan.subprocess, "run", side_effect=ok_run):
+        run_next_plan.sync_pr_closes(prd_path, plans_dir, "integration/x")
+    assert len(edits) == 1
+
+
+def test_update_pr_description_never_edits_the_body_after_a_failed_read(tmp_path, monkeypatch):
+    prd_path = _write_prd(tmp_path, pr_number=5)
+    monkeypatch.setattr(
+        run_next_plan, "_generate_pr_summary", lambda data, repo, config_root: "## For the PM\nX."
+    )
+    monkeypatch.setattr(run_next_plan, "_fetch_pr_body", lambda n: None)
+
+    def no_edit(cmd, **kwargs):
+        assert cmd[:3] != ["gh", "pr", "edit"], "must not rewrite a body it couldn't read"
+        return type("R", (), {"returncode": 0, "stdout": ""})()
+
+    monkeypatch.setattr(run_next_plan.subprocess, "run", no_edit)
+    update_pr_description(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
