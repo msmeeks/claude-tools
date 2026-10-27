@@ -225,14 +225,24 @@ Size key: `S` (1–3 files), `M` (4–8 files), `L` (9–15 files), `XL` (16+ fi
    pr_number=$(gh pr view "$pr_url" --json number --jq .number)
    ```
 
-6. Determine the PRD issue number (`prd_issue`): the `prd`-labeled parent issue this
-   iteration implements. Find it via the `## Parent` section of the pool issues, or
-   `gh issue list --label prd --state open --json number`. If none applies, omit `prd_issue`.
+6. Determine the spec issue number (`prd_issue` — the identifier keeps its name): the parent
+   spec this iteration implements. Try in order:
+   1. In each pool issue's `## Parent` section, take the first same-repo `#N` or
+      `…/issues/N` URL; ignore cross-repo refs (`owner/repo#N`). If pool issues name
+      different parents, omit `prd_issue` and warn.
+   2. Verify the candidate: `gh issue view N --json number,state,labels` must show it open
+      and carrying `ready-for-agent` or the legacy `prd` label, and
+      `gh api repos/{owner}/{repo}/issues/N` must have no `pull_request` key.
+   3. Legacy fallback (June `to-prd` install): `gh issue list --label prd --state open --json number`.
+   4. Otherwise omit `prd_issue`.
+
+   Store only the integer. Request nothing beyond `number`/`state`/`labels`; never copy the
+   parent's title or body.
 
 7. Update `prd.json` with the new fields (merge into the existing object):
    - `integration_branch`: the generated branch name
    - `pr_number`: the draft PR number captured above (integer)
-   - `prd_issue`: the PRD issue number, if one was found (integer; omit otherwise)
+   - `prd_issue`: the spec issue number, if one was found (integer; omit otherwise)
    - `smoke_test`: the detected command string, or `null`
    - `feature_branches`: `[]`
 

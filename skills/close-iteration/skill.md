@@ -218,22 +218,26 @@ If gaps exist, surface them and ask the user to confirm before continuing.
 
 ---
 
-## Step 6 — PRD Issue Coverage Check
+## Step 6 — Spec Issue Coverage Check
 
-Fetch all open issues with the `PRD` label:
+Take the spec issue from `prd.json.prd_issue` first (the identifier keeps its name; the
+value is a bare integer from `/plan-iteration` Step 8.6). Only if it is absent, fall back to
+the legacy `prd` label (June `to-prd` install; lowercase), never to all `ready-for-agent`
+issues:
 ```bash
-gh issue list --label PRD --state open --limit 100 --json number,title,body
+gh issue view <prd_issue> --json number,title,body
+gh issue list --label prd --state open --limit 100 --json number,title,body
 ```
 
-For each PRD issue, run all three checks:
+For each spec issue, run all three checks:
 
 1. **Child issues closed** — parse every `#N` reference from the issue body; verify each is
    closed: `gh issue view <N> --json state`
 2. **Plan entries done** — verify the corresponding `prd.json` plan entry has `status: "done"`
-3. **Scope covered** — inspect the PR diff for changes that implement the PRD issue's stated
+3. **Scope covered** — inspect the PR diff for changes that implement the spec issue's stated
    goals; use Claude's judgment to assess coverage
 
-Mark a PRD issue **ready to close** only if all three pass. Surface any failures with
+Mark a spec issue **ready to close** only if all three pass. Surface any failures with
 the specific gap (which child issue is open, which plan is not done, what scope is missing).
 
 ---
@@ -284,9 +288,12 @@ integration branch automatically.
 
 Run all sub-steps in order.
 
-### 9a — Close PRD issues
+### 9a — Close spec issues
 
-For each PRD issue that passed all three checks in Step 6:
+Closure allow-list: only `prd.json.prd_issue` or a legacy `prd`-labelled issue, and only
+after it passed all three checks in Step 6. Child `#N` refs in a spec body are state checks,
+never closed here.
+
 ```bash
 gh issue close <N> --comment "Closed by iteration <integration_branch>. All scoped work merged in PR #<pr-number>."
 ```
@@ -334,8 +341,8 @@ Issues closed:       #N, #M, ...
 Issues left open:    #N, #M (stalled plans — no work done)
                      #N — deferred by round cap / #N — minor rollup (one per line; never "none"
                      while any is open)
-PRD issues closed:   #N, ...
-PRD issues skipped:  #N (reason: <gap>)
+Spec issues closed:  #N, ...
+Spec issues skipped: #N (reason: <gap>)
 
 Branches deleted:    <list>
 Worktrees removed:   <list>

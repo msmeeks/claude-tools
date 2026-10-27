@@ -100,7 +100,7 @@ Scoring algorithm weights: epic completed/nevered (+100), zero customer impact (
 
 The bookend to `/plan-iteration`. Verifies hard blockers (all plans terminal, SDLC review
 complete, findings addressed, no merge conflicts, smoke test passes), surfaces soft
-warnings for confirmation, checks PRD issue coverage, then promotes and merges the
+warnings for confirmation, checks spec issue coverage, then promotes and merges the
 integration PR, closes linked issues, and deletes branches/worktrees.
 
 The hard-blocker check on `sdlc_review_status` treats a transient `pending` reading as
@@ -123,7 +123,7 @@ behind, tying back to the stalled-plan warnings raised earlier in the run.
 (Step 8) — this lets the removal commit pass through the same diff-based review as the
 rest of the iteration's work, and ride along in the normal merge commit instead of
 requiring a separate direct push to the default branch afterward. Post-merge cleanup
-(Step 9) only closes PRD issues, deletes branches/worktrees, and pulls the default branch
+(Step 9) only closes spec issues, deletes branches/worktrees, and pulls the default branch
 before deleting the local integration branch; it no longer touches `<config-root>/plans/`.
 
 ### plan-iteration

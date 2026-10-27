@@ -231,10 +231,7 @@ All SDLC agents are prefixed `sdlc-` to avoid name collisions.
 ## Third-party skills
 
 Several skills in `~/.claude/skills/` come from Matt Pocock's engineering skills collection and
-are **not** managed by this repo. Install them separately:
-
-```bash
-npx skills add mattpocock/skills -y -g
-```
-
-See `docs/features/third-party-skills.md` for the full list and per-project setup instructions.
+are **not** managed by this repo. Install them separately, after reviewing the source, via the
+plugin (current) or the skills.sh install (June, legacy). See the
+[third-party skills reference](docs/features/third-party-skills.md) for both methods, renamed
+skills and per-project setup.
