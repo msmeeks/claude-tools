@@ -761,11 +761,12 @@ def test_main_does_not_print_unsandboxed_trust_model_warning_under_dry_run(
 
 def _fake_gh_and_ls_remote(
     pr=None, ls_remote_rc=0, gh_error=None, pr_stdout=None, gh_rc=0,
-    upstream=True, unpushed="", probe_rc=0,
+    upstream=True, unpushed="", probe_rc=0, gone=False,
 ):
     """Stub subprocess.run for the guard: `gh pr view` returns `pr` (a dict) as JSON,
     `git rev-parse <branch>@{u}` succeeds iff `upstream`, `git rev-list` prints
-    `unpushed`, and `git ls-remote` returns `ls_remote_rc`."""
+    `unpushed`, `git for-each-ref` reports the upstream [gone] iff `gone`, and
+    `git ls-remote` returns `ls_remote_rc`."""
     calls = []
 
     def result(rc, out=""):
@@ -782,6 +783,8 @@ def _fake_gh_and_ls_remote(
             return result(0 if upstream else 128)
         if cmd[:2] == ["git", "rev-list"]:
             return result(probe_rc, unpushed)
+        if cmd[:2] == ["git", "for-each-ref"]:
+            return result(0, "[gone]\n" if gone else "\n")
         if cmd[:2] == ["git", "ls-remote"]:
             return result(ls_remote_rc)
         raise AssertionError(f"unexpected command {cmd}")
@@ -896,6 +899,19 @@ def test_iteration_guard_pushed_then_deleted_branch_is_finished_from_any_checkou
     assert "integration/x" in _finished_in_real_repo(local, monkeypatch)
 
 
+def test_iteration_guard_pushed_deleted_and_pruned_branch_is_finished(tmp_path, monkeypatch):
+    """#95: `git fetch --prune` removes the remote-tracking ref, so `@{u}` no longer resolves;
+    git still reports the upstream as [gone], which is proof it was pushed."""
+    local, remote = _init_repo_with_remote(tmp_path)
+    _git(local, "push", "-q", "-u", "origin", "main")
+    _git(local, "checkout", "-q", "-b", "integration/x")
+    _git(local, "push", "-q", "-u", "origin", "integration/x")
+    _git(local, "checkout", "-q", "main")
+    _git(remote, "branch", "-D", "integration/x")
+    _git(local, "fetch", "-q", "--prune")
+    assert "integration/x" in _finished_in_real_repo(local, monkeypatch)
+
+
 def test_iteration_guard_probes_the_integration_branch_not_head():
     _, calls = _finished({"pr_number": 5}, pr=_pr("OPEN"))
     assert ["git", "rev-parse", "integration/x@{u}"] in calls
@@ -944,6 +960,52 @@ def test_iteration_guard_looks_the_pr_up_by_branch_when_prd_has_no_number():
     with patch.object(run_next_plan.subprocess, "run", side_effect=fake):
         assert run_next_plan._iteration_finished({}, "integration/x") is None
     assert any(c[:3] == ["gh", "pr", "list"] for c in seen)
+
+
+def _finished_by_branch_lookup(listed, viewed=None):
+    """Guard with no pr_number: `gh pr list` returns `listed`, `gh pr view N` returns
+    `viewed[N]`, and git reports the branch pushed and still on origin."""
+    seen = []
+
+    def fake(cmd, **kwargs):
+        seen.append(cmd)
+        if cmd[:3] == ["gh", "pr", "list"]:
+            return type("R", (), {"returncode": 0, "stdout": json.dumps(listed), "stderr": ""})()
+        if cmd[:3] == ["gh", "pr", "view"]:
+            out = json.dumps((viewed or {})[int(cmd[3])])
+            return type("R", (), {"returncode": 0, "stdout": out, "stderr": ""})()
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    with patch.object(run_next_plan.subprocess, "run", side_effect=fake):
+        return run_next_plan._iteration_finished({}, "integration/x"), seen
+
+
+def _listed(number, state, head="integration/x", cross=False):
+    return {"number": number, "state": state, "headRefName": head, "isCrossRepository": cross}
+
+
+def test_iteration_guard_finds_a_merged_pr_by_branch_when_prd_has_no_number():
+    """#95: the open-only lookup can't see a merged PR, so the guard must ask for every state."""
+    reason, seen = _finished_by_branch_lookup(
+        [_listed(9, "MERGED")], {9: _pr("MERGED", isCrossRepository=False)}
+    )
+    assert reason == "PR #9 was merged"
+    lookup = next(c for c in seen if c[:3] == ["gh", "pr", "list"])
+    assert lookup[lookup.index("--state") + 1] == "all"
+
+
+def test_iteration_guard_branch_lookup_ignores_a_fork_pr_with_the_same_head_name():
+    reason, seen = _finished_by_branch_lookup([_listed(9, "MERGED", cross=True)])
+    assert reason is None
+    assert not any(c[:3] == ["gh", "pr", "view"] for c in seen)
+
+
+def test_iteration_guard_branch_lookup_prefers_the_open_pr_over_an_older_merged_one():
+    reason, _ = _finished_by_branch_lookup(
+        [_listed(9, "MERGED"), _listed(12, "OPEN")],
+        {9: _pr("MERGED"), 12: _pr("OPEN")},
+    )
+    assert reason is None
 
 
 def _run_main_with_guard(tmp_path, monkeypatch, argv, finished):

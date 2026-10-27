@@ -609,20 +609,37 @@ SUMMARY_START = "<!-- PR-SUMMARY:START -->"
 SUMMARY_END = "<!-- PR-SUMMARY:END -->"
 
 
-def resolve_pr_number(data: dict, integration_branch: str) -> int | None:
+def resolve_pr_number(
+    data: dict, integration_branch: str, include_finished: bool = False
+) -> int | None:
     """Locate the integration PR: prefer prd.json's captured `pr_number`, otherwise look it
-    up by head branch. Returns None if neither resolves (no open PR)."""
+    up by head branch. Returns None if neither resolves.
+
+    The branch lookup sees open PRs only, unless `include_finished` — the finished-iteration
+    guard's case — which also finds merged and closed ones, keeping only same-repository PRs
+    whose head is this branch and preferring an open one. A branch name reused after an
+    earlier iteration's PR merged would match that old PR; integration branch names carry a
+    date, and /plan-iteration records pr_number, so the lookup rarely runs at all."""
     pr_number = data.get("pr_number")
     if isinstance(pr_number, int) and not isinstance(pr_number, bool):
         return pr_number
-    r = subprocess.run(
-        ["gh", "pr", "list", "--head", integration_branch, "--json", "number", "--limit", "1"],
-        capture_output=True,
-        text=True,
-    )
+    if include_finished:
+        cmd = [
+            "gh", "pr", "list", "--head", integration_branch, "--state", "all",
+            "--json", "number,state,headRefName,isCrossRepository", "--limit", "20",
+        ]
+    else:
+        cmd = ["gh", "pr", "list", "--head", integration_branch, "--json", "number", "--limit", "1"]
+    r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0 or not r.stdout.strip():
         return None
     prs = json.loads(r.stdout)
+    if include_finished:
+        prs = [
+            pr for pr in prs
+            if pr.get("headRefName") == integration_branch and not pr.get("isCrossRepository")
+        ]
+        prs.sort(key=lambda pr: pr.get("state") != "OPEN")
     if not prs:
         return None
     return prs[0]["number"]
@@ -642,6 +659,19 @@ def _branch_is_pushed(integration_branch: str) -> bool:
     return r.returncode == 0 and not r.stdout.strip()
 
 
+def _upstream_gone(integration_branch: str) -> bool:
+    """True when the branch has an upstream configured but its remote-tracking ref was pruned
+    (`git fetch --prune` after the branch was deleted on origin) — proof it was pushed once.
+    Commits made after the prune can't be told apart from pushed ones, so this errs toward
+    "pushed"; the caller still confirms absence on origin before calling the iteration over."""
+    r = subprocess.run(
+        ["git", "for-each-ref", "--format=%(upstream:track)", f"refs/heads/{integration_branch}"],
+        capture_output=True,
+        text=True,
+    )
+    return r.returncode == 0 and r.stdout.strip() == "[gone]"
+
+
 def _iteration_finished(data: dict, integration_branch: str) -> str | None:
     """Why this prd.json's iteration is over, or None if it isn't (or can't be told).
 
@@ -650,7 +680,7 @@ def _iteration_finished(data: dict, integration_branch: str) -> str | None:
     unpushed-ahead branch is not "gone". A lookup failure warns and returns None so offline
     runs aren't blocked. /plan-iteration describes the same rule (Step 1.2)."""
     try:
-        pr_number = resolve_pr_number(data, integration_branch)
+        pr_number = resolve_pr_number(data, integration_branch, include_finished=True)
         if pr_number is not None:
             r = subprocess.run(
                 ["gh", "pr", "view", str(pr_number), "--json", "state,headRefName,isCrossRepository"],
@@ -668,7 +698,7 @@ def _iteration_finished(data: dict, integration_branch: str) -> str | None:
                     return f"PR #{pr_number} was {state.lower()}"
             else:
                 warn(f"finished-iteration check: gh pr view #{pr_number} failed — continuing")
-        if not _branch_is_pushed(integration_branch):
+        if not (_branch_is_pushed(integration_branch) or _upstream_gone(integration_branch)):
             return None
         r = subprocess.run(
             ["git", "ls-remote", "--exit-code", "--heads", "origin", f"refs/heads/{integration_branch}"],
