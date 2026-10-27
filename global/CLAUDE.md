@@ -45,6 +45,15 @@ Linters: ESLint (`eslint.config.js`) for TS/JS, ruff for Python via `python3 -m 
 2. Run `sdlc-doc-writer` after any non-trivial change to update the feature doc and the repo's context index.
 3. Never leave a PR conflicted: fetch base, merge or rebase, resolve, push.
 
+## Filing issues
+
+Every issue a session files must be ready to work on as filed — nobody triages it afterwards.
+
+- Before filing: confirm against the code that it's still real, and search open issues for a duplicate.
+- Body is an agent brief: Context, Change, Acceptance criteria, How to verify.
+- Label it at filing: one category (`bug`/`enhancement`) plus one state — `ready-for-agent`, `ready-for-human` (needs a person's judgment, access, or manual testing), or `needs-info` (you couldn't complete the brief). Strings from `docs/agents/triage-labels.md` (`meta/` in older repos); `gh label create` any that are missing.
+- A whole feature, not one issue → tell the user to run `/to-spec` then `/to-tickets` (`/to-prd`, `/to-issues` on older installs). They're user-invoked; you can't call them.
+
 ## Project layout
 
 New projects under `~/Code/` get this layout. **Existing projects keep theirs** — plenty use the older `meta/`-rooted one, and the tooling reads both. Check what exists before writing; never create a second config root alongside one that's already there (`run-next-plan.py` refuses to run in a repo with both).
@@ -70,5 +79,5 @@ Keep this file under 100 lines. Brief rules here, detail in files referenced by 
 
 - `/qa` *during a conversation about bugs/features* → conversational QA session that files GitHub issues
 - `/qa` *after code changes are written* → run automated tests/lint/smoke checks
-- `/triage` → evaluates one issue/PR, marks it `ready-for-agent` / `ready-for-human` / etc.
-- `/plan-iteration` → backlog grooming: `/triage` each issue, cluster the `ready-for-agent` ones, write plans to the project's `plans/` directory
+- `/triage` → user-invoked only; evaluates issues that arrived unlabeled, marks them `ready-for-agent` / `ready-for-human` / etc.
+- `/plan-iteration` → backlog grooming: stops on unlabeled issues and tells you to `/triage` them, then clusters the `ready-for-agent` ones and writes plans to the project's `plans/` directory

@@ -30,7 +30,7 @@ _Avoid_: rules, config
 
 **Round**:
 One complete pass of the review gate: all reviewers run, findings are filed as issues, issues
-are triaged. Capped — see `MAX_REVIEW_ROUNDS`.
+are labeled at filing and the `ready-for-agent` ones planned. Capped — see `MAX_REVIEW_ROUNDS`.
 _Avoid_: iteration (that word means the whole plan-then-run cycle), pass
 
 ## Boundaries

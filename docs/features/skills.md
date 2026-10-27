@@ -32,7 +32,7 @@ Skills live at `~/.claude/skills/<name>/` (symlinked from this repo). When the d
 | `skills/pr-image-upload/pr-image-upload.sh` | Shell implementation for the upload workflow |
 | `skills/rank-backlog/SKILL.md` | GUS backlog analysis and nevering-candidate ranking; outputs CSV |
 | `skills/close-iteration/skill.md` | Gate-checks, merges, and cleans up an iteration opened by `/plan-iteration` |
-| `skills/plan-iteration/SKILL.md` | Triages backlog issues and writes `<config-root>/plans/prd.json` + `<config-root>/plans/<slug>.md` for `run-next-plan.py` to execute |
+| `skills/plan-iteration/SKILL.md` | Flags untriaged backlog issues for the user, then writes `<config-root>/plans/prd.json` + `<config-root>/plans/<slug>.md` for `run-next-plan.py` to execute |
 | `skills/triage-pr-comments/SKILL.md` | Re-opens plans against new PR review comments mid-iteration |
 
 ## Technical Detail
@@ -128,7 +128,7 @@ before deleting the local integration branch; it no longer touches `<config-root
 
 ### plan-iteration
 
-Backlog grooming entry point: triages each candidate issue via `/triage`, groups the
+Backlog grooming entry point: checks every open issue carries a state label, groups the
 `ready-for-agent` ones into logical clusters, and writes `<config-root>/plans/<slug>.md` plan files
 plus `<config-root>/plans/prd.json` for `run-next-plan.py` (see
 [run-next-plan.md](run-next-plan.md)) to drive to completion.
@@ -137,6 +137,12 @@ The plan-review agents in Step 6 and `review` mode come from `plan_review.review
 `<config-root>/ralph.json` when that file exists (default: security, privacy, accessibility,
 design). A configured name that is not an installed agent stops the run rather than being
 skipped. See the **Review recipe config** section of [run-next-plan.md](run-next-plan.md).
+
+It never triages. `/triage` is user-invoked (`disable-model-invocation`), so no skill or
+headless session can call it. Issues are labeled by whoever files them (the "Filing issues"
+rule in `global/CLAUDE.md`); any open issue with no state label (or `needs-triage`) is listed
+back to the user with the `/triage #N …` command to run, and the skill stops unless the user
+chooses to plan only what is already `ready-for-agent`.
 
 When `prd.json` already exists (re-running against a partially-worked iteration), it merges
 rather than overwrites: an existing `plans[]` entry for the same `file` keeps its `status`

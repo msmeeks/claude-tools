@@ -316,7 +316,7 @@ def test_gate_with_skill_recipe_escalates_parallel_to_serial_and_resumes(tmp_pat
             return (_sigils(*only.split(",")), 0)
         if "file a GitHub issue" in prompt:
             return ("ISSUE: #11\n", 0)
-        if "run /triage" in prompt:
+        if "labeled at filing" in prompt:
             return ("TRIAGE_DONE", 0)
         return ("ok", 0)
 

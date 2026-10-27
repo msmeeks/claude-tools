@@ -37,7 +37,7 @@ _Avoid_: precondition, guard
 
 **Finding**:
 One defect a review agent reports. Findings are filed as GitHub issues labelled
-`sdlc-finding`, then triaged like any other issue.
+`sdlc-finding` and labeled at filing (category + state), so they never need `/triage`.
 _Avoid_: comment, remark, issue (a finding *becomes* an issue; the words are not interchangeable)
 
 ## Boundaries
