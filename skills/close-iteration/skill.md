@@ -120,7 +120,7 @@ Print a warning table and ask for explicit confirmation before proceeding:
 - **Stalled plans with closed issues** — the work landed outside the runner; confirm the
   plan's scope is actually covered by inspecting the PR diff.
 - **Stalled plans with open issues** — the plan did no work and its issues are *not* in the
-  Step 7 `Closes` list, so they stay open after merge (correct behaviour). Print each stalled
+  Step 7 Closes set, so they stay open after merge (correct behaviour). Print each stalled
   plan's `file` and its still-open issue numbers so the user can consciously confirm leaving
   them for a future iteration. These carry through to the Step 10 `Issues left open:` line.
 - **Deferred review issues** — each still-open `prd.json.sdlc_deferred_issues` entry (check with
@@ -235,22 +235,25 @@ gh issue list --label prd --state open --limit 100 --json number,title,body
 
 For each spec issue, run all three checks:
 
-1. **Child issues closed** — parse every `#N` reference from the issue body; verify each is
-   closed: `gh issue view <N> --json state`
+1. **Child issues covered** — parse every `#N` reference from the issue body. Each must be
+   closed (`gh issue view <N> --json state`) or in this PR's **Closes set** (defined in Step 7),
+   which the Step 8 merge closes. Check the set, not the PR body: Step 7 hasn't written it yet.
+   A child that is open and outside the set — a stalled plan's or deferred issue, say — fails.
 2. **Plan entries done** — verify the corresponding `prd.json` plan entry has `status: "done"`
 3. **Scope covered** — inspect the PR diff for changes that implement the spec issue's stated
    goals; use Claude's judgment to assess coverage
 
 Mark a spec issue **ready to close** only if all three pass. Surface any failures with
-the specific gap (which child issue is open, which plan is not done, what scope is missing).
+the specific gap (which child issue is open and not in the Closes set, which plan is not done,
+what scope is missing).
 
 ---
 
 ## Step 7 — Issue Linking and PR Promotion
 
-Compile the `Closes` list from **`done` plans only** — `prd.json.plans[?status=="done"].issues`
-— plus `prd.json.sdlc_finding_issues`. Do **not** include issues from `stalled` plans: a
-stalled plan did no work, so auto-closing its issues on merge would silently mark unimplemented
+Compile the **Closes set** from **`done` plans only** — `prd.json.plans[?status=="done"].issues`
+— plus `prd.json.sdlc_finding_issues`. Step 6 counts spec children against this same set.
+Do **not** include issues from `stalled` plans: a stalled plan did no work, so auto-closing its issues on merge would silently mark unimplemented
 work as resolved. Those issues stay deliberately open (surfaced in Step 3 and Step 10).
 `prd.json.sdlc_deferred_issues` is **never** added to the `Closes` block: those issues were
 filed but not fixed in this iteration. Including the SDLC finding issues here guarantees they auto-close on merge even if the
@@ -296,7 +299,9 @@ Run all sub-steps in order.
 
 Closure allow-list: only `prd.json.prd_issue` or a legacy `prd`-labelled issue, and only
 after it passed all three checks in Step 6. Child `#N` refs in a spec body are state checks,
-never closed here.
+never closed here. A child Step 6 counted as covered by the Closes set should have closed on
+the merge; if one is still open, list it on the Step 10 `Issues left open:` line rather than
+closing it.
 
 ```bash
 gh issue close <N> --comment "Closed by iteration <integration_branch>. All scoped work merged in PR #<pr-number>."
@@ -345,6 +350,7 @@ Issues closed:       #N, #M, ...
 Issues left open:    #N, #M (stalled plans — no work done)
                      #N — deferred by round cap / #N — minor rollup (one per line; never "none"
                      while any is open)
+                     #N — spec child, still open after merge (Step 9a)
 Spec issues closed:  #N, ...
 Spec issues skipped: #N (reason: <gap>)
 
