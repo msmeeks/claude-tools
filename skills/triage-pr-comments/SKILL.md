@@ -46,9 +46,7 @@ For each open PR, fetch all review and inline diff comments with their IDs:
 ```bash
 # Inline diff comments — includes comment ID
 gh api repos/{owner}/{repo}/pulls/<number>/comments \
-  --jq '[.[] | {id,path,line,body,user:.user.login}]'
-# Logins are for filtering out your own comments only — never write them to the plan,
-# prd.json, progress.md or logs.
+  --jq '[.[] | {id,path,line,body}]'
 
 # Review-level (non-diff) comments
 gh pr view <number> --json reviews,comments
@@ -62,7 +60,7 @@ gh api graphql -f query='
     repository(owner: "{owner}", name: "{repo}") {
       pullRequest(number: <number>) {
         reviewThreads(first: 100) {
-          nodes { isResolved path line comments(first: 5) { nodes { body author { login } } } }
+          nodes { isResolved path line comments(first: 5) { nodes { body } } }
         }
       }
     }
@@ -70,7 +68,7 @@ gh api graphql -f query='
 '
 ```
 
-The `login` values are for self-comment filtering only; never write them to the plan, `prd.json`, `progress.md` or logs.
+`gh pr view --json reviews,comments` also returns author logins; nothing here uses them, so never write them to the plan, `prd.json`, `progress.md` or logs.
 
 **Skip a PR entirely if** all its threads are resolved and there are no non-empty review body
 comments. Print a compact table of PRs with unresolved comment counts.
@@ -117,7 +115,8 @@ New reviewer comments arrived since last triage. Update the existing plan:
   gate field). The runner re-arms the gate on its own and reviews only the new commits
   (`last_reviewed_sha..HEAD`); a manual `sdlc_review_status` reset either hits the `save_prd`
   latch or desyncs round state.
-- Leave existing rows and comment IDs unchanged
+- Leave existing comment IDs unchanged, and existing rows too unless the old-shape rebuild above
+  applies
 
 **Case 4 — Plan exists, some 👀 comments now have 🚀 (addressed outside the runner):**
 They were resolved manually. Remove their rows from the plan tables, update the

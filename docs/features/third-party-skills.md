@@ -45,7 +45,7 @@ Plugin skills run with the session's full permissions, and the Ralph runner uses
 `bypassPermissions`. Before the first install and on each update, read the plugin source:
 `hooks/`, `.mcp.json`, scripts and `allowed-tools`, looking for network or `curl | sh` calls.
 Check that the marketplace entry resolves to `github.com/mattpocock/skills`; that is a
-check, not a claim the marketplace is vetted. Pin a version if the marketplace allows it.
+check, not a claim the marketplace is vetted. The plugin can't be pinned (see Plugin (current)).
 
 Links:
 
@@ -142,7 +142,7 @@ find the parent spec via `## Parent` and accept the legacy `prd` label.)
 
 ## Keeping skills up to date
 
-Review the source diff first (see Supply-chain review), then update.
+For the skills.sh install, review the source diff first (see Supply-chain review), then update.
 
 The plugin also updates itself unpinned (see Plugin (current)): run `claude plugin list`,
 compare the version against the reviewed baseline (`5beb35b`, v1.3.1), and review the diff

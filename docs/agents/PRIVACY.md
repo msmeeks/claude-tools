@@ -51,10 +51,12 @@ pasting secrets, credentials, or customer data into it.
 Machine-readable plan state. Git-tracked on the integration branch and removed before merge.
 Plan filenames may encode GitHub issue numbers (e.g. `issue-42.md`), which indirectly
 reference issue titles and content in the source repo's issue tracker. No issue body text,
-author names or titles are copied into it. Fields the runner or `/plan-iteration` writes:
+author names or titles are copied into it. Fields the runner, `/plan-iteration` or
+`/triage-pr-comments` writes:
 
 - `plans[]`: `file`, `issues`, `size`, `status` (`pending|in-progress|done|stalled`),
-  `attempts`, `blocked_by`. Filenames and issue numbers; metadata only.
+  `attempts`, `blocked_by`, plus `type` and `pr` on `/triage-pr-comments` entries. Filenames,
+  issue and PR numbers; metadata only.
 - `integration_branch`, `pr_number`, `prd_issue`: branch name and bare integers (`prd_issue`
   comes from a pool issue's `## Parent` section). Identifiers only.
 - `sdlc_review_status`, `sdlc_review_rounds`, `last_reviewed_sha`,
