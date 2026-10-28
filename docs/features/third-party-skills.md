@@ -22,7 +22,11 @@ Run in a shell:
 claude plugin install mattpocock-skills@claude-plugins-official
 ```
 
-The plugin updates itself by default. Whether its skills resolve bare (`/tdd`) or namespaced
+The plugin auto-updates and `claude plugin install`/`marketplace` expose no way to pin a version
+or turn that off. An upstream change therefore lands as live prompt text in every repo before
+anyone reviews it. After each update, compare `claude plugin list` (prints the installed
+version) against the reviewed baseline above and re-run the supply-chain review before trusting
+a newer version. Whether its skills resolve bare (`/tdd`) or namespaced
 (`/mattpocock-skills:tdd`) is not verified here; this repo's prompts keep the bare names.
 
 #### skills.sh (June install, legacy)
@@ -139,6 +143,10 @@ find the parent spec via `## Parent` and accept the legacy `prd` label.)
 ## Keeping skills up to date
 
 Review the source diff first (see Supply-chain review), then update.
+
+The plugin also updates itself unpinned (see Plugin (current)): run `claude plugin list`,
+compare the version against the reviewed baseline (`5beb35b`, v1.3.1), and review the diff
+before relying on anything newer.
 
 Plugin, in a shell:
 
