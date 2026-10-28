@@ -38,7 +38,7 @@ Re-running updates existing plans with new comments rather than creating duplica
 ### Step 2 — Fetch Open PRs and Their Comments
 
 ```bash
-gh pr list --state open --limit 50 --json number,title,headRefName,baseRefName,author,assignees,labels
+gh pr list --state open --limit 50 --json number,title,headRefName,baseRefName,labels
 ```
 
 For each open PR, fetch all review and inline diff comments with their IDs:
@@ -47,6 +47,8 @@ For each open PR, fetch all review and inline diff comments with their IDs:
 # Inline diff comments — includes comment ID
 gh api repos/{owner}/{repo}/pulls/<number>/comments \
   --jq '[.[] | {id,path,line,body,user:.user.login}]'
+# Logins are for filtering out your own comments only — never write them to the plan,
+# prd.json, progress.md or logs.
 
 # Review-level (non-diff) comments
 gh pr view <number> --json reviews,comments
@@ -67,6 +69,8 @@ gh api graphql -f query='
   }
 '
 ```
+
+The `login` values are for self-comment filtering only; never write them to the plan, `prd.json`, `progress.md` or logs.
 
 **Skip a PR entirely if** all its threads are resolved and there are no non-empty review body
 comments. Print a compact table of PRs with unresolved comment counts.
@@ -101,7 +105,10 @@ All open comments are already tracked (👀). Print a note; skip writing. Done f
 
 **Case 3 — Plan exists, `new_comments` is non-empty (iterative round):**
 New reviewer comments arrived since last triage. Update the existing plan:
-- Append new rows to the appropriate Reviewer Comment tables (categorise as in Step 3)
+- Add new rows to the appropriate Reviewer Comments tables (categorise as in Step 3). If the plan
+  still has the old shape (a `Reviewer` column, verbatim quoted Comment text), rebuild its tables
+  in the new shape — drop the column, paraphrase the old Comment text — rather than appending
+  mismatched rows
 - Update the `<!-- reactions: ... -->` metadata line to include the new comment IDs
 - Add 👀 reactions to all new comment IDs (Step 2d below)
 - If the plan's `<config-root>/plans/prd.json` entry has `status: "done"`, reset `status` to
@@ -161,7 +168,7 @@ and whether any comment references a file outside the PR's current diff.
 - `N/A: <one-sentence reason naming what the change touches>`
 - `ERROR: <reason>` if the agent failed or returned nothing (never record that as `no findings` or `N/A`)
 
-`ERROR` is a runtime outcome. The "configured name not installed → stop" rule is a pre-dispatch check and is unchanged. Each dispatch prompt ends with: "If the change has no surface in your area, reply exactly `N/A: <one-sentence reason naming what the change touches>`. Don't quote PII or secrets from issues or comments."
+`ERROR` is a runtime outcome. The "configured name not installed → stop" rule is a pre-dispatch check and is unchanged. Each dispatch prompt ends with: "If the change has no surface in your area, reply exactly `N/A: <one-sentence reason naming what the change touches>`. Don't quote PII or secrets from issues or comments, or copy commenter handles."
 
 Dispatch the roster **in parallel**. The payload is a summary of the reviewer requests, never raw comment threads. Default roster:
 
@@ -233,32 +240,34 @@ Then write (or update) `<config-root>/plans/prd.json` — the same plan index `/
 
 ## Context
 
-[One paragraph: what the PR does, who reviewed it, what themes the review comments cover.]
+[One paragraph: what the PR does and what themes the review comments cover.]
 
 ---
 
 ## Reviewer Comments
 
 [All unresolved comments — grouped by action type, never by reviewer. Comment IDs are included
-so run-next-plan.py can post emoji reactions after successful execution.]
+so run-next-plan.py can post emoji reactions after successful execution. The plan is git-tracked
+on the integration branch, so write Context, Comment and Planned Response text as paraphrase with
+`@handles`, emails and names stripped; planned responses never address a commenter by handle.]
 
 ### Code Changes Required
 
-| File | Line | Comment ID | Reviewer | Comment | Action |
-|------|------|------------|----------|---------|--------|
-| `path/to/file` | 42 | 1234567890 | @reviewer | "rename foo to bar" | Rename variable |
+| File | Line | Comment ID | Comment | Action |
+|------|------|------------|---------|--------|
+| `path/to/file` | 42 | 1234567890 | rename foo to bar | Rename variable |
 
 ### Test Changes Required
 
-| File | Comment ID | Reviewer | Comment | Action |
-|------|------------|----------|---------|--------|
-| `path/to/test` | 2345678901 | @reviewer | "add edge case for empty list" | Add test case |
+| File | Comment ID | Comment | Action |
+|------|------------|---------|--------|
+| `path/to/test` | 2345678901 | add edge case for empty list | Add test case |
 
 ### Conversation Responses Needed
 
-| Thread | Comment ID | Reviewer | Comment | Planned Response |
-|--------|------------|----------|---------|-----------------|
-| `path/to/file:42` | 9876543210 | @reviewer | "why did you choose X?" | Explain rationale: ... |
+| Thread | Comment ID | Comment | Planned Response |
+|--------|------------|---------|-----------------|
+| `path/to/file:42` | 9876543210 | asks why X was chosen | Explain rationale: ... |
 
 ### Style / Doc Nits
 
