@@ -1405,11 +1405,17 @@ def _compute_review_range(repo_root: Path, data: dict, default_branch: str) -> s
     return f"{default_branch}...HEAD"
 
 
-def _range_is_empty(repo_root: Path, review_range: str) -> bool:
-    """True if `review_range` has no net diff (e.g. a commit plus its revert). Any failure to
-    tell is treated as "not empty" so a broken check can never skip a review."""
+def _range_is_empty(repo_root: Path, review_range: str, config_root: Path) -> bool:
+    """True if `review_range` has no net diff (e.g. a commit plus its revert). The runner's
+    own bookkeeping (prd.json, progress.md) is ignored: it lands in every range, so counting
+    it would mean the check never fires (#115). Docs-phase output still counts. Any failure
+    to tell is treated as "not empty" so a broken check can never skip a review."""
+    plans_rel = f"{config_root_rel(repo_root, config_root)}/plans"
+    bookkeeping = [f":(exclude){plans_rel}/{name}" for name in ("prd.json", "progress.md")]
     try:
-        r = subprocess.run(["git", "diff", "--quiet", review_range, "--"], cwd=repo_root)
+        r = subprocess.run(
+            ["git", "diff", "--quiet", review_range, "--", ".", *bookkeeping], cwd=repo_root
+        )
     except OSError as e:
         warn(f"_range_is_empty: {type(e).__name__} — reviewing anyway")
         return False
@@ -1913,7 +1919,9 @@ def run_sdlc_review_gate(
     baseline = gate_data.get("last_reviewed_sha")
     head_sha = _git_head_sha(repo_root)
     gate_range = _compute_review_range(repo_root, gate_data, default_branch)
-    if (baseline and head_sha and baseline == head_sha) or _range_is_empty(repo_root, gate_range):
+    if (baseline and head_sha and baseline == head_sha) or _range_is_empty(
+        repo_root, gate_range, config_root
+    ):
         scope = "since the last review" if baseline else "in the review range"
         info(f"SDLC review gate: no net changes {scope} — nothing to review.")
 

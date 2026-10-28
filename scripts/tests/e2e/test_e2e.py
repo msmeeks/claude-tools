@@ -142,8 +142,12 @@ def test_e2e_net_empty_review_round_commits_its_bookkeeping_with_refs(make_itera
     it.git("add", "scratch.txt")
     it.git("commit", "-q", "-m", "feat: temporary")
     it.git("revert", "--no-edit", "HEAD")
+    # Runner bookkeeping lands in every real range; it must not count as a change (#115).
+    (it.plans_dir / "progress.md").write_text("bookkeeping\n")
+    it.git("add", "-A")
+    it.git("commit", "-q", "-m", "chore: progress")
     # The default branch already holds everything else, so main...HEAD has no net diff.
-    it.git("branch", "-f", "main", "HEAD~2")
+    it.git("branch", "-f", "main", "HEAD~3")
     it.seed_sha = it.git("rev-parse", "HEAD").strip()
 
     result = it.run()

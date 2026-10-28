@@ -1556,21 +1556,42 @@ def test_gate_net_empty_range_is_a_no_op_under_the_skill_recipe(tmp_path):
     assert calls == []
 
 
-def test_range_is_empty_is_true_for_a_commit_and_its_revert(tmp_path):
+def _repo_with_plans(tmp_path):
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
     for k, v in (("user.email", "t@example.com"), ("user.name", "T")):
         subprocess.run(["git", "config", k, v], cwd=tmp_path, check=True)
+    plans = tmp_path / "docs" / "agents" / "plans"
+    plans.mkdir(parents=True)
+    for f in ("prd.json", "progress.md"):
+        (plans / f).write_text("0\n")
     (tmp_path / "a").write_text("1\n")
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-qm", "base"], cwd=tmp_path, check=True)
-    (tmp_path / "a").write_text("2\n")
-    subprocess.run(["git", "commit", "-qam", "change"], cwd=tmp_path, check=True)
+    return tmp_path / "docs" / "agents"
 
-    assert run_next_plan._range_is_empty(tmp_path, "HEAD~1..HEAD") is False
+
+def _commit_changes(repo, *rel_paths):
+    for rel in rel_paths:
+        (repo / rel).write_text("changed\n")
+    subprocess.run(["git", "commit", "-qam", "change"], cwd=repo, check=True)
+
+
+def test_range_is_empty_is_true_for_a_commit_and_its_revert(tmp_path):
+    config_root = _repo_with_plans(tmp_path)
+    _commit_changes(tmp_path, "a")
+
+    assert run_next_plan._range_is_empty(tmp_path, "HEAD~1..HEAD", config_root) is False
 
     subprocess.run(["git", "revert", "--no-edit", "HEAD"], cwd=tmp_path, check=True, capture_output=True)
 
-    assert run_next_plan._range_is_empty(tmp_path, "HEAD~2..HEAD") is True
+    assert run_next_plan._range_is_empty(tmp_path, "HEAD~2..HEAD", config_root) is True
+
+
+def test_range_is_empty_ignores_runner_bookkeeping(tmp_path):
+    config_root = _repo_with_plans(tmp_path)
+    _commit_changes(tmp_path, "docs/agents/plans/prd.json", "docs/agents/plans/progress.md")
+
+    assert run_next_plan._range_is_empty(tmp_path, "HEAD~1..HEAD", config_root) is True
 
 
 def test_iteration_guard_survives_a_non_object_pr_view_reply(monkeypatch, capsys):
@@ -1623,3 +1644,13 @@ def test_file_issues_phase_drops_unusable_numbers_instead_of_crashing(tmp_path):
         filed = run_next_plan._run_file_issues_phase(prd_path, tmp_path, config_root)
 
     assert filed == [12]
+
+
+def test_range_is_empty_still_counts_docs_beside_bookkeeping(tmp_path):
+    config_root = _repo_with_plans(tmp_path)
+    (tmp_path / "docs" / "features").mkdir(parents=True)
+    (tmp_path / "docs" / "features" / "x.md").write_text("doc\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    _commit_changes(tmp_path, "docs/agents/plans/prd.json")
+
+    assert run_next_plan._range_is_empty(tmp_path, "HEAD~1..HEAD", config_root) is False
