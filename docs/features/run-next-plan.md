@@ -30,6 +30,7 @@ The script treats `<config-root>/plans/prd.json` as the single source of truth f
 | File | Purpose |
 |---|---|
 | `scripts/run-next-plan.py` | The orchestrator itself |
+| `scripts/clean-iteration-artifacts.py` | Helper `/close-iteration` Step 9e runs after merge to delete the gitignored runtime artifacts; reuses the runner's path list and config-root rules |
 | `<config-root>/plans/prd.json` | Plan registry: `integration_branch`, `pr_number`, `prd_issue`, `plans[]` (file/status/attempts/blocked_by), `sdlc_review_status`, `sdlc_review_rounds` (completed review rounds; capped by `MAX_REVIEW_ROUNDS`), `last_reviewed_sha`, `sdlc_finding_issues` (iteration-cumulative), `sdlc_deferred_issues` (filed but not fixed by this PR: final-round findings and minor rollups; never in `Closes`), `sdlc_round_filed_issues` (per-round scratch), `sdlc_review_completed_agents`, `feature_branches`, `smoke_test` |
 | `<config-root>/plans/progress.md` | Human-readable log Claude appends to after each completed plan |
 | `<config-root>/sdlc-review-findings.md` | Per-round scratch file the review phase writes findings into before they're filed as issues; rotated at the start of each fresh round |
