@@ -31,7 +31,7 @@ Skills live at `~/.claude/skills/<name>/` (symlinked from this repo). When the d
 | `skills/pr-image-upload/SKILL.md` | Uploads screenshots to GitHub as release assets; returns markdown image tags |
 | `skills/pr-image-upload/pr-image-upload.sh` | Shell implementation for the upload workflow |
 | `skills/rank-backlog/SKILL.md` | GUS backlog analysis and nevering-candidate ranking; outputs CSV |
-| `skills/close-iteration/skill.md` | Gate-checks, merges, and cleans up an iteration opened by `/plan-iteration` |
+| `skills/close-iteration/SKILL.md` | Gate-checks, merges, and cleans up an iteration opened by `/plan-iteration` |
 | `skills/plan-iteration/SKILL.md` | Flags untriaged backlog issues for the user, then writes `<config-root>/plans/prd.json` + `<config-root>/plans/<slug>.md` for `run-next-plan.py` to execute |
 | `skills/triage-pr-comments/SKILL.md` | Re-opens plans against new PR review comments mid-iteration |
 

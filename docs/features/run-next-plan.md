@@ -38,7 +38,7 @@ The script treats `<config-root>/plans/prd.json` as the single source of truth f
 | `<config-root>/plans/implementation-logs/run-next-plan-*-triage.log` | Per-issue triage outcome log written by the SDLC review gate |
 | `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_pr_description.py`, `test_config_root.py`, `test_ralph_config.py`, `test_review_recipes.py`, `tests/e2e/` | Test suite; run via `cd scripts && python3 -m pytest`. `test_orchestration.py` covers `_working_tree_dirty`, `_push_branch`, `ensure_committed`, `flush_push`, `exit_flush`, and `_ensure_artifacts_gitignored` against real throwaway git repos (with a bare "remote"), not mocks. `test_config_root.py` covers `resolve_config_root` layout resolution under both `docs/agents/` and `meta/`, including the dual-layout refusal, the symlink/escape refusals, and an in-process end-to-end `main()` run under each layout. `tests/e2e/` runs the runner as a subprocess (see Tests). |
 | `<config-root>/ralph.json` | Optional per-repo review config (see **Review recipe config**); absent means today's behaviour |
-| `skills/close-iteration/skill.md` | Step 2b reads this script's `sdlc_review_status` values (`pending`/`complete`) from `prd.json` as a hard-blocker check before promoting/merging the iteration |
+| `skills/close-iteration/SKILL.md` | Step 2b reads this script's `sdlc_review_status` values (`pending`/`complete`) from `prd.json` as a hard-blocker check before promoting/merging the iteration |
 
 ## Technical Detail
 
