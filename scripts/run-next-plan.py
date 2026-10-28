@@ -1283,10 +1283,15 @@ any existing plan entry. Do not push."""
 
 
 def commit_attempt_bookkeeping(repo_root: Path, prd_path: Path, plan_file: str, refs: str) -> None:
-    """Commit account_attempt's prd.json write with the plan's refs. Left uncommitted, it
-    would ride into exit_flush's ref-less wip commit, which /close-iteration Step 3 flags as
-    untraceable (#94). Commits prd.json alone — no Claude call, nothing else swept in — and
-    is a no-op when the file is unchanged or ignored."""
+    """Commit account_attempt's prd.json write with the plan's refs (see `_commit_prd_only`)."""
+    _commit_prd_only(repo_root, prd_path, f"chore: record attempt for plan {plan_file}", refs)
+
+
+def _commit_prd_only(repo_root: Path, prd_path: Path, subject: str, refs: str) -> None:
+    """Commit a runner-side prd.json write with `refs`. Left uncommitted, it would ride into
+    exit_flush's ref-less wip commit, which /close-iteration Step 3 flags as untraceable
+    (#94). Commits prd.json alone — no Claude call, nothing else swept in — and is a no-op
+    when the file is unchanged or ignored."""
     status = subprocess.run(
         ["git", "status", "--porcelain", "--", str(prd_path)],
         capture_output=True,
@@ -1295,7 +1300,7 @@ def commit_attempt_bookkeeping(repo_root: Path, prd_path: Path, plan_file: str, 
     )
     if status.returncode != 0 or not status.stdout.strip():
         return
-    message = f"chore: record attempt for plan {plan_file}"
+    message = subject
     if refs:
         message += f"\n\n{refs}"
     subprocess.run(["git", "add", "--", str(prd_path)], cwd=repo_root, check=True)
@@ -1911,6 +1916,10 @@ def run_sdlc_review_gate(
                 data["last_reviewed_sha"] = head_sha
 
         _with_prd_lock(prd_path, _mark_empty_complete)
+        _commit_prd_only(
+            repo_root, prd_path, "chore: record SDLC review round with no net changes",
+            _pr_refs_line(gate_data, config_root, gate_data["integration_branch"]),
+        )
         return "complete"
 
     commit_refs = _pr_refs_line(gate_data, config_root, gate_data["integration_branch"])

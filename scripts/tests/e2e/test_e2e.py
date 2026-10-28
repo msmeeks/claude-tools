@@ -134,6 +134,30 @@ def test_e2e_pr_edit_failure_warns_and_exits_zero(make_iteration):
     assert "Traceback" not in result.stdout + result.stderr
 
 
+def test_e2e_net_empty_review_round_commits_its_bookkeeping_with_refs(make_iteration):
+    it = make_iteration(plans=[_plan("alpha.md", [11], status="done")], pr_number=7)
+    it.set_state(prs=[SEED_PR])
+    (it.repo / "scratch.txt").write_text("temporary\n")
+    it.git("add", "scratch.txt")
+    it.git("commit", "-q", "-m", "feat: temporary")
+    it.git("revert", "--no-edit", "HEAD")
+    # The default branch already holds everything else, so main...HEAD has no net diff.
+    it.git("branch", "-f", "main", "HEAD~2")
+    it.seed_sha = it.git("rev-parse", "HEAD").strip()
+
+    result = it.run()
+
+    assert result.returncode == 0, result.stderr
+    assert "no net changes" in result.stdout
+    commits = _commit_bodies(it)
+    assert commits, "the gate's prd.json write was left uncommitted"
+    for _sha, subject, body in commits:
+        assert "at runner exit" not in subject
+        assert re.search(r"^Refs #7$", body, re.M), subject
+    assert it.git("status", "--porcelain") == ""
+    assert it.git("rev-parse", "HEAD") == it.remote_git("rev-parse", BRANCH)
+
+
 def test_e2e_env_is_isolated_to_fakes_and_git(e2e_env):
     env, bin_dir, _ = e2e_env
     assert env["PATH"] == str(bin_dir)
