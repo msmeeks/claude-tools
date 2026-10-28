@@ -72,10 +72,56 @@
         "fix-review-gate.md",
         "refactor-runner-hardening.md"
       ]
+    },
+    {
+      "file": "fix-clean-iteration-artifacts.md",
+      "issues": [
+        106,
+        107
+      ],
+      "size": "M",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
+    },
+    {
+      "file": "fix-run-next-plan-hygiene.md",
+      "issues": [
+        105,
+        108
+      ],
+      "size": "S",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
     }
   ],
   "integration_branch": "integration/2026-10-28-iteration-guard",
   "pr_number": 104,
   "smoke_test": "cd scripts && python3 -m pytest",
-  "feature_branches": []
+  "feature_branches": [],
+  "sdlc_review_completed_agents": [
+    "sdlc-code-reviewer",
+    "sdlc-style-reviewer",
+    "sdlc-security-reviewer",
+    "sdlc-privacy-reviewer",
+    "sdlc-accessibility-reviewer",
+    "sdlc-design-reviewer",
+    "sdlc-test-reviewer"
+  ],
+  "sdlc_round_filed_issues": [
+    105,
+    106,
+    107,
+    108
+  ],
+  "sdlc_deferred_issues": [
+    109
+  ],
+  "sdlc_finding_issues": [
+    105,
+    106,
+    107,
+    108
+  ]
 }
