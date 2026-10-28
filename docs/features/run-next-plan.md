@@ -37,7 +37,7 @@ The script treats `<config-root>/plans/prd.json` as the single source of truth f
 | `<config-root>/pr-summary.md` | The two-audience PR summary `_generate_pr_summary` writes, spliced into the PR body by `update_pr_description` |
 | `<config-root>/plans/implementation-logs/run-next-plan-*.log` | Per-invocation log; scrubs credentials before writing. `_ensure_artifacts_gitignored` ignores (and untracks) this directory, plus `prd.json.lock`, `sdlc-review-findings.md`, and `pr-summary.md`, via the target repo's `.git/info/exclude` at startup |
 | `<config-root>/plans/implementation-logs/run-next-plan-*-triage.log` | Per-issue triage outcome log written by the SDLC review gate |
-| `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_pr_description.py`, `test_config_root.py`, `test_ralph_config.py`, `test_review_recipes.py`, `tests/e2e/` | Test suite; run via `cd scripts && python3 -m pytest`. `test_orchestration.py` covers `_working_tree_dirty`, `_push_branch`, `ensure_committed`, `flush_push`, `exit_flush`, and `_ensure_artifacts_gitignored` against real throwaway git repos (with a bare "remote"), not mocks. `test_config_root.py` covers `resolve_config_root` layout resolution under both `docs/agents/` and `meta/`, including the dual-layout refusal, the symlink/escape refusals, and an in-process end-to-end `main()` run under each layout. `tests/e2e/` runs the runner as a subprocess (see Tests). |
+| `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_pr_description.py`, `test_config_root.py`, `test_ralph_config.py`, `test_review_recipes.py`, `test_clean_iteration_artifacts.py`, `tests/e2e/` | Test suite; run via `cd scripts && python3 -m pytest`. `test_orchestration.py` covers `_working_tree_dirty`, `_push_branch`, `ensure_committed`, `flush_push`, `exit_flush`, and `_ensure_artifacts_gitignored` against real throwaway git repos (with a bare "remote"), not mocks. `test_config_root.py` covers `resolve_config_root` layout resolution under both `docs/agents/` and `meta/`, including the dual-layout refusal, the symlink/escape refusals, and an in-process end-to-end `main()` run under each layout. `tests/e2e/` runs the runner as a subprocess (see Tests). |
 | `<config-root>/ralph.json` | Optional per-repo review config (see **Review recipe config**); absent means today's behaviour |
 | `skills/close-iteration/SKILL.md` | Step 2b reads this script's `sdlc_review_status` values (`pending`/`complete`) from `prd.json` as a hard-blocker check before promoting/merging the iteration |
 
@@ -116,7 +116,7 @@ The gate's terminal push sits *after* `run_docs_phase` rather than before it, an
 
 ### Redundant-sync suppression
 
-`sync_pr_closes` is called from four points per loop pass, and each call used to issue a `gh pr view` + `gh pr edit` round trip. It now caches the closed-issue set it last wrote (`_synced_closes`) and returns immediately when the current set is a subset of it, so the PR body is written at most once per genuinely new completion. The cache is set only after a successful `gh pr edit`: a failed edit warns (stderr scrubbed) and the next pass retries. A failed or empty body read (`_fetch_pr_body` returns `None`) warns and leaves the body untouched, never overwriting it with a Closes block alone; `update_pr_description` skips the same way. A failing final `gh pr edit` in `update_pr_description` warns (`gh pr edit #N failed — PR summary not updated: <first stderr line>`, or the exception type for `OSError`; never the argv, which carries the body) and the gate continues to its push.
+`sync_pr_closes` is called from four points per loop pass, and each call used to issue a `gh pr view` + `gh pr edit` round trip. It now caches the closed-issue set it last wrote (`_synced_closes`) and returns immediately when the current set is a subset of it, so the PR body is written at most once per genuinely new completion. The cache is set only after a successful `gh pr edit`: a failed edit warns (stderr scrubbed) and the next pass retries. A failed or empty body read (`_fetch_pr_body` returns `None`) warns and leaves the body untouched, never overwriting it with a Closes block alone; `update_pr_description` skips the same way. A failing final `gh pr edit` in `update_pr_description` warns (`update_pr_description: gh pr edit #N failed — PR summary not updated: <first stderr line>`, `rc=<N>` when stderr is empty, or the exception type for `OSError`; never the argv, which carries the body) and the gate continues to its push.
 
 ### Trust model: no sandbox
 
@@ -243,9 +243,10 @@ Run from `scripts/`: `python3 -m pytest`. One responsibility per file:
 - `test_prd_data_layer.py` — prd.json schema validation, locking, status transitions.
 - `test_sdlc_gate.py` — the SDLC review gate (prompts, rounds, range selection, finding accounting) and the `ISSUE:`/`MINOR_ROLLUP:` parsers.
 - `test_pr_description.py` — `resolve_pr_number`, PR summary splicing, `sync_pr_closes`/`update_pr_description`.
+- `test_clean_iteration_artifacts.py` — the `/close-iteration` cleanup helper against a real temp repo: removal, and every skip reason.
 - `test_config_root.py` — `resolve_config_root` layouts, derived-path helpers, artifact ignores, commit-ref template and `_coerce_refs` boundaries, one end-to-end `main()` run per layout.
 - `test_ralph_config.py`, `test_review_recipes.py` — `ralph.json` loading and the review recipes.
-- `_fakes.py` — shared stand-ins (`_FakePopen`); `_git_helpers.py` — real-repo builders (`_init_repo`, `_init_repo_with_remote`, `_remote_log`, `_git`, each taking an optional `env=`) shared with the e2e layer.
+- `_fakes.py` — shared stand-ins (`_FakePopen`); `_git_helpers.py` — real-repo builders (`_init_repo`, `_init_repo_with_remote`, `_remote_log`, `_git`; all but `_remote_log` take an optional `env=`) shared with the e2e layer.
 
 #### Subprocess e2e layer (`tests/e2e/`)
 
