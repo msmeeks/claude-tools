@@ -1341,6 +1341,20 @@ def _compute_review_range(repo_root: Path, data: dict, default_branch: str) -> s
     return f"{default_branch}...HEAD"
 
 
+def _range_is_empty(repo_root: Path, review_range: str) -> bool:
+    """True if `review_range` has no net diff (e.g. a commit plus its revert). Any failure to
+    tell is treated as "not empty" so a broken check can never skip a review."""
+    try:
+        r = subprocess.run(["git", "diff", "--quiet", review_range, "--"], cwd=repo_root)
+    except OSError as e:
+        warn(f"_range_is_empty: {type(e).__name__} — reviewing anyway")
+        return False
+    if r.returncode in (0, 1):
+        return r.returncode == 0
+    warn(f"_range_is_empty: git diff rc={r.returncode} — reviewing anyway")
+    return False
+
+
 def get_default_branch() -> str:
     r = subprocess.run(
         ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
@@ -1482,7 +1496,19 @@ def update_pr_description(prd_path: Path, repo_root: Path, config_root: Path) ->
         warn(f"update_pr_description: couldn't read PR #{pr_number}'s body — leaving it unchanged")
         return
     new_body = _scrub_credentials(splice_summary_block(body, summary))
-    subprocess.run(["gh", "pr", "edit", str(pr_number), "--body", new_body], check=True)
+    # Never interpolate the exception or argv: both carry the whole PR body.
+    prefix = f"update_pr_description: gh pr edit #{pr_number} failed — PR summary not updated"
+    try:
+        r = subprocess.run(
+            ["gh", "pr", "edit", str(pr_number), "--body", new_body], capture_output=True, text=True
+        )
+    except OSError as e:
+        warn(f"{prefix}: {type(e).__name__}")
+        return
+    if r.returncode != 0:
+        detail = _scrub_credentials(r.stderr.strip()).splitlines()
+        warn(f"{prefix}: {detail[0] if detail else f'rc={r.returncode}'}")
+        return
     info(f"update_pr_description: PR #{pr_number} summary updated")
 
 
@@ -1814,23 +1840,30 @@ def run_sdlc_review_gate(
         f"{datetime.now().strftime('%Y_%m_%d_T%H_%M_%S')}-triage.log"
     )
 
-    # Empty increment: a re-armed round whose baseline already equals HEAD has nothing new to
-    # review. No-op gracefully — mark complete (baseline unchanged) rather than run reviewers
-    # on an empty diff.
+    # Empty increment: nothing to review when the baseline already equals HEAD, or when the
+    # range has commits but no net diff (a commit plus its revert, a no-diff merge). No-op
+    # gracefully — mark complete rather than run reviewers on an empty diff. Accepted
+    # tradeoff (hd-tech-standards#77): code added and reverted inside the range is never
+    # reviewed.
     gate_data = load_prd(prd_path)
-    commit_refs = _pr_refs_line(gate_data, config_root, gate_data["integration_branch"])
     baseline = gate_data.get("last_reviewed_sha")
     head_sha = _git_head_sha(repo_root)
-    if baseline and head_sha and baseline == head_sha:
-        info("SDLC review gate: no new commits since the last review — nothing to review.")
+    gate_range = _compute_review_range(repo_root, gate_data, default_branch)
+    if (baseline and head_sha and baseline == head_sha) or _range_is_empty(repo_root, gate_range):
+        scope = "since the last review" if baseline else "in the review range"
+        info(f"SDLC review gate: no net changes {scope} — nothing to review.")
 
         def _mark_empty_complete(data: dict) -> None:
             data["sdlc_review_status"] = "complete"
             data["sdlc_review_completed_agents"] = []
             data["sdlc_round_filed_issues"] = []
+            if head_sha:
+                data["last_reviewed_sha"] = head_sha
 
         _with_prd_lock(prd_path, _mark_empty_complete)
         return "complete"
+
+    commit_refs = _pr_refs_line(gate_data, config_root, gate_data["integration_branch"])
 
     # Rotate the findings file once at the start of a fresh round (no reviewer has run yet),
     # so a prior round's leftover findings can't be re-filed as duplicate issues (#48). When

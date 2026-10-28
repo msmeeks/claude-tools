@@ -4,6 +4,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 _MODULE_PATH = Path(__file__).resolve().parent.parent / "run-next-plan.py"
 _spec = importlib.util.spec_from_file_location("run_next_plan", _MODULE_PATH)
 run_next_plan = importlib.util.module_from_spec(_spec)
@@ -306,3 +308,32 @@ def test_update_pr_description_never_edits_the_body_after_a_failed_read(tmp_path
 
     monkeypatch.setattr(run_next_plan.subprocess, "run", no_edit)
     update_pr_description(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
+
+
+@pytest.mark.parametrize("failure", ["rc", "oserror"])
+def test_update_pr_description_warns_instead_of_crashing_when_the_edit_fails(
+    tmp_path, monkeypatch, capsys, failure
+):
+    prd_path = _write_prd(tmp_path, pr_number=5)
+    monkeypatch.setattr(
+        run_next_plan, "_generate_pr_summary", lambda data, repo, config_root: "## For the PM\nSECRETBODY"
+    )
+    monkeypatch.setattr(run_next_plan, "_fetch_pr_body", lambda n: "old")
+    edits = []
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "pr", "edit"]:
+            edits.append(cmd)
+            if failure == "oserror":
+                raise OSError("SECRETBODY")
+            return type("R", (), {"returncode": 1, "stdout": "", "stderr": "HTTP 502\nmore"})()
+        return type("R", (), {"returncode": 0, "stdout": ""})()
+
+    monkeypatch.setattr(run_next_plan.subprocess, "run", fake_run)
+
+    update_pr_description(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
+
+    err = capsys.readouterr().err
+    assert "update_pr_description: gh pr edit #5 failed — PR summary not updated" in err
+    assert "SECRETBODY" not in err and "more" not in err
+    assert len(edits) == 1
