@@ -6,8 +6,9 @@ directory into `~/.claude/agents/`.
 
 Nine agents: the seven `sdlc-*` reviewers dispatched in parallel by `/sdlc` Phase 3
 (`code`, `style`, `security`, `privacy`, `accessibility`, `design`, `test`), plus
-`sdlc-qa-engineer` (runs the tests and smoke checks; the runner falls back to it when `/qa` isn't installed) and `sdlc-doc-writer` (reads and writes
-the context and feature docs). Detail in
+`sdlc-qa-engineer` and `sdlc-doc-writer`. `sdlc-qa-engineer` runs the tests and smoke checks;
+the runner falls back to it when `/qa` isn't installed. `sdlc-doc-writer` reads and writes the
+context and feature docs. Detail in
 [../docs/features/agents.md](../docs/features/agents.md).
 
 ## Language
