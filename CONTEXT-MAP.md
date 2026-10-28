@@ -29,9 +29,9 @@ it governs every repo on the machine. Change it with that blast radius in mind.
 
 - **skills → agents**: `/sdlc` dispatches the seven `sdlc-*` reviewers in parallel; the other
   skills reference agent files by name for their checklists.
-- **skills → scripts**: `/plan-iteration` writes the plans; `scripts/run-next-plan.py` is the
-  "run" half that drives them to completion and re-enters `/sdlc` and
-  `/sdlc-doc-writer` through headless Claude sessions.
+- **skills → scripts**: `/plan-iteration` writes the plans; `/run-iteration` drives
+  `scripts/run-next-plan.py` (the "run" half) to completion, and the runner re-enters `/sdlc`
+  and `/sdlc-doc-writer` through headless Claude sessions.
 - **scripts → docs/agents**: the orchestrator's entire state lives under the resolved config
   root — `prd.json`, `progress.md`, the plan files, logs, findings, and PR summary.
 - **setup-symlinks.sh → everything**: symlinks `agents/`, `skills/`, `global/CLAUDE.md`, and

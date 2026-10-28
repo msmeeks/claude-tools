@@ -262,6 +262,9 @@ Size key: `S` (1–3 files), `M` (4–8 files), `L` (9–15 files), `XL` (16+ fi
    - `smoke_test`: the detected command string, or `null`
    - `feature_branches`: `[]`
 
+8. Tell the user the next step: `/run-iteration` (or `python3 ~/.claude/scripts/run-next-plan.py`
+   to run the loop by hand).
+
 ---
 
 ## Review Mode (`/plan-iteration review [plan-name]`)
