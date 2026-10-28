@@ -106,7 +106,7 @@ def test_derived_paths_follow_the_resolved_root(tmp_path, layout, prefix):
 
 @pytest.fixture(autouse=True)
 def _no_network_finished_iteration_guard(monkeypatch):
-    monkeypatch.setattr(run_next_plan, "_iteration_finished", lambda *a, **kw: None)
+    monkeypatch.setattr(run_next_plan, "_iteration_state", lambda *a, **kw: None)
 
 
 def _init_repo(path):

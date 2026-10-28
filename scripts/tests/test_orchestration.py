@@ -31,7 +31,7 @@ def _no_network_finished_iteration_guard(request, monkeypatch):
     """main() consults gh and git ls-remote to detect a finished iteration. Existing main()
     tests must not hit the real network; the guard's own tests (test_iteration_guard_*) do."""
     if not request.node.name.startswith("test_iteration_guard"):
-        monkeypatch.setattr(run_next_plan, "_iteration_finished", lambda *a, **kw: None)
+        monkeypatch.setattr(run_next_plan, "_iteration_state", lambda *a, **kw: None)
 
 
 def logs_rel(repo_root):
@@ -818,17 +818,27 @@ def _fake_gh_and_ls_remote(
 def _finished(data, branch="integration/x", **kw):
     fake, calls = _fake_gh_and_ls_remote(**kw)
     with patch.object(run_next_plan.subprocess, "run", side_effect=fake):
-        return run_next_plan._iteration_finished(data, branch), calls
+        return run_next_plan._iteration_state(data, branch), calls
 
 
 def _pr(state, head="integration/x", **extra):
     return {"state": state, "headRefName": head, **extra}
 
 
-@pytest.mark.parametrize("state", ["MERGED", "CLOSED"])
-def test_iteration_guard_merged_or_closed_pr_with_matching_head_is_finished(state):
-    reason, _ = _finished({"pr_number": 5}, pr=_pr(state))
-    assert reason == f"PR #5 was {state.lower()}"
+def test_iteration_guard_merged_pr_with_matching_head_is_finished():
+    state, _ = _finished({"pr_number": 5}, pr=_pr("MERGED"))
+    assert state == run_next_plan.IterationState("finished", "PR #5 was merged")
+
+
+def test_iteration_guard_closed_pr_with_matching_head_is_closed_not_finished():
+    state, _ = _finished({"pr_number": 5}, pr=_pr("CLOSED"))
+    assert state == run_next_plan.IterationState("closed", "PR #5 was closed")
+
+
+def test_iteration_guard_closed_pr_with_branch_gone_from_origin_is_still_closed():
+    state, calls = _finished({"pr_number": 5}, pr=_pr("CLOSED"), ls_remote_rc=2)
+    assert state.kind == "closed"
+    assert not any(c[:2] == ["git", "ls-remote"] for c in calls)
 
 
 @pytest.mark.parametrize("state", ["MERGED", "CLOSED"])
@@ -855,12 +865,22 @@ def test_iteration_guard_open_pr_is_not_finished():
 
 
 def test_iteration_guard_branch_gone_from_origin_is_finished():
-    reason, calls = _finished({"pr_number": 5}, pr=_pr("OPEN"), ls_remote_rc=2)
-    assert reason and "integration/x" in reason
+    state, calls = _finished({"pr_number": 5}, pr=_pr("OPEN"), upstream=True, ls_remote_rc=2)
+    assert state.kind == "finished" and "integration/x" in state.reason
     ls = next(c for c in calls if c[:2] == ["git", "ls-remote"])
     assert ls == [
         "git", "ls-remote", "--exit-code", "--heads", "origin", "refs/heads/integration/x"
     ]
+
+
+def test_iteration_guard_open_pr_does_not_short_circuit_the_branch_gone_probe():
+    """With no pr_number the branch lookup finds an OPEN PR; a pushed branch that is gone
+    from origin is still finished — the OPEN PR doesn't veto it."""
+    state, calls = _finished_by_branch_lookup(
+        [_listed(12, "OPEN")], {12: _pr("OPEN")}, ls_remote_rc=2
+    )
+    assert state.kind == "finished"
+    assert any(c[:2] == ["git", "ls-remote"] for c in calls)
 
 
 def test_iteration_guard_local_only_branch_is_not_finished_and_skips_ls_remote():
@@ -894,7 +914,7 @@ def _finished_in_real_repo(local, monkeypatch, branch="integration/x"):
 
     monkeypatch.chdir(local)
     with patch.object(run_next_plan.subprocess, "run", side_effect=run):
-        return run_next_plan._iteration_finished({}, branch)
+        return run_next_plan._iteration_state({}, branch)
 
 
 def _git(local, *args):
@@ -919,7 +939,7 @@ def test_iteration_guard_pushed_then_deleted_branch_is_finished_from_any_checkou
     _git(local, "push", "-q", "-u", "origin", "integration/x")
     _git(local, "checkout", "-q", "main")
     _git(remote, "branch", "-D", "integration/x")
-    assert "integration/x" in _finished_in_real_repo(local, monkeypatch)
+    assert "integration/x" in _finished_in_real_repo(local, monkeypatch).reason
 
 
 def test_iteration_guard_pushed_deleted_and_pruned_branch_is_finished(tmp_path, monkeypatch):
@@ -932,7 +952,7 @@ def test_iteration_guard_pushed_deleted_and_pruned_branch_is_finished(tmp_path, 
     _git(local, "checkout", "-q", "main")
     _git(remote, "branch", "-D", "integration/x")
     _git(local, "fetch", "-q", "--prune")
-    assert "integration/x" in _finished_in_real_repo(local, monkeypatch)
+    assert "integration/x" in _finished_in_real_repo(local, monkeypatch).reason
 
 
 def test_iteration_guard_probes_the_integration_branch_not_head():
@@ -981,11 +1001,11 @@ def test_iteration_guard_looks_the_pr_up_by_branch_when_prd_has_no_number():
         return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
     with patch.object(run_next_plan.subprocess, "run", side_effect=fake):
-        assert run_next_plan._iteration_finished({}, "integration/x") is None
+        assert run_next_plan._iteration_state({}, "integration/x") is None
     assert any(c[:3] == ["gh", "pr", "list"] for c in seen)
 
 
-def _finished_by_branch_lookup(listed, viewed=None):
+def _finished_by_branch_lookup(listed, viewed=None, ls_remote_rc=0):
     """Guard with no pr_number: `gh pr list` returns `listed`, `gh pr view N` returns
     `viewed[N]`, and git reports the branch pushed and still on origin."""
     seen = []
@@ -997,10 +1017,12 @@ def _finished_by_branch_lookup(listed, viewed=None):
         if cmd[:3] == ["gh", "pr", "view"]:
             out = json.dumps((viewed or {})[int(cmd[3])])
             return type("R", (), {"returncode": 0, "stdout": out, "stderr": ""})()
+        if cmd[:2] == ["git", "ls-remote"]:
+            return type("R", (), {"returncode": ls_remote_rc, "stdout": "", "stderr": ""})()
         return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
     with patch.object(run_next_plan.subprocess, "run", side_effect=fake):
-        return run_next_plan._iteration_finished({}, "integration/x"), seen
+        return run_next_plan._iteration_state({}, "integration/x"), seen
 
 
 def _listed(number, state, head="integration/x", cross=False):
@@ -1012,7 +1034,7 @@ def test_iteration_guard_finds_a_merged_pr_by_branch_when_prd_has_no_number():
     reason, seen = _finished_by_branch_lookup(
         [_listed(9, "MERGED")], {9: _pr("MERGED", isCrossRepository=False)}
     )
-    assert reason == "PR #9 was merged"
+    assert reason.kind == "finished" and reason.reason == "PR #9 was merged"
     lookup = next(c for c in seen if c[:3] == ["gh", "pr", "list"])
     assert lookup[lookup.index("--state") + 1] == "all"
 
@@ -1044,7 +1066,7 @@ def _run_main_with_guard(tmp_path, monkeypatch, argv, finished):
     monkeypatch.setattr(run_next_plan.shutil, "which", lambda _cmd: "/usr/bin/claude")
     monkeypatch.setattr(run_next_plan, "sync_pr_closes", lambda *a, **kw: None)
     monkeypatch.setattr(
-        run_next_plan, "_iteration_finished", lambda *a, **kw: order.append("guard") or finished
+        run_next_plan, "_iteration_state", lambda *a, **kw: order.append("guard") or finished
     )
     monkeypatch.setattr(
         run_next_plan, "_register_exit_flush", lambda *a, **kw: order.append("flush")
@@ -1063,7 +1085,8 @@ def test_iteration_guard_dies_before_the_exit_flush_is_registered(
     tmp_path, monkeypatch, capsys, argv
 ):
     code, order = _run_main_with_guard(
-        tmp_path, monkeypatch, argv, finished="its PR was merged"
+        tmp_path, monkeypatch, argv,
+        finished=run_next_plan.IterationState("finished", "its PR was merged"),
     )
 
     assert code != 0
@@ -1073,6 +1096,25 @@ def test_iteration_guard_dies_before_the_exit_flush_is_registered(
     assert "its PR was merged" in err
     assert "prd.json" in err
     assert "/plan-iteration" in err
+
+
+@pytest.mark.parametrize("argv", [[], ["--dry-run"]])
+def test_iteration_guard_closed_iteration_dies_with_reopen_or_archive_message(
+    tmp_path, monkeypatch, capsys, argv
+):
+    code, order = _run_main_with_guard(
+        tmp_path, monkeypatch, argv,
+        finished=run_next_plan.IterationState("closed", "PR #7 was closed"),
+    )
+
+    assert code != 0
+    assert order == ["guard"]
+    err = capsys.readouterr().err
+    assert "unresolved iteration" in err
+    assert "PR #7 was closed" in err
+    assert "reopen the PR" in err
+    assert "/plan-iteration" in err
+    assert "finished iteration" not in err
 
 
 def test_iteration_guard_lets_an_open_iteration_run(tmp_path, monkeypatch):

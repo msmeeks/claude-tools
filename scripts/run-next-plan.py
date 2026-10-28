@@ -56,6 +56,7 @@ import sys
 import tempfile
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import IO, Literal
@@ -615,7 +616,7 @@ def resolve_pr_number(
     """Locate the integration PR: prefer prd.json's captured `pr_number`, otherwise look it
     up by head branch. Returns None if neither resolves.
 
-    The branch lookup sees open PRs only, unless `include_finished` — the finished-iteration
+    The branch lookup sees open PRs only, unless `include_finished` — the iteration-state
     guard's case — which also finds merged and closed ones, keeping only same-repository PRs
     whose head is this branch and preferring an open one. A branch name reused after an
     earlier iteration's PR merged would match that old PR; integration branch names carry a
@@ -672,13 +673,24 @@ def _upstream_gone(integration_branch: str) -> bool:
     return r.returncode == 0 and r.stdout.strip() == "[gone]"
 
 
-def _iteration_finished(data: dict, integration_branch: str) -> str | None:
-    """Why this prd.json's iteration is over, or None if it isn't (or can't be told).
+@dataclass(frozen=True)
+class IterationState:
+    """`finished`: the iteration is over, so /plan-iteration may archive it. `closed`: its PR
+    was closed unmerged — unresolved, the user decides between reopening and archiving."""
 
-    Over means the integration PR was merged or closed from `integration_branch` (same
+    kind: Literal["finished", "closed"]
+    reason: str
+
+
+def _iteration_state(data: dict, integration_branch: str) -> IterationState | None:
+    """The iteration-state guard: why this prd.json's iteration can't continue, or None if it
+    can (or can't be told).
+
+    `finished` means the integration PR was merged from `integration_branch` (same
     repository), or the branch was pushed and is now gone from origin. A never-pushed or
-    unpushed-ahead branch is not "gone". A lookup failure warns and returns None so offline
-    runs aren't blocked. /plan-iteration describes the same rule (Step 1.2)."""
+    unpushed-ahead branch is not "gone". `closed` means the PR was closed unmerged; it takes
+    precedence over a branch gone from origin. A lookup failure warns and returns None so
+    offline runs aren't blocked. /plan-iteration describes the same rule (Step 1.2)."""
     try:
         pr_number = resolve_pr_number(data, integration_branch, include_finished=True)
         if pr_number is not None:
@@ -695,9 +707,10 @@ def _iteration_finished(data: dict, integration_branch: str) -> str | None:
                     and pr.get("headRefName") == integration_branch
                     and not pr.get("isCrossRepository")
                 ):
-                    return f"PR #{pr_number} was {state.lower()}"
+                    kind = "finished" if state == "MERGED" else "closed"
+                    return IterationState(kind, f"PR #{pr_number} was {state.lower()}")
             else:
-                warn(f"finished-iteration check: gh pr view #{pr_number} failed — continuing")
+                warn(f"iteration-state check: gh pr view #{pr_number} failed — continuing")
         if not (_branch_is_pushed(integration_branch) or _upstream_gone(integration_branch)):
             return None
         r = subprocess.run(
@@ -706,11 +719,11 @@ def _iteration_finished(data: dict, integration_branch: str) -> str | None:
             text=True,
         )
         if r.returncode == 2:
-            return f"branch {integration_branch} no longer exists on origin"
+            return IterationState("finished", f"branch {integration_branch} no longer exists on origin")
         if r.returncode != 0:
-            warn(f"finished-iteration check: git ls-remote exited {r.returncode} — continuing")
+            warn(f"iteration-state check: git ls-remote exited {r.returncode} — continuing")
     except (json.JSONDecodeError, KeyError, OSError, subprocess.CalledProcessError) as e:
-        warn(f"finished-iteration check failed ({type(e).__name__}) — continuing")
+        warn(f"iteration-state check failed ({type(e).__name__}) — continuing")
     return None
 
 
@@ -2178,10 +2191,15 @@ def main() -> None:
     integration_branch = resolve_integration_branch(load_prd(prd_path), args.integration_branch)
     info(f"Integration branch: {integration_branch}")
     # Before the exit flush is registered: its atexit push would recreate a deleted branch.
-    finished = _iteration_finished(load_prd(prd_path), integration_branch)
-    if finished:
+    state = _iteration_state(load_prd(prd_path), integration_branch)
+    if state is not None and state.kind == "closed":
         die(
-            f"prd.json at {prd_path} belongs to a finished iteration ({finished}); "
+            f"prd.json at {prd_path} belongs to an unresolved iteration ({state.reason}); "
+            "reopen the PR to continue, or run /plan-iteration to archive it and start a new one"
+        )
+    if state is not None:
+        die(
+            f"prd.json at {prd_path} belongs to a finished iteration ({state.reason}); "
             "run /plan-iteration to start a new one"
         )
     _register_exit_flush(repo_root, config_root, integration_branch, args.dry_run)

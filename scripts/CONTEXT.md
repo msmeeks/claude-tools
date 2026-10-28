@@ -85,11 +85,12 @@ in `prd.json`'s `sdlc_deferred_issues`, never in `sdlc_finding_issues`, so it ca
 _Avoid_: leftover, backlog item
 
 **Finished iteration**:
-A `prd.json` whose integration PR was merged or closed, or whose pushed branch is gone from
+A `prd.json` whose same-repo integration PR was merged, or whose pushed branch is gone from
 origin (a `[gone]` upstream after a pruning fetch still counts as pushed). With no
 `pr_number`, the PR is found by a same-repo `--state all` lookup on the branch name.
-`_iteration_finished` makes the runner refuse it; `/plan-iteration` backs it up to
-`prd.json.<date>.bak` and writes a fresh one.
+`_iteration_state` makes the runner refuse it; `/plan-iteration` backs it up to
+`prd.json.<date>.bak` and writes a fresh one. A PR closed unmerged is not finished: the runner
+stops with a reopen-or-archive message, and `/plan-iteration` asks before archiving.
 _Avoid_: stale prd, old run
 
 ## Boundaries
