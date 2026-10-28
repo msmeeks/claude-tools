@@ -1,0 +1,77 @@
+{
+  "plans": [
+    {
+      "file": "fix-iteration-guard.md",
+      "issues": [
+        92,
+        93
+      ],
+      "size": "M",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
+    },
+    {
+      "file": "fix-review-gate.md",
+      "issues": [
+        99,
+        93,
+        90
+      ],
+      "size": "M",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
+    },
+    {
+      "file": "refactor-runner-hardening.md",
+      "issues": [
+        90,
+        93
+      ],
+      "size": "M",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": [
+        "fix-iteration-guard.md"
+      ]
+    },
+    {
+      "file": "feat-close-iteration-cleanup.md",
+      "issues": [
+        102,
+        90,
+        93
+      ],
+      "size": "L",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
+    },
+    {
+      "file": "docs-agent-config-polish.md",
+      "issues": [
+        90,
+        93
+      ],
+      "size": "M",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": []
+    },
+    {
+      "file": "feat-e2e-harness.md",
+      "issues": [
+        101
+      ],
+      "size": "L",
+      "status": "pending",
+      "attempts": 0,
+      "blocked_by": [
+        "fix-iteration-guard.md",
+        "fix-review-gate.md",
+        "refactor-runner-hardening.md"
+      ]
+    }
+  ]
+}
