@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from ._fakes import _FakePopen
+from ._git_helpers import _git, _init_repo, _init_repo_with_remote, _remote_log
 
 _MODULE_PATH = Path(__file__).resolve().parent.parent / "run-next-plan.py"
 _spec = importlib.util.spec_from_file_location("run_next_plan", _MODULE_PATH)
@@ -56,32 +57,6 @@ def exit_flush(repo_root, integration_branch):
 
 def _ensure_artifacts_gitignored(repo_root):
     return run_next_plan._ensure_artifacts_gitignored(repo_root, resolve_config_root(repo_root))
-
-
-def _init_repo(path):
-    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=path, check=True)
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=path, check=True)
-    (path / "README.md").write_text("hello\n")
-    subprocess.run(["git", "add", "."], cwd=path, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=path, check=True)
-
-
-def _init_repo_with_remote(tmp_path):
-    remote = tmp_path / "remote.git"
-    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
-    local = tmp_path / "local"
-    local.mkdir()
-    _init_repo(local)
-    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=local, check=True)
-    return local, remote
-
-
-def _remote_log(remote, branch):
-    r = subprocess.run(
-        ["git", "log", branch, "--format=%s"], cwd=remote, capture_output=True, text=True
-    )
-    return r.stdout.splitlines()
 
 
 def _plan(file, status="pending", blocked_by=None, attempts=0):
@@ -917,10 +892,6 @@ def _finished_in_real_repo(local, monkeypatch, branch="integration/x"):
     monkeypatch.chdir(local)
     with patch.object(run_next_plan.subprocess, "run", side_effect=run):
         return run_next_plan._iteration_state({}, branch)
-
-
-def _git(local, *args):
-    subprocess.run(["git", *args], cwd=local, check=True, capture_output=True)
 
 
 def test_iteration_guard_never_pushed_branch_is_not_finished_while_head_is_pushed(

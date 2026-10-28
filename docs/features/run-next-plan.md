@@ -36,7 +36,7 @@ The script treats `<config-root>/plans/prd.json` as the single source of truth f
 | `<config-root>/pr-summary.md` | The two-audience PR summary `_generate_pr_summary` writes, spliced into the PR body by `update_pr_description` |
 | `<config-root>/plans/implementation-logs/run-next-plan-*.log` | Per-invocation log; scrubs credentials before writing. `_ensure_artifacts_gitignored` ignores (and untracks) this directory, plus `prd.json.lock`, `sdlc-review-findings.md`, and `pr-summary.md`, via the target repo's `.git/info/exclude` at startup |
 | `<config-root>/plans/implementation-logs/run-next-plan-*-triage.log` | Per-issue triage outcome log written by the SDLC review gate |
-| `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_pr_description.py`, `test_config_root.py`, `test_ralph_config.py`, `test_review_recipes.py` | Test suite; run via `cd scripts && python3 -m pytest`. `test_orchestration.py` covers `_working_tree_dirty`, `_push_branch`, `ensure_committed`, `flush_push`, `exit_flush`, and `_ensure_artifacts_gitignored` against real throwaway git repos (with a bare "remote"), not mocks. `test_config_root.py` covers `resolve_config_root` layout resolution under both `docs/agents/` and `meta/`, including the dual-layout refusal, the symlink/escape refusals, and an end-to-end `main()` run under each layout. |
+| `scripts/tests/test_orchestration.py`, `test_prd_data_layer.py`, `test_sdlc_gate.py`, `test_pr_description.py`, `test_config_root.py`, `test_ralph_config.py`, `test_review_recipes.py`, `tests/e2e/` | Test suite; run via `cd scripts && python3 -m pytest`. `test_orchestration.py` covers `_working_tree_dirty`, `_push_branch`, `ensure_committed`, `flush_push`, `exit_flush`, and `_ensure_artifacts_gitignored` against real throwaway git repos (with a bare "remote"), not mocks. `test_config_root.py` covers `resolve_config_root` layout resolution under both `docs/agents/` and `meta/`, including the dual-layout refusal, the symlink/escape refusals, and an in-process end-to-end `main()` run under each layout. `tests/e2e/` runs the runner as a subprocess (see Tests). |
 | `<config-root>/ralph.json` | Optional per-repo review config (see **Review recipe config**); absent means today's behaviour |
 | `skills/close-iteration/skill.md` | Step 2b reads this script's `sdlc_review_status` values (`pending`/`complete`) from `prd.json` as a hard-blocker check before promoting/merging the iteration |
 
@@ -244,6 +244,18 @@ Run from `scripts/`: `python3 -m pytest`. One responsibility per file:
 - `test_pr_description.py` — `resolve_pr_number`, PR summary splicing, `sync_pr_closes`/`update_pr_description`.
 - `test_config_root.py` — `resolve_config_root` layouts, derived-path helpers, artifact ignores, commit-ref template and `_coerce_refs` boundaries, one end-to-end `main()` run per layout.
 - `test_ralph_config.py`, `test_review_recipes.py` — `ralph.json` loading and the review recipes.
-- `_fakes.py` — shared stand-ins (`_FakePopen`).
+- `_fakes.py` — shared stand-ins (`_FakePopen`); `_git_helpers.py` — real-repo builders (`_init_repo`, `_init_repo_with_remote`, `_remote_log`, `_git`, each taking an optional `env=`) shared with the e2e layer.
+
+#### Subprocess e2e layer (`tests/e2e/`)
+
+Real: `run-next-plan.py` as a subprocess (`sys.executable`), a git repo with a bare origin, the
+guard, commits and pushes. Faked: `gh` (`fakes/gh.py`, backed by a JSON state file, loud
+failure on an unmodelled command) and `claude` (`fakes/claude.py`, deterministic per phase,
+keyed on the prompt's opening line). This differs from `test_config_root.py`, which calls
+`main()` in-process with `subprocess` stubbed. The environment is an allowlist and `PATH` is
+one tmp dir holding the fakes and a `git` link, so no real `gh`, `claude` or network is
+reachable. Fixtures are synthetic only. It is part of the default run (about 7 s, no marker):
+`python3 -m pytest` or `python3 -m pytest tests/e2e`. Assertions on `die()`/`warn()` read stderr;
+`info()` lines are on stdout.
 
 Existing `main()` tests stub `_iteration_state` via an autouse fixture so they never touch the network.
