@@ -73,5 +73,9 @@
         "refactor-runner-hardening.md"
       ]
     }
-  ]
+  ],
+  "integration_branch": "integration/2026-10-28-iteration-guard",
+  "pr_number": 104,
+  "smoke_test": "cd scripts && python3 -m pytest",
+  "feature_branches": []
 }
