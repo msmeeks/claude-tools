@@ -128,17 +128,23 @@ def main(argv: list[str]) -> int:
     def report(rel: str, reason: str | None) -> None:
         print(f"removed: {rel}" if reason is None else f"skipped: {rel} ({reason})")
 
-    if symlinked_root or plans.is_symlink():
+    if symlinked_root:
         for rel in (logs_rel, lock_rel, findings_rel, summary_rel):
             report(rel, SYMLINK)
         return 0
 
-    logs_reason, lock_reason = _remove_logs_and_lock(
-        top / logs_rel.rstrip("/"),
-        top / lock_rel,
-        _unsafe_reason(top, logs_rel),
-        _unsafe_reason(top, lock_rel),
-    )
+    # Logs and lock live under plans/; the findings and summary files don't, so a symlinked
+    # plans/ only rules out the first two.
+    plans_symlinked = plans.is_symlink()
+    if plans_symlinked:
+        logs_reason = lock_reason = SYMLINK
+    else:
+        logs_reason, lock_reason = _remove_logs_and_lock(
+            top / logs_rel.rstrip("/"),
+            top / lock_rel,
+            _unsafe_reason(top, logs_rel),
+            _unsafe_reason(top, lock_rel),
+        )
     report(logs_rel, logs_reason)
     report(lock_rel, lock_reason)
 
@@ -150,7 +156,7 @@ def main(argv: list[str]) -> int:
             (top / rel).unlink()
         report(rel, reason)
 
-    if plans.is_dir() and not any(plans.iterdir()):
+    if not plans_symlinked and plans.is_dir() and not any(plans.iterdir()):
         plans.rmdir()
     return 0
 

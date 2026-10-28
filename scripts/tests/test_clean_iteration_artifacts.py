@@ -115,10 +115,16 @@ def test_symlinked_plans_dir_touches_nothing_outside(tmp_path):
 
     out = _clean(repo, "--findings-filed")
 
-    assert all("(symlink)" in line for line in out if line.startswith("skipped"))
+    assert out == [
+        f"skipped: {LOGS} (symlink)",
+        f"skipped: {LOCK} (symlink)",
+        # Config-root files sit outside plans/, so the symlink is no reason to keep them.
+        f"removed: {FINDINGS}",
+        f"skipped: {SUMMARY} (absent)",
+    ]
     assert (outside / "implementation-logs" / "x.log").exists()
     assert (outside / "prd.json.lock").exists()
-    assert (repo / FINDINGS).exists()
+    assert not (repo / FINDINGS).exists()
 
 
 def test_symlinked_leaf_is_kept(tmp_path):
