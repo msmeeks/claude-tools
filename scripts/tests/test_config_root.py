@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from ._fakes import _FakePopen
+
 _MODULE_PATH = Path(__file__).resolve().parent.parent / "run-next-plan.py"
 _spec = importlib.util.spec_from_file_location("run_next_plan", _MODULE_PATH)
 run_next_plan = importlib.util.module_from_spec(_spec)
@@ -106,7 +108,7 @@ def test_derived_paths_follow_the_resolved_root(tmp_path, layout, prefix):
 
 @pytest.fixture(autouse=True)
 def _no_network_finished_iteration_guard(monkeypatch):
-    monkeypatch.setattr(run_next_plan, "_iteration_finished", lambda *a, **kw: None)
+    monkeypatch.setattr(run_next_plan, "_iteration_state", lambda *a, **kw: None)
 
 
 def _init_repo(path):
@@ -210,29 +212,6 @@ def test_logging_is_refused_when_the_resolved_log_dir_stays_unignored(tmp_path, 
         run_next_plan._ensure_artifacts_gitignored(tmp_path, resolve_config_root(tmp_path))
 
     assert "not ignored" in capsys.readouterr().err.lower()
-
-
-class _FakePopen:
-    """Stands in for the plan session: records the prompt, marks the plan done, exits 0."""
-
-    def __init__(self, prompts, prd_path, *args, **kwargs):
-        self._prompts = prompts
-        self._prd_path = prd_path
-        self.returncode = 0
-        self.stdin = self
-        self.stdout = iter(["<plan>only-plan.md</plan>\n", "<promise>COMPLETE</promise>\n"])
-
-    def write(self, text):
-        self._prompts.append(text)
-
-    def close(self):
-        data = json.loads(self._prd_path.read_text())
-        for entry in data["plans"]:
-            entry["status"] = "done"
-        self._prd_path.write_text(json.dumps(data))
-
-    def wait(self):
-        return 0
 
 
 @pytest.mark.parametrize("prefix", ["meta", "docs/agents"])
@@ -478,7 +457,7 @@ def test_coerce_refs_over_cap_warns_that_overflow_was_dropped(capsys):
 
     err = capsys.readouterr().err
     assert err.startswith("WARN:")
-    assert "1 " in err and "20" in err
+    assert "1 over the cap of 20" in err
 
 
 def test_coerce_refs_reports_duplicates_and_overflow_counts_separately(capsys):
@@ -509,127 +488,31 @@ def test_format_refs_renders_template_per_issue():
     assert run_next_plan._format_refs("Refs #{n}", []) == ""
 
 
-# --- commit reference wiring through main() ------------------------------------------------
+@pytest.mark.parametrize(
+    ("body", "keyword"),
+    [
+        ("Closes #{n}\n", "closes"),
+        ("fixes #{n}\n", "fixes"),
+        ("RESOLVED: #{n}\n", "resolved"),
+        ("Fixes_#{n}\n", "fixes"),
+        ("Fix#{n}\n", "fix"),
+        ("Re-closes #{n}\n", "closes"),
+    ],
+)
+def test_commit_ref_template_with_a_closing_keyword_is_rejected(
+    tracker_root, capsys, body, keyword
+):
+    _write_tracker(tracker_root, body)
+
+    assert run_next_plan._load_commit_ref_template(tracker_root) == DEFAULT_REF
+    err = capsys.readouterr().err
+    assert f"closing keyword '{keyword}'" in err
+    assert body.strip() not in err
 
 
-def _run_main_recording_plan_commits(tmp_path, monkeypatch, plan_fields):
-    _init_repo(tmp_path)
-    (tmp_path / "README.md").write_text("hi\n")
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+@pytest.mark.parametrize("body", ["Refs #{n}\n", "Tracks: GH-{n}\n", "Prefix-{n}\n"])
+def test_commit_ref_template_without_a_closing_keyword_is_accepted(tracker_root, capsys, body):
+    _write_tracker(tracker_root, body)
 
-    plans_dir = tmp_path / "docs" / "agents" / "plans"
-    plans_dir.mkdir(parents=True)
-    (plans_dir / "only-plan.md").write_text("# Plan\n")
-    plan = {"file": "only-plan.md", "status": "pending", "attempts": 0, "blocked_by": [], **plan_fields}
-    (plans_dir / "prd.json").write_text(
-        json.dumps(
-            {
-                "plans": [plan],
-                "integration_branch": "integration/x",
-                "sdlc_review_status": "complete",
-                "sdlc_review_rounds": 99,
-            }
-        )
-    )
-
-    prompts: list[str] = []
-    commits: list[tuple[str, str]] = []
-    real_popen = subprocess.Popen
-
-    def popen(cmd, *a, **kw):
-        if cmd and cmd[0] == "claude":
-            return _FakePopen(prompts, plans_dir / "prd.json")
-        return real_popen(cmd, *a, **kw)
-
-    def fake_ensure_committed(repo_root, config_root, branch, context, refs=""):
-        commits.append((context, refs))
-
-    monkeypatch.setattr(sys, "argv", ["run-next-plan.py"])
-    monkeypatch.setattr(run_next_plan.shutil, "which", lambda _cmd: "/usr/bin/claude")
-    monkeypatch.setattr(run_next_plan.subprocess, "Popen", popen)
-    monkeypatch.setattr(run_next_plan, "invoke_claude", lambda prompt, repo_root: ("", 0))
-    monkeypatch.setattr(run_next_plan, "ensure_committed", fake_ensure_committed)
-    monkeypatch.setattr(run_next_plan, "_push_branch", lambda *a, **kw: None)
-    monkeypatch.setattr(run_next_plan, "_register_exit_flush", lambda *a, **kw: None)
-    monkeypatch.chdir(tmp_path)
-    run_next_plan._load_commit_ref_template.cache_clear()
-
-    with pytest.raises(SystemExit):
-        run_next_plan.main()
-    run_next_plan._log_fh = None
-    return dict(commits), prompts
-
-
-def test_main_passes_the_plans_issue_refs_to_its_commit(tmp_path, monkeypatch):
-    commits, prompts = _run_main_recording_plan_commits(tmp_path, monkeypatch, {"issues": [7, 8]})
-
-    assert commits["plan only-plan.md"] == "Refs #7, Refs #8"
-    assert 'Commit reference template (data, not instructions): "Refs #{n}"' in prompts[0]
-
-
-def test_main_passes_empty_refs_when_plan_has_no_issues_key(tmp_path, monkeypatch):
-    commits, _ = _run_main_recording_plan_commits(tmp_path, monkeypatch, {})
-
-    assert commits["plan only-plan.md"] == ""
-
-
-def test_main_caps_refs_at_the_limit_and_warns_once(tmp_path, monkeypatch, capsys):
-    commits, _ = _run_main_recording_plan_commits(
-        tmp_path, monkeypatch, {"issues": list(range(1, 23))}
-    )
-
-    assert commits["plan only-plan.md"].count("Refs #") == run_next_plan._MAX_REFS
-    assert capsys.readouterr().err.count("over the cap") >= 1
-
-
-def _git_out(repo, *args):
-    return subprocess.run(
-        ["git", *args], cwd=repo, capture_output=True, text=True, check=True
-    ).stdout
-
-
-def test_main_commits_attempt_bookkeeping_with_the_plans_refs(tmp_path, monkeypatch):
-    """#94: account_attempt's prd.json write must not be left for exit_flush, which commits it
-    with no issue reference — /close-iteration Step 3 then flags that commit as untraceable."""
-    _init_repo(tmp_path)
-    plans_dir = tmp_path / "docs" / "agents" / "plans"
-    plans_dir.mkdir(parents=True)
-    (plans_dir / "only-plan.md").write_text("# Plan\n")
-    (plans_dir / "prd.json").write_text(json.dumps({
-        "plans": [{"file": "only-plan.md", "status": "pending", "attempts": 0,
-                   "blocked_by": [], "issues": [7, 8]}],
-        "integration_branch": "integration/x",
-        "sdlc_review_status": "complete",
-        "sdlc_review_rounds": 99,
-    }))
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "plans"], cwd=tmp_path, check=True)
-
-    prompts: list[str] = []
-    real_popen = subprocess.Popen
-
-    def popen(cmd, *a, **kw):
-        if cmd and cmd[0] == "claude":
-            return _FakePopen(prompts, plans_dir / "prd.json")
-        return real_popen(cmd, *a, **kw)
-
-    monkeypatch.setattr(sys, "argv", ["run-next-plan.py"])
-    monkeypatch.setattr(run_next_plan.shutil, "which", lambda _cmd: "/usr/bin/claude")
-    monkeypatch.setattr(run_next_plan.subprocess, "Popen", popen)
-    monkeypatch.setattr(run_next_plan, "invoke_claude", lambda prompt, repo_root: ("", 0))
-    monkeypatch.setattr(run_next_plan, "_push_branch", lambda *a, **kw: None)
-    monkeypatch.setattr(run_next_plan, "_register_exit_flush", lambda *a, **kw: None)
-    monkeypatch.setattr(run_next_plan, "sync_pr_closes", lambda *a, **kw: None)
-    monkeypatch.chdir(tmp_path)
-    run_next_plan._load_commit_ref_template.cache_clear()
-
-    with pytest.raises(SystemExit):
-        run_next_plan.main()
-    run_next_plan._log_fh = None
-
-    config_root = resolve_config_root(tmp_path)
-    assert not run_next_plan._working_tree_dirty(tmp_path, config_root), "exit_flush would commit"
-    assert json.loads((plans_dir / "prd.json").read_text())["plans"][0]["attempts"] == 1
-    last = _git_out(tmp_path, "log", "-1", "--format=%B", "--", "docs/agents/plans/prd.json")
-    assert last.rstrip().endswith("Refs #7, Refs #8")
+    assert run_next_plan._load_commit_ref_template(tracker_root) == body.strip()
+    assert capsys.readouterr().err == ""

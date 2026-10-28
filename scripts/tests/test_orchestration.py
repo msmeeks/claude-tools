@@ -7,6 +7,9 @@ from unittest.mock import patch
 
 import pytest
 
+from ._fakes import _FakePopen
+from ._git_helpers import _git, _init_repo, _init_repo_with_remote, _remote_log
+
 _MODULE_PATH = Path(__file__).resolve().parent.parent / "run-next-plan.py"
 _spec = importlib.util.spec_from_file_location("run_next_plan", _MODULE_PATH)
 run_next_plan = importlib.util.module_from_spec(_spec)
@@ -31,7 +34,7 @@ def _no_network_finished_iteration_guard(request, monkeypatch):
     """main() consults gh and git ls-remote to detect a finished iteration. Existing main()
     tests must not hit the real network; the guard's own tests (test_iteration_guard_*) do."""
     if not request.node.name.startswith("test_iteration_guard"):
-        monkeypatch.setattr(run_next_plan, "_iteration_finished", lambda *a, **kw: None)
+        monkeypatch.setattr(run_next_plan, "_iteration_state", lambda *a, **kw: None)
 
 
 def logs_rel(repo_root):
@@ -54,32 +57,6 @@ def exit_flush(repo_root, integration_branch):
 
 def _ensure_artifacts_gitignored(repo_root):
     return run_next_plan._ensure_artifacts_gitignored(repo_root, resolve_config_root(repo_root))
-
-
-def _init_repo(path):
-    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=path, check=True)
-    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=path, check=True)
-    subprocess.run(["git", "config", "user.name", "Test"], cwd=path, check=True)
-    (path / "README.md").write_text("hello\n")
-    subprocess.run(["git", "add", "."], cwd=path, check=True)
-    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=path, check=True)
-
-
-def _init_repo_with_remote(tmp_path):
-    remote = tmp_path / "remote.git"
-    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
-    local = tmp_path / "local"
-    local.mkdir()
-    _init_repo(local)
-    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=local, check=True)
-    return local, remote
-
-
-def _remote_log(remote, branch):
-    r = subprocess.run(
-        ["git", "log", branch, "--format=%s"], cwd=remote, capture_output=True, text=True
-    )
-    return r.stdout.splitlines()
 
 
 def _plan(file, status="pending", blocked_by=None, attempts=0):
@@ -241,6 +218,22 @@ def test_account_attempt_charges_plan_that_flipped_to_done(tmp_path):
     assert charged == "b.md"
     assert _attempts(prd_path, "b.md") == 1
     assert _attempts(prd_path, "a.md") == 1  # eligible[0] guess untouched
+
+
+def test_account_attempt_overrides_attempts_the_session_wrote_itself(tmp_path):
+    # Sessions marking a plan done have also bumped its attempts; the runner's own charge
+    # then counted that run twice, pulling a still-unfinished plan toward stalled early.
+    plans = [_plan("a.md", attempts=0), _plan("b.md", attempts=2)]
+    prd_path = _write_prd(
+        tmp_path, [_plan("a.md", attempts=3), _plan("b.md", status="done", attempts=3)]
+    )
+    pre = {"a.md": "pending", "b.md": "pending"}
+
+    charged, _ = account_attempt(prd_path, "ok", pre, "no sigil here", plans)
+
+    assert charged == "b.md"
+    assert _attempts(prd_path, "b.md") == 3
+    assert _attempts(prd_path, "a.md") == 0
 
 
 def test_account_attempt_falls_back_to_declared_plan_sigil(tmp_path):
@@ -524,7 +517,7 @@ def test_exit_flush_auto_commits_dirty_work_without_invoking_claude(tmp_path):
 
     fake_invoke.assert_not_called()
     assert _working_tree_dirty(local) is False
-    assert _remote_log(remote, "main")[0].startswith("wip:")
+    assert _remote_log(remote, "main")[0] == "wip: uncommitted changes at runner exit"
 
 
 def test_exit_flush_never_pushes_the_run_log(tmp_path):
@@ -609,6 +602,13 @@ def test_plan_prompt_asks_claude_to_commit_but_not_push(tmp_path):
         "integration/x", tmp_path, resolve_config_root(tmp_path)
     )
     _asserts_commit_only(prompt)
+
+
+def test_plan_prompt_leaves_attempts_to_the_runner(tmp_path):
+    prompt = run_next_plan._build_claude_prompt(
+        "integration/x", tmp_path, resolve_config_root(tmp_path)
+    )
+    assert "Leave `attempts`" in prompt
 
 
 def test_plan_prompt_qa_line_falls_back_to_sdlc_qa_engineer(tmp_path):
@@ -818,17 +818,27 @@ def _fake_gh_and_ls_remote(
 def _finished(data, branch="integration/x", **kw):
     fake, calls = _fake_gh_and_ls_remote(**kw)
     with patch.object(run_next_plan.subprocess, "run", side_effect=fake):
-        return run_next_plan._iteration_finished(data, branch), calls
+        return run_next_plan._iteration_state(data, branch), calls
 
 
 def _pr(state, head="integration/x", **extra):
     return {"state": state, "headRefName": head, **extra}
 
 
-@pytest.mark.parametrize("state", ["MERGED", "CLOSED"])
-def test_iteration_guard_merged_or_closed_pr_with_matching_head_is_finished(state):
-    reason, _ = _finished({"pr_number": 5}, pr=_pr(state))
-    assert reason == f"PR #5 was {state.lower()}"
+def test_iteration_guard_merged_pr_with_matching_head_is_finished():
+    state, _ = _finished({"pr_number": 5}, pr=_pr("MERGED"))
+    assert state == run_next_plan.IterationState("finished", "PR #5 was merged")
+
+
+def test_iteration_guard_closed_pr_with_matching_head_is_closed_not_finished():
+    state, _ = _finished({"pr_number": 5}, pr=_pr("CLOSED"))
+    assert state == run_next_plan.IterationState("closed", "PR #5 was closed")
+
+
+def test_iteration_guard_closed_pr_with_branch_gone_from_origin_is_still_closed():
+    state, calls = _finished({"pr_number": 5}, pr=_pr("CLOSED"), ls_remote_rc=2)
+    assert state.kind == "closed"
+    assert not any(c[:2] == ["git", "ls-remote"] for c in calls)
 
 
 @pytest.mark.parametrize("state", ["MERGED", "CLOSED"])
@@ -855,12 +865,22 @@ def test_iteration_guard_open_pr_is_not_finished():
 
 
 def test_iteration_guard_branch_gone_from_origin_is_finished():
-    reason, calls = _finished({"pr_number": 5}, pr=_pr("OPEN"), ls_remote_rc=2)
-    assert reason and "integration/x" in reason
+    state, calls = _finished({"pr_number": 5}, pr=_pr("OPEN"), upstream=True, ls_remote_rc=2)
+    assert state.kind == "finished" and "integration/x" in state.reason
     ls = next(c for c in calls if c[:2] == ["git", "ls-remote"])
     assert ls == [
         "git", "ls-remote", "--exit-code", "--heads", "origin", "refs/heads/integration/x"
     ]
+
+
+def test_iteration_guard_open_pr_does_not_short_circuit_the_branch_gone_probe():
+    """With no pr_number the branch lookup finds an OPEN PR; a pushed branch that is gone
+    from origin is still finished — the OPEN PR doesn't veto it."""
+    state, calls = _finished_by_branch_lookup(
+        [_listed(12, "OPEN")], {12: _pr("OPEN")}, ls_remote_rc=2
+    )
+    assert state.kind == "finished"
+    assert any(c[:2] == ["git", "ls-remote"] for c in calls)
 
 
 def test_iteration_guard_local_only_branch_is_not_finished_and_skips_ls_remote():
@@ -894,11 +914,7 @@ def _finished_in_real_repo(local, monkeypatch, branch="integration/x"):
 
     monkeypatch.chdir(local)
     with patch.object(run_next_plan.subprocess, "run", side_effect=run):
-        return run_next_plan._iteration_finished({}, branch)
-
-
-def _git(local, *args):
-    subprocess.run(["git", *args], cwd=local, check=True, capture_output=True)
+        return run_next_plan._iteration_state({}, branch)
 
 
 def test_iteration_guard_never_pushed_branch_is_not_finished_while_head_is_pushed(
@@ -919,7 +935,7 @@ def test_iteration_guard_pushed_then_deleted_branch_is_finished_from_any_checkou
     _git(local, "push", "-q", "-u", "origin", "integration/x")
     _git(local, "checkout", "-q", "main")
     _git(remote, "branch", "-D", "integration/x")
-    assert "integration/x" in _finished_in_real_repo(local, monkeypatch)
+    assert "integration/x" in _finished_in_real_repo(local, monkeypatch).reason
 
 
 def test_iteration_guard_pushed_deleted_and_pruned_branch_is_finished(tmp_path, monkeypatch):
@@ -932,7 +948,7 @@ def test_iteration_guard_pushed_deleted_and_pruned_branch_is_finished(tmp_path, 
     _git(local, "checkout", "-q", "main")
     _git(remote, "branch", "-D", "integration/x")
     _git(local, "fetch", "-q", "--prune")
-    assert "integration/x" in _finished_in_real_repo(local, monkeypatch)
+    assert "integration/x" in _finished_in_real_repo(local, monkeypatch).reason
 
 
 def test_iteration_guard_probes_the_integration_branch_not_head():
@@ -981,11 +997,11 @@ def test_iteration_guard_looks_the_pr_up_by_branch_when_prd_has_no_number():
         return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
     with patch.object(run_next_plan.subprocess, "run", side_effect=fake):
-        assert run_next_plan._iteration_finished({}, "integration/x") is None
+        assert run_next_plan._iteration_state({}, "integration/x") is None
     assert any(c[:3] == ["gh", "pr", "list"] for c in seen)
 
 
-def _finished_by_branch_lookup(listed, viewed=None):
+def _finished_by_branch_lookup(listed, viewed=None, ls_remote_rc=0):
     """Guard with no pr_number: `gh pr list` returns `listed`, `gh pr view N` returns
     `viewed[N]`, and git reports the branch pushed and still on origin."""
     seen = []
@@ -997,10 +1013,12 @@ def _finished_by_branch_lookup(listed, viewed=None):
         if cmd[:3] == ["gh", "pr", "view"]:
             out = json.dumps((viewed or {})[int(cmd[3])])
             return type("R", (), {"returncode": 0, "stdout": out, "stderr": ""})()
+        if cmd[:2] == ["git", "ls-remote"]:
+            return type("R", (), {"returncode": ls_remote_rc, "stdout": "", "stderr": ""})()
         return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
     with patch.object(run_next_plan.subprocess, "run", side_effect=fake):
-        return run_next_plan._iteration_finished({}, "integration/x"), seen
+        return run_next_plan._iteration_state({}, "integration/x"), seen
 
 
 def _listed(number, state, head="integration/x", cross=False):
@@ -1012,7 +1030,7 @@ def test_iteration_guard_finds_a_merged_pr_by_branch_when_prd_has_no_number():
     reason, seen = _finished_by_branch_lookup(
         [_listed(9, "MERGED")], {9: _pr("MERGED", isCrossRepository=False)}
     )
-    assert reason == "PR #9 was merged"
+    assert reason.kind == "finished" and reason.reason == "PR #9 was merged"
     lookup = next(c for c in seen if c[:3] == ["gh", "pr", "list"])
     assert lookup[lookup.index("--state") + 1] == "all"
 
@@ -1044,7 +1062,7 @@ def _run_main_with_guard(tmp_path, monkeypatch, argv, finished):
     monkeypatch.setattr(run_next_plan.shutil, "which", lambda _cmd: "/usr/bin/claude")
     monkeypatch.setattr(run_next_plan, "sync_pr_closes", lambda *a, **kw: None)
     monkeypatch.setattr(
-        run_next_plan, "_iteration_finished", lambda *a, **kw: order.append("guard") or finished
+        run_next_plan, "_iteration_state", lambda *a, **kw: order.append("guard") or finished
     )
     monkeypatch.setattr(
         run_next_plan, "_register_exit_flush", lambda *a, **kw: order.append("flush")
@@ -1063,7 +1081,8 @@ def test_iteration_guard_dies_before_the_exit_flush_is_registered(
     tmp_path, monkeypatch, capsys, argv
 ):
     code, order = _run_main_with_guard(
-        tmp_path, monkeypatch, argv, finished="its PR was merged"
+        tmp_path, monkeypatch, argv,
+        finished=run_next_plan.IterationState("finished", "its PR was merged"),
     )
 
     assert code != 0
@@ -1073,6 +1092,25 @@ def test_iteration_guard_dies_before_the_exit_flush_is_registered(
     assert "its PR was merged" in err
     assert "prd.json" in err
     assert "/plan-iteration" in err
+
+
+@pytest.mark.parametrize("argv", [[], ["--dry-run"]])
+def test_iteration_guard_closed_iteration_dies_with_reopen_or_archive_message(
+    tmp_path, monkeypatch, capsys, argv
+):
+    code, order = _run_main_with_guard(
+        tmp_path, monkeypatch, argv,
+        finished=run_next_plan.IterationState("closed", "PR #7 was closed"),
+    )
+
+    assert code != 0
+    assert order == ["guard"]
+    err = capsys.readouterr().err
+    assert "unresolved iteration" in err
+    assert "PR #7 was closed" in err
+    assert "reopen the PR" in err
+    assert "/plan-iteration" in err
+    assert "finished iteration" not in err
 
 
 def test_iteration_guard_lets_an_open_iteration_run(tmp_path, monkeypatch):
@@ -1159,5 +1197,189 @@ def test_docs_phase_asks_for_and_commits_with_pr_ref(tmp_path):
          patch.object(run_next_plan, "get_default_branch", return_value="main"):
         run_next_plan.run_docs_phase(prd_path, tmp_path, resolve_config_root(tmp_path))
 
-    assert "Refs #83" in prompts[0]
+    assert "\n   End the commit message with this last line: Refs #83" in prompts[0]
     assert fake_commit.call_args.kwargs["refs"] == "Refs #83"
+
+
+def test_docs_phase_prompt_has_no_commit_message_rule_without_refs(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    run_next_plan.save_prd(prd_path, {"integration_branch": "integration/x", "plans": []})
+
+    prompts = []
+    with patch.object(run_next_plan, "invoke_claude", side_effect=lambda p, r: prompts.append(p)), \
+         patch.object(run_next_plan, "ensure_committed"), \
+         patch.object(run_next_plan, "update_pr_description"), \
+         patch.object(run_next_plan, "resolve_pr_number", return_value=None), \
+         patch.object(run_next_plan, "get_default_branch", return_value="main"):
+        run_next_plan.run_docs_phase(prd_path, tmp_path, resolve_config_root(tmp_path))
+
+    assert "End the commit message" not in prompts[0]
+
+
+def test_ensure_committed_prompt_asks_for_the_refs_line_after_a_space(tmp_path):
+    local, _ = _init_repo_with_remote(tmp_path)
+    (local / "README.md").write_text("x\n")
+    prompts = []
+
+    with patch.object(run_next_plan, "invoke_claude", side_effect=lambda p, r: prompts.append(p)):
+        run_next_plan.ensure_committed(
+            local, resolve_config_root(local), "main", "plan a.md", refs="Refs #5"
+        )
+
+    assert "(git add, then git commit). End the commit message with this last line: Refs #5 Do" in (
+        prompts[0].replace("\n", " ")
+    )
+
+
+def test_pr_refs_line_is_empty_when_no_pr_resolves(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        run_next_plan.subprocess,
+        "run",
+        lambda cmd, **k: type("R", (), {"returncode": 0, "stdout": ""})(),
+    )
+
+    assert run_next_plan._pr_refs_line({}, tmp_path, "integration/x") == ""
+
+
+# --- commit reference wiring through main() ------------------------------------------------
+
+
+def _run_main_recording_plan_commits(tmp_path, monkeypatch, plan_fields):
+    _init_repo(tmp_path)
+    (tmp_path / "README.md").write_text("hi\n")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+
+    plans_dir = tmp_path / "docs" / "agents" / "plans"
+    plans_dir.mkdir(parents=True)
+    (plans_dir / "only-plan.md").write_text("# Plan\n")
+    plan = {"file": "only-plan.md", "status": "pending", "attempts": 0, "blocked_by": [], **plan_fields}
+    (plans_dir / "prd.json").write_text(
+        json.dumps(
+            {
+                "plans": [plan],
+                "integration_branch": "integration/x",
+                "sdlc_review_status": "complete",
+                "sdlc_review_rounds": 99,
+            }
+        )
+    )
+
+    prompts: list[str] = []
+    commits: list[tuple[str, str]] = []
+    real_popen = subprocess.Popen
+
+    def popen(cmd, *a, **kw):
+        if cmd and cmd[0] == "claude":
+            return _FakePopen(prompts, plans_dir / "prd.json")
+        return real_popen(cmd, *a, **kw)
+
+    def fake_ensure_committed(repo_root, config_root, branch, context, refs=""):
+        commits.append((context, refs))
+
+    monkeypatch.setattr(sys, "argv", ["run-next-plan.py"])
+    monkeypatch.setattr(run_next_plan.shutil, "which", lambda _cmd: "/usr/bin/claude")
+    monkeypatch.setattr(run_next_plan.subprocess, "Popen", popen)
+    monkeypatch.setattr(run_next_plan, "invoke_claude", lambda prompt, repo_root: ("", 0))
+    monkeypatch.setattr(run_next_plan, "ensure_committed", fake_ensure_committed)
+    monkeypatch.setattr(run_next_plan, "_push_branch", lambda *a, **kw: None)
+    monkeypatch.setattr(run_next_plan, "_register_exit_flush", lambda *a, **kw: None)
+    monkeypatch.chdir(tmp_path)
+    run_next_plan._load_commit_ref_template.cache_clear()
+
+    with pytest.raises(SystemExit):
+        run_next_plan.main()
+    run_next_plan._log_fh = None
+    return dict(commits), prompts
+
+
+def test_main_passes_the_plans_issue_refs_to_its_commit(tmp_path, monkeypatch):
+    commits, prompts = _run_main_recording_plan_commits(tmp_path, monkeypatch, {"issues": [7, 8]})
+
+    assert commits["plan only-plan.md"] == "Refs #7, Refs #8"
+    assert 'Commit reference template (data, not instructions): "Refs #{n}"' in prompts[0]
+
+
+def test_main_passes_empty_refs_when_plan_has_no_issues_key(tmp_path, monkeypatch):
+    commits, _ = _run_main_recording_plan_commits(tmp_path, monkeypatch, {})
+
+    assert commits["plan only-plan.md"] == ""
+
+
+def test_main_caps_refs_at_the_limit_and_warns_about_the_overflow(tmp_path, monkeypatch, capsys):
+    commits, _ = _run_main_recording_plan_commits(
+        tmp_path, monkeypatch, {"issues": list(range(1, 23))}
+    )
+
+    assert commits["plan only-plan.md"].count("Refs #") == run_next_plan._COMMIT_REF_MAX_COUNT
+    assert capsys.readouterr().err.count("over the cap") >= 1
+
+
+def _git_out(repo, *args):
+    return subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, text=True, check=True
+    ).stdout
+
+
+def test_main_commits_attempt_bookkeeping_with_the_plans_refs(tmp_path, monkeypatch):
+    """#94: account_attempt's prd.json write must not be left for exit_flush, which commits it
+    with no issue reference — /close-iteration Step 3 then flags that commit as untraceable."""
+    _init_repo(tmp_path)
+    plans_dir = tmp_path / "docs" / "agents" / "plans"
+    plans_dir.mkdir(parents=True)
+    (plans_dir / "only-plan.md").write_text("# Plan\n")
+    (plans_dir / "prd.json").write_text(json.dumps({
+        "plans": [{"file": "only-plan.md", "status": "pending", "attempts": 0,
+                   "blocked_by": [], "issues": [7, 8]}],
+        "integration_branch": "integration/x",
+        "sdlc_review_status": "complete",
+        "sdlc_review_rounds": 99,
+    }))
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "plans"], cwd=tmp_path, check=True)
+
+    prompts: list[str] = []
+    real_popen = subprocess.Popen
+
+    def popen(cmd, *a, **kw):
+        if cmd and cmd[0] == "claude":
+            return _FakePopen(prompts, plans_dir / "prd.json")
+        return real_popen(cmd, *a, **kw)
+
+    monkeypatch.setattr(sys, "argv", ["run-next-plan.py"])
+    monkeypatch.setattr(run_next_plan.shutil, "which", lambda _cmd: "/usr/bin/claude")
+    monkeypatch.setattr(run_next_plan.subprocess, "Popen", popen)
+    monkeypatch.setattr(run_next_plan, "invoke_claude", lambda prompt, repo_root: ("", 0))
+    monkeypatch.setattr(run_next_plan, "_push_branch", lambda *a, **kw: None)
+    monkeypatch.setattr(run_next_plan, "_register_exit_flush", lambda *a, **kw: None)
+    monkeypatch.setattr(run_next_plan, "sync_pr_closes", lambda *a, **kw: None)
+    monkeypatch.chdir(tmp_path)
+    run_next_plan._load_commit_ref_template.cache_clear()
+
+    with pytest.raises(SystemExit):
+        run_next_plan.main()
+    run_next_plan._log_fh = None
+
+    config_root = resolve_config_root(tmp_path)
+    assert not run_next_plan._working_tree_dirty(tmp_path, config_root), "exit_flush would commit"
+    assert json.loads((plans_dir / "prd.json").read_text())["plans"][0]["attempts"] == 1
+    last = _git_out(tmp_path, "log", "-1", "--format=%B", "--", "docs/agents/plans/prd.json")
+    assert last.rstrip().endswith("Refs #7, Refs #8")
+
+
+def _streak_after(outcomes_and_charges):
+    streak = 0
+    for outcome, charged in outcomes_and_charges:
+        streak = run_next_plan.next_unattributed_streak(streak, outcome, charged)
+    return streak
+
+
+def test_unattributed_streak_resets_when_a_session_advances_a_plan():
+    cap = run_next_plan.MAX_ATTEMPTS
+    silent = [("ok", None)] * (cap - 1)
+    assert _streak_after(silent + [("ok", "a.md")] + silent) == cap - 1
+
+
+def test_unattributed_streak_ignores_rate_limited_sessions():
+    assert _streak_after([("ok", None), ("rate_limit", None), ("ok", None)]) == 2
+    assert _streak_after([("ok", None), ("rate_limit", "a.md")]) == 1

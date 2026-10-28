@@ -101,7 +101,7 @@ Load this file first. Then load only the specific doc files relevant to your tas
 - [features/NAME.md](features/NAME.md) — one-line description
 
 ## Design & dev
-- [../DESIGN_BRIEF.md](../DESIGN_BRIEF.md) — full UI design system
+- [../meta/DESIGN_BRIEF.md](../meta/DESIGN_BRIEF.md) — full UI design system
 - [../DEVELOPMENT.md](../DEVELOPMENT.md) — local setup guide
 ```
 

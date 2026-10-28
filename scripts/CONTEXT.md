@@ -5,6 +5,9 @@ non-interactive orchestrator that drives an iteration's plans to completion by r
 spawning headless Claude sessions, then runs the SDLC review gate. Stdlib only, Python 3.10+,
 with a pytest suite under `tests/` and ruff configured in `pyproject.toml`.
 
+`clean-iteration-artifacts.py` is the helper `/close-iteration` Step 9e calls to remove the
+gitignored runtime artifacts after merge; it reuses the runner's path list and config-root rules.
+
 Per-repo review configuration lives in `<config-root>/ralph.json` (see
 [ADR 0002](../docs/adr/0002-review-recipe-is-repo-config.md)); `load_ralph_config` validates it
 once in `main()` and passes it down like `config_root`.
@@ -85,11 +88,12 @@ in `prd.json`'s `sdlc_deferred_issues`, never in `sdlc_finding_issues`, so it ca
 _Avoid_: leftover, backlog item
 
 **Finished iteration**:
-A `prd.json` whose integration PR was merged or closed, or whose pushed branch is gone from
+A `prd.json` whose same-repo integration PR was merged, or whose pushed branch is gone from
 origin (a `[gone]` upstream after a pruning fetch still counts as pushed). With no
 `pr_number`, the PR is found by a same-repo `--state all` lookup on the branch name.
-`_iteration_finished` makes the runner refuse it; `/plan-iteration` backs it up to
-`prd.json.<date>.bak` and writes a fresh one.
+`_iteration_state` makes the runner refuse it; `/plan-iteration` backs it up to
+`prd.json.<date>.bak` and writes a fresh one. A PR closed unmerged is not finished: the runner
+stops with a reopen-or-archive message, and `/plan-iteration` asks before archiving.
 _Avoid_: stale prd, old run
 
 ## Boundaries

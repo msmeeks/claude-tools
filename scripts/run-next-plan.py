@@ -56,6 +56,7 @@ import sys
 import tempfile
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import IO, Literal
@@ -167,6 +168,16 @@ def warn(msg: str) -> None:
     _log(f"WARN: {msg}")
 
 
+def _is_int_list(value: object) -> bool:
+    return isinstance(value, list) and all(
+        isinstance(n, int) and not isinstance(n, bool) for n in value
+    )
+
+
+def _is_str_list(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(x, str) for x in value)
+
+
 def _validate_prd_schema(data: object) -> dict:
     if not isinstance(data, dict):
         die("prd.json must contain a JSON object at the top level.")
@@ -189,9 +200,7 @@ def _validate_prd_schema(data: object) -> dict:
         if not isinstance(attempts, int) or isinstance(attempts, bool) or attempts < 0:
             die(f"prd.json: 'attempts' must be a non-negative int, got: {attempts!r}")
         blocked_by = entry.get("blocked_by")
-        if not isinstance(blocked_by, list) or not all(
-            isinstance(b, str) for b in blocked_by
-        ):
+        if not _is_str_list(blocked_by):
             die(f"prd.json: 'blocked_by' must be a list of strings, got: {blocked_by!r}")
     if "sdlc_review_status" in data and data["sdlc_review_status"] not in VALID_SDLC_REVIEW_STATUSES:
         die(f"prd.json: invalid 'sdlc_review_status' value: {data['sdlc_review_status']!r}")
@@ -205,23 +214,23 @@ def _validate_prd_schema(data: object) -> dict:
         die(f"prd.json: 'pr_number' must be an integer or null, got: {data['pr_number']!r}")
     if "sdlc_finding_issues" in data:
         sfi = data["sdlc_finding_issues"]
-        if not isinstance(sfi, list) or not all(isinstance(n, int) and not isinstance(n, bool) for n in sfi):
+        if not _is_int_list(sfi):
             die("prd.json: 'sdlc_finding_issues' must be a list of integers")
     if "sdlc_deferred_issues" in data:
         sdi = data["sdlc_deferred_issues"]
-        if not isinstance(sdi, list) or not all(isinstance(n, int) and not isinstance(n, bool) for n in sdi):
+        if not _is_int_list(sdi):
             die("prd.json: 'sdlc_deferred_issues' must be a list of integers")
     if "sdlc_round_filed_issues" in data:
         srfi = data["sdlc_round_filed_issues"]
-        if not isinstance(srfi, list) or not all(isinstance(n, int) and not isinstance(n, bool) for n in srfi):
+        if not _is_int_list(srfi):
             die("prd.json: 'sdlc_round_filed_issues' must be a list of integers")
     if "sdlc_review_completed_agents" in data:
         srca = data["sdlc_review_completed_agents"]
-        if not isinstance(srca, list) or not all(isinstance(a, str) for a in srca):
+        if not _is_str_list(srca):
             die("prd.json: 'sdlc_review_completed_agents' must be a list of strings")
     if "feature_branches" in data:
         fb = data["feature_branches"]
-        if not isinstance(fb, list) or not all(isinstance(b, str) for b in fb):
+        if not _is_str_list(fb):
             die("prd.json: 'feature_branches' must be a list of strings")
     if "smoke_test" in data and data["smoke_test"] is not None and not isinstance(
         data["smoke_test"], str
@@ -354,11 +363,19 @@ def _find_plan_entry(data: dict, plan_file: str) -> dict:
     die(f"No plan entry found for file: {plan_file}")
 
 
-def increment_attempts(path: Path, plan_file: str) -> None:
+def increment_attempts(
+    path: Path, plan_file: str, pre_run_attempts: dict[str, int] | None = None
+) -> None:
+    """Add one attempt to ``plan_file``. With ``pre_run_attempts``, first put every listed
+    plan back to its pre-session count: the runner is the only writer of ``attempts``, and
+    sessions marking a plan done have bumped it too, double-charging the run."""
     plans_dir = path.parent
     _resolve_plan_path(plans_dir, plan_file)
 
     def mutate(data: dict) -> None:
+        for entry in data["plans"]:
+            if pre_run_attempts and entry["file"] in pre_run_attempts:
+                entry["attempts"] = pre_run_attempts[entry["file"]]
         entry = _find_plan_entry(data, plan_file)
         entry["attempts"] += 1
 
@@ -472,13 +489,22 @@ def account_attempt(
     worked = _attribute_worked_plan(prd_path, pre_run_status, output_text, eligible_plans)
     if worked is None:
         return None, False
-    increment_attempts(prd_path, worked)
+    increment_attempts(prd_path, worked, {p["file"]: p["attempts"] for p in eligible_plans})
     entry = _find_plan_entry(load_prd(prd_path), worked)
     if entry["attempts"] > MAX_ATTEMPTS and entry["status"] != "done":
         mark_stalled(prd_path, worked)
         warn(f"Plan {worked} exceeded {MAX_ATTEMPTS} attempts — marked stalled.")
         return worked, True
     return worked, False
+
+
+def next_unattributed_streak(streak: int, outcome: str, charged: str | None) -> int:
+    """Count consecutive sessions that advanced no plan. account_attempt charges nothing for
+    them, so without this a session that dies silently is relaunched forever (#114). A
+    ``rate_limit`` outcome did no work, so it neither counts nor resets the streak."""
+    if outcome == "rate_limit":
+        return streak
+    return 0 if charged else streak + 1
 
 
 def scan_output(text: str, exit_code: int) -> Literal["complete", "rate_limit", "error", "ok"]:
@@ -563,7 +589,8 @@ Do not push —
 the runner publishes the branch once per iteration, so a mid-plan push wastes a CI run.
 Update {plans}/progress.md — append a timestamped entry with the plan filename and
 a brief summary of what you did.
-Update {plans}/prd.json — set status to "done" for the completed plan.
+Update {plans}/prd.json — set status to "done" for the completed plan. Leave `attempts`
+alone: the runner counts attempts itself.
 
 ONLY DO ONE PLAN AT A TIME.
 Use /tdd to drive implementation (write failing test first).
@@ -576,20 +603,29 @@ Integration branch: {integration_branch}
 Repo root: {repo_root}"""
 
 
-ISSUE_NUMBER_RE = re.compile(r"^ISSUE:\s*#?(\d+)$", re.MULTILINE)
-MINOR_ROLLUP_RE = re.compile(r"^MINOR_ROLLUP:\s*#?(\d+)\s*$", re.MULTILINE)
+def _is_issue_number(x: object) -> bool:
+    # `type(x) is int`, not isinstance: bool is an int subclass and must be excluded.
+    return type(x) is int and 0 < x < 10**9
+
+
+# [0-9] not \d (which matches non-ASCII digits); {1,9} keeps int() far from its digit limit.
+# [ \t] not \s so a match can't span lines; \r? tolerates CRLF output.
+_ISSUE_NUM = r"#?([0-9]{1,9})"
+ISSUE_NUMBER_RE = re.compile(rf"^ISSUE:[ \t]*{_ISSUE_NUM}\r?$", re.MULTILINE)
+MINOR_ROLLUP_RE = re.compile(rf"^MINOR_ROLLUP:[ \t]*{_ISSUE_NUM}[ \t]*\r?$", re.MULTILINE)
 PLAN_ISSUE_RE = re.compile(r"#(\d+)")
 
 
 def parse_issue_numbers(output: str) -> list[str]:
-    return [f"#{m.group(1)}" for m in ISSUE_NUMBER_RE.finditer(output)]
+    nums = (int(m.group(1)) for m in ISSUE_NUMBER_RE.finditer(output))
+    return [f"#{n}" for n in nums if _is_issue_number(n)]
 
 
 def parse_minor_rollup(text: str) -> int | None:
     """The rollup issue number (last `MINOR_ROLLUP:` line wins), or None if absent or 0.
     Kept apart from parse_issue_numbers so a rollup can never reach a `Closes` line."""
     matches = MINOR_ROLLUP_RE.findall(text)
-    if not matches or int(matches[-1]) == 0:
+    if not matches or not _is_issue_number(int(matches[-1])):
         return None
     return int(matches[-1])
 
@@ -615,14 +651,15 @@ def resolve_pr_number(
     """Locate the integration PR: prefer prd.json's captured `pr_number`, otherwise look it
     up by head branch. Returns None if neither resolves.
 
-    The branch lookup sees open PRs only, unless `include_finished` — the finished-iteration
+    The branch lookup sees open PRs only, unless `include_finished` — the iteration-state
     guard's case — which also finds merged and closed ones, keeping only same-repository PRs
     whose head is this branch and preferring an open one. A branch name reused after an
     earlier iteration's PR merged would match that old PR; integration branch names carry a
     date, and /plan-iteration records pr_number, so the lookup rarely runs at all."""
     pr_number = data.get("pr_number")
-    if isinstance(pr_number, int) and not isinstance(pr_number, bool):
-        return pr_number
+    if "pr_number" in data and pr_number is not None:
+        # The number reaches `gh` argv as a string, so anything but a sane int is refused.
+        return pr_number if _is_issue_number(pr_number) else None
     if include_finished:
         cmd = [
             "gh", "pr", "list", "--head", integration_branch, "--state", "all",
@@ -630,19 +667,30 @@ def resolve_pr_number(
         ]
     else:
         cmd = ["gh", "pr", "list", "--head", integration_branch, "--json", "number", "--limit", "1"]
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True)
+    except OSError as e:
+        warn(f"resolve_pr_number: unusable gh reply ({type(e).__name__}) — treating as no PR")
+        return None
     if r.returncode != 0 or not r.stdout.strip():
         return None
-    prs = json.loads(r.stdout)
-    if include_finished:
-        prs = [
-            pr for pr in prs
-            if pr.get("headRefName") == integration_branch and not pr.get("isCrossRepository")
-        ]
-        prs.sort(key=lambda pr: pr.get("state") != "OPEN")
-    if not prs:
+    try:
+        prs = json.loads(r.stdout)
+        if include_finished:
+            prs = [
+                pr for pr in prs
+                if pr.get("headRefName") == integration_branch
+                and not pr.get("isCrossRepository")
+            ]
+            prs.sort(key=lambda pr: pr.get("state") != "OPEN")
+        if not prs:
+            return None
+        number = prs[0]["number"]
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError) as e:
+        # Type only, never stdout: the reply is untrusted and logs are retained.
+        warn(f"resolve_pr_number: unusable gh reply ({type(e).__name__}) — treating as no PR")
         return None
-    return prs[0]["number"]
+    return number if _is_issue_number(number) else None
 
 
 def _branch_is_pushed(integration_branch: str) -> bool:
@@ -672,13 +720,24 @@ def _upstream_gone(integration_branch: str) -> bool:
     return r.returncode == 0 and r.stdout.strip() == "[gone]"
 
 
-def _iteration_finished(data: dict, integration_branch: str) -> str | None:
-    """Why this prd.json's iteration is over, or None if it isn't (or can't be told).
+@dataclass(frozen=True)
+class IterationState:
+    """`finished`: the iteration is over, so /plan-iteration may archive it. `closed`: its PR
+    was closed unmerged — unresolved, the user decides between reopening and archiving."""
 
-    Over means the integration PR was merged or closed from `integration_branch` (same
+    kind: Literal["finished", "closed"]
+    reason: str
+
+
+def _iteration_state(data: dict, integration_branch: str) -> IterationState | None:
+    """The iteration-state guard: why this prd.json's iteration can't continue, or None if it
+    can (or can't be told).
+
+    `finished` means the integration PR was merged from `integration_branch` (same
     repository), or the branch was pushed and is now gone from origin. A never-pushed or
-    unpushed-ahead branch is not "gone". A lookup failure warns and returns None so offline
-    runs aren't blocked. /plan-iteration describes the same rule (Step 1.2)."""
+    unpushed-ahead branch is not "gone". `closed` means the PR was closed unmerged; it takes
+    precedence over a branch gone from origin. A lookup failure warns and returns None so
+    offline runs aren't blocked. /plan-iteration describes the same rule (Step 1.2)."""
     try:
         pr_number = resolve_pr_number(data, integration_branch, include_finished=True)
         if pr_number is not None:
@@ -695,9 +754,10 @@ def _iteration_finished(data: dict, integration_branch: str) -> str | None:
                     and pr.get("headRefName") == integration_branch
                     and not pr.get("isCrossRepository")
                 ):
-                    return f"PR #{pr_number} was {state.lower()}"
+                    kind = "finished" if state == "MERGED" else "closed"
+                    return IterationState(kind, f"PR #{pr_number} was {state.lower()}")
             else:
-                warn(f"finished-iteration check: gh pr view #{pr_number} failed — continuing")
+                warn(f"iteration-state check: gh pr view #{pr_number} failed — continuing")
         if not (_branch_is_pushed(integration_branch) or _upstream_gone(integration_branch)):
             return None
         r = subprocess.run(
@@ -706,11 +766,13 @@ def _iteration_finished(data: dict, integration_branch: str) -> str | None:
             text=True,
         )
         if r.returncode == 2:
-            return f"branch {integration_branch} no longer exists on origin"
+            return IterationState("finished", f"branch {integration_branch} no longer exists on origin")
         if r.returncode != 0:
-            warn(f"finished-iteration check: git ls-remote exited {r.returncode} — continuing")
-    except (json.JSONDecodeError, KeyError, OSError, subprocess.CalledProcessError) as e:
-        warn(f"finished-iteration check failed ({type(e).__name__}) — continuing")
+            warn(f"iteration-state check: git ls-remote exited {r.returncode} — continuing")
+    except (
+        ValueError, KeyError, TypeError, AttributeError, OSError, subprocess.CalledProcessError
+    ) as e:
+        warn(f"iteration-state check failed ({type(e).__name__}) — continuing")
     return None
 
 
@@ -869,8 +931,12 @@ def _validate_reviewer_list(value: object, where: str) -> list[str]:
 _COMMIT_REF_SECTION = "## Commit references"
 _COMMIT_REF_READ_CAP = 64 * 1024
 _COMMIT_REF_MAX_LEN = 40
+_COMMIT_REF_MAX_COUNT = 20
 _COMMIT_REF_RE = re.compile(r"[A-Za-z0-9 #:.,_\-]*\{n\}[A-Za-z0-9 #:.,_\-]*")
-_MAX_REFS = 20
+# Letter-bounded, not \b: \b misses `Fixes_#{n}`, `Fix#{n}` and `Closes#{n}`.
+_CLOSING_KEYWORD_RE = re.compile(
+    r"(?<![A-Za-z])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?![A-Za-z])", re.IGNORECASE
+)
 
 
 def _commit_ref_template_problem(line: str) -> str | None:
@@ -884,6 +950,10 @@ def _commit_ref_template_problem(line: str) -> str | None:
         return "no {n}"
     if not _COMMIT_REF_RE.fullmatch(line):
         return "disallowed characters"
+    if keyword := _CLOSING_KEYWORD_RE.search(line):
+        # A closing keyword would make a commit on the integration branch close the issue
+        # at merge, before the PR's own `Closes` block has vouched for it.
+        return f"closing keyword '{keyword.group().lower()}'"
     return None
 
 
@@ -904,18 +974,15 @@ def _load_commit_ref_template(config_root: Path) -> str:
         start = lines.index(_COMMIT_REF_SECTION) + 1
     except ValueError:
         return DEFAULT_COMMIT_REF_TEMPLATE
-    for line in lines[start:]:
-        if line.strip():
-            candidate = line.strip()
-            break
-    else:
+    candidate = next((line.strip() for line in lines[start:] if line.strip()), None)
+    if candidate is None:
         return DEFAULT_COMMIT_REF_TEMPLATE
     problem = _commit_ref_template_problem(candidate)
     if problem:
         # resolve_config_root only ever returns <repo>/meta or <repo>/docs/agents.
         layout = CONFIG_ROOT_OLD if config_root.name == CONFIG_ROOT_OLD else CONFIG_ROOT_NEW
         warn(
-            f"{layout}/{path.name}: commit reference template invalid ({problem}); "
+            f"{layout}/{path.name}: '{_COMMIT_REF_SECTION}' template invalid ({problem}); "
             f"using '{DEFAULT_COMMIT_REF_TEMPLATE}'"
         )
         return DEFAULT_COMMIT_REF_TEMPLATE
@@ -929,16 +996,15 @@ def _coerce_refs(values: object) -> list[int]:
     kept: list[int] = []
     items = list(values) if isinstance(values, (list, tuple)) else []
     for x in items:
-        # `type(x) is int`, not isinstance: bool is an int subclass and must be excluded.
-        if type(x) is int and 0 < x < 10**9 and x not in kept:
+        if _is_issue_number(x) and x not in kept:
             kept.append(x)
     invalid = len(items) - len(kept)
-    overflow = max(0, len(kept) - _MAX_REFS)
+    overflow = max(0, len(kept) - _COMMIT_REF_MAX_COUNT)
     if invalid:
         warn(f"issue references: dropped {invalid} invalid or duplicate — continuing without them")
     if overflow:
-        warn(f"issue references: {overflow} over the cap of {_MAX_REFS} — dropped")
-    return kept[:_MAX_REFS]
+        warn(f"issue references: {overflow} over the cap of {_COMMIT_REF_MAX_COUNT} — dropped")
+    return kept[:_COMMIT_REF_MAX_COUNT]
 
 
 def _format_refs(template: str, nums: list[int]) -> str:
@@ -1182,6 +1248,12 @@ def _push_branch(repo_root: Path, branch: str) -> None:
         info(f"Pushed {branch} to origin.")
 
 
+def _refs_instruction(refs: str) -> str:
+    """The bare sentence asking Claude to end a commit with the already-formatted `refs` line;
+    callers add their own separator. Never formats the template itself."""
+    return f"End the commit message with this last line: {refs}" if refs else ""
+
+
 def ensure_committed(
     repo_root: Path,
     config_root: Path,
@@ -1196,9 +1268,7 @@ def ensure_committed(
     the already-formatted issue reference line (see `_format_refs`); empty means none."""
     if _working_tree_dirty(repo_root, config_root):
         warn(f"Uncommitted changes detected after {context} — asking Claude to commit them.")
-        refs_instruction = (
-            f" End the commit message with this last line: {refs}" if refs else ""
-        )
+        refs_instruction = f" {_refs_instruction(refs)}" if refs else ""
         commit_prompt = f"""git status shows uncommitted changes after {context}. Commit all
 outstanding changes to {integration_branch} with an appropriate descriptive commit message
 (git add, then git commit).{refs_instruction} Do not modify {config_root_rel(repo_root, config_root)}/plans/prd.json's sdlc_review_status field or
@@ -1222,10 +1292,15 @@ any existing plan entry. Do not push."""
 
 
 def commit_attempt_bookkeeping(repo_root: Path, prd_path: Path, plan_file: str, refs: str) -> None:
-    """Commit account_attempt's prd.json write with the plan's refs. Left uncommitted, it
-    would ride into exit_flush's ref-less wip commit, which /close-iteration Step 3 flags as
-    untraceable (#94). Commits prd.json alone — no Claude call, nothing else swept in — and
-    is a no-op when the file is unchanged or ignored."""
+    """Commit account_attempt's prd.json write with the plan's refs (see `_commit_prd_only`)."""
+    _commit_prd_only(repo_root, prd_path, f"chore: record attempt for plan {plan_file}", refs)
+
+
+def _commit_prd_only(repo_root: Path, prd_path: Path, subject: str, refs: str) -> None:
+    """Commit a runner-side prd.json write with `refs`. Left uncommitted, it would ride into
+    exit_flush's ref-less wip commit, which /close-iteration Step 3 flags as untraceable
+    (#94). Commits prd.json alone — no Claude call, nothing else swept in — and is a no-op
+    when the file is unchanged or ignored."""
     status = subprocess.run(
         ["git", "status", "--porcelain", "--", str(prd_path)],
         capture_output=True,
@@ -1234,7 +1309,7 @@ def commit_attempt_bookkeeping(repo_root: Path, prd_path: Path, plan_file: str, 
     )
     if status.returncode != 0 or not status.stdout.strip():
         return
-    message = f"chore: record attempt for plan {plan_file}"
+    message = subject
     if refs:
         message += f"\n\n{refs}"
     subprocess.run(["git", "add", "--", str(prd_path)], cwd=repo_root, check=True)
@@ -1254,7 +1329,9 @@ def exit_flush(repo_root: Path, config_root: Path, integration_branch: str) -> N
     is the value `main` resolved at startup, never re-resolved here, so this exit path can
     never itself trigger the both-layouts-present abort. Any git failure is swallowed: an exit
     path is the worst place to raise. For the same reason its wip message carries no issue
-    reference, unlike `ensure_committed`: resolving one means reading prd.json."""
+    reference, unlike `ensure_committed`: resolving one means reading prd.json (see
+    docs/features/run-next-plan.md, "exit paths must not raise"). Registered by `main` after
+    the iteration-state guard and not under `--dry-run`."""
     try:
         if _working_tree_dirty(repo_root, config_root):
             warn("Uncommitted changes at exit — auto-committing so no work is lost.")
@@ -1328,6 +1405,26 @@ def _compute_review_range(repo_root: Path, data: dict, default_branch: str) -> s
     return f"{default_branch}...HEAD"
 
 
+def _range_is_empty(repo_root: Path, review_range: str, config_root: Path) -> bool:
+    """True if `review_range` has no net diff (e.g. a commit plus its revert). The runner's
+    own bookkeeping (prd.json, progress.md) is ignored: it lands in every range, so counting
+    it would mean the check never fires (#115). Docs-phase output still counts. Any failure
+    to tell is treated as "not empty" so a broken check can never skip a review."""
+    plans_rel = f"{config_root_rel(repo_root, config_root)}/plans"
+    bookkeeping = [f":(exclude){plans_rel}/{name}" for name in ("prd.json", "progress.md")]
+    try:
+        r = subprocess.run(
+            ["git", "diff", "--quiet", review_range, "--", ".", *bookkeeping], cwd=repo_root
+        )
+    except OSError as e:
+        warn(f"_range_is_empty: {type(e).__name__} — reviewing anyway")
+        return False
+    if r.returncode in (0, 1):
+        return r.returncode == 0
+    warn(f"_range_is_empty: git diff rc={r.returncode} — reviewing anyway")
+    return False
+
+
 def get_default_branch() -> str:
     r = subprocess.run(
         ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
@@ -1357,7 +1454,7 @@ def run_docs_phase(prd_path: Path, repo_root: Path, config_root: Path) -> None:
     default_branch = get_default_branch()
 
     refs = _pr_refs_line(data, config_root, integration_branch)
-    refs_rule = f"\n   End the commit message with this last line: {refs}" if refs else ""
+    refs_rule = f"\n   {_refs_instruction(refs)}" if refs else ""
     docs_prompt = f"""The integration branch {integration_branch} has completed all plans and SDLC review.
 
 Update documentation and help resources for all changes in this iteration:
@@ -1469,7 +1566,19 @@ def update_pr_description(prd_path: Path, repo_root: Path, config_root: Path) ->
         warn(f"update_pr_description: couldn't read PR #{pr_number}'s body — leaving it unchanged")
         return
     new_body = _scrub_credentials(splice_summary_block(body, summary))
-    subprocess.run(["gh", "pr", "edit", str(pr_number), "--body", new_body], check=True)
+    # Never interpolate the exception or argv: both carry the whole PR body.
+    prefix = f"update_pr_description: gh pr edit #{pr_number} failed — PR summary not updated"
+    try:
+        r = subprocess.run(
+            ["gh", "pr", "edit", str(pr_number), "--body", new_body], capture_output=True, text=True
+        )
+    except OSError as e:
+        warn(f"{prefix}: {type(e).__name__}")
+        return
+    if r.returncode != 0:
+        detail = _scrub_credentials(r.stderr.strip()).splitlines()
+        warn(f"{prefix}: {detail[0] if detail else f'rc={r.returncode}'}")
+        return
     info(f"update_pr_description: PR #{pr_number} summary updated")
 
 
@@ -1756,7 +1865,7 @@ it is left for a human to schedule, not planned or fixed in this iteration."""
         # does not fix (final-round findings, minor rollups). /close-iteration reconciles
         # against it so it neither re-files them nor reports "Issues left open: none".
         deferred = list(data.get("sdlc_deferred_issues", []))
-        for n in ([*issue_ints] if final_round else []) + ([rollup] if rollup else []):
+        for n in (issue_ints if final_round else []) + ([rollup] if rollup else []):
             if n not in deferred:
                 deferred.append(n)
         if deferred:
@@ -1801,23 +1910,36 @@ def run_sdlc_review_gate(
         f"{datetime.now().strftime('%Y_%m_%d_T%H_%M_%S')}-triage.log"
     )
 
-    # Empty increment: a re-armed round whose baseline already equals HEAD has nothing new to
-    # review. No-op gracefully — mark complete (baseline unchanged) rather than run reviewers
-    # on an empty diff.
+    # Empty increment: nothing to review when the baseline already equals HEAD, or when the
+    # range has commits but no net diff (a commit plus its revert, a no-diff merge). No-op
+    # gracefully — mark complete rather than run reviewers on an empty diff. Accepted
+    # tradeoff (hd-tech-standards#77): code added and reverted inside the range is never
+    # reviewed.
     gate_data = load_prd(prd_path)
-    commit_refs = _pr_refs_line(gate_data, config_root, gate_data["integration_branch"])
     baseline = gate_data.get("last_reviewed_sha")
     head_sha = _git_head_sha(repo_root)
-    if baseline and head_sha and baseline == head_sha:
-        info("SDLC review gate: no new commits since the last review — nothing to review.")
+    gate_range = _compute_review_range(repo_root, gate_data, default_branch)
+    if (baseline and head_sha and baseline == head_sha) or _range_is_empty(
+        repo_root, gate_range, config_root
+    ):
+        scope = "since the last review" if baseline else "in the review range"
+        info(f"SDLC review gate: no net changes {scope} — nothing to review.")
 
         def _mark_empty_complete(data: dict) -> None:
             data["sdlc_review_status"] = "complete"
             data["sdlc_review_completed_agents"] = []
             data["sdlc_round_filed_issues"] = []
+            if head_sha:
+                data["last_reviewed_sha"] = head_sha
 
         _with_prd_lock(prd_path, _mark_empty_complete)
+        _commit_prd_only(
+            repo_root, prd_path, "chore: record SDLC review round with no net changes",
+            _pr_refs_line(gate_data, config_root, gate_data["integration_branch"]),
+        )
         return "complete"
+
+    commit_refs = _pr_refs_line(gate_data, config_root, gate_data["integration_branch"])
 
     # Rotate the findings file once at the start of a fresh round (no reviewer has run yet),
     # so a prior round's leftover findings can't be re-filed as duplicate issues (#48). When
@@ -1831,7 +1953,10 @@ def run_sdlc_review_gate(
         attempt += 1
         if attempt > MAX_REVIEW_ATTEMPTS:
             integration_branch = load_prd(prd_path)["integration_branch"]
-            ensure_committed(repo_root, config_root, integration_branch, "SDLC review (interrupted)", refs=commit_refs)
+            ensure_committed(
+                repo_root, config_root, integration_branch, "SDLC review (interrupted)",
+                refs=commit_refs,
+            )
             warn(
                 f"SDLC review gate still session/usage-limited after {MAX_REVIEW_ATTEMPTS} "
                 "attempts — giving up for now; review left incomplete (progress saved). "
@@ -1868,7 +1993,10 @@ def run_sdlc_review_gate(
             break
         except ReviewInterrupted as exc:
             integration_branch = load_prd(prd_path)["integration_branch"]
-            ensure_committed(repo_root, config_root, integration_branch, "SDLC review (interrupted)", refs=commit_refs)
+            ensure_committed(
+                repo_root, config_root, integration_branch, "SDLC review (interrupted)",
+                refs=commit_refs,
+            )
             wait_secs = _parse_retry_after_text(exc.output) + 60
             resume_str = (datetime.now() + timedelta(seconds=wait_secs)).strftime("%H:%M:%S")
             switch = (
@@ -1885,7 +2013,9 @@ def run_sdlc_review_gate(
             continue
 
     integration_branch = load_prd(prd_path)["integration_branch"]
-    ensure_committed(repo_root, config_root, integration_branch, "SDLC review triage", refs=commit_refs)
+    ensure_committed(
+        repo_root, config_root, integration_branch, "SDLC review triage", refs=commit_refs
+    )
 
     # Record the reviewed HEAD as the new baseline so the next round diffs from here, and clear
     # the per-round bookkeeping so a fresh round (re-armed after 'complete') starts clean
@@ -1911,7 +2041,9 @@ def run_sdlc_review_gate(
     run_docs_phase(prd_path, repo_root, config_root)
     # update_pr_description writes pr-summary.md after the docs-phase commit, so sweep it
     # up here; then publish the whole round in a single push.
-    ensure_committed(repo_root, config_root, integration_branch, "SDLC review docs phase", refs=commit_refs)
+    ensure_committed(
+        repo_root, config_root, integration_branch, "SDLC review docs phase", refs=commit_refs
+    )
     flush_push(repo_root, integration_branch)
     return "complete"
 
@@ -2178,10 +2310,15 @@ def main() -> None:
     integration_branch = resolve_integration_branch(load_prd(prd_path), args.integration_branch)
     info(f"Integration branch: {integration_branch}")
     # Before the exit flush is registered: its atexit push would recreate a deleted branch.
-    finished = _iteration_finished(load_prd(prd_path), integration_branch)
-    if finished:
+    state = _iteration_state(load_prd(prd_path), integration_branch)
+    if state is not None and state.kind == "closed":
         die(
-            f"prd.json at {prd_path} belongs to a finished iteration ({finished}); "
+            f"prd.json at {prd_path} belongs to an unresolved iteration ({state.reason}); "
+            "reopen the PR to continue, or run /plan-iteration to archive it and start a new one"
+        )
+    if state is not None:
+        die(
+            f"prd.json at {prd_path} belongs to a finished iteration ({state.reason}); "
             "run /plan-iteration to start a new one"
         )
     _register_exit_flush(repo_root, config_root, integration_branch, args.dry_run)
@@ -2189,6 +2326,7 @@ def main() -> None:
     # Latched once the round cap declines a re-arm, so the policy-stop line is logged once
     # rather than on every pass through the remaining plans.
     rearm_suppressed = False
+    unattributed_streak = 0
 
     while True:
         data = load_prd(prd_path)
@@ -2395,6 +2533,13 @@ def main() -> None:
             _format_refs(commit_ref_template, _coerce_refs(charged_entry.get("issues") or [])),
         )
         flush_push(repo_root, integration_branch)
+        unattributed_streak = next_unattributed_streak(unattributed_streak, outcome, charged)
+        if unattributed_streak >= MAX_ATTEMPTS:
+            die(
+                f"{unattributed_streak} consecutive sessions made no attributable progress "
+                "(no plan flipped to done, no <plan> sigil) — stopping; check the session logs "
+                f"in {logs_dir}"
+            )
         if stalled:
             continue
         data = load_prd(prd_path)

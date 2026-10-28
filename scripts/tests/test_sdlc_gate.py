@@ -233,6 +233,9 @@ def _fake_subprocess_run(cmd, **kwargs):
         # Baseline reachability: HEAD and the known prior baseline resolve; anything else 404s.
         reachable = FAKE_HEAD_SHA in cmd[-1] or FAKE_BASELINE_SHA in cmd[-1]
         return type("R", (), {"returncode": 0 if reachable else 1, "stdout": ""})()
+    if cmd[:3] == ["git", "diff", "--quiet"]:
+        # Default "has changes" so every gate test reviews; see _fake_run_with_diff.
+        return type("R", (), {"returncode": 1, "stdout": ""})()
     if cmd[:2] == ["git", "symbolic-ref"]:
         return type("R", (), {"returncode": 0, "stdout": "refs/remotes/origin/main\n"})()
     if cmd[:2] == ["git", "status"]:
@@ -245,6 +248,19 @@ def _fake_subprocess_run(cmd, **kwargs):
         # Not ahead of upstream — _push_branch should no-op rather than actually pushing.
         return type("R", (), {"returncode": 0, "stdout": "0\n"})()
     raise AssertionError(f"unexpected subprocess.run call: {cmd}")
+
+
+def _fake_run_with_diff(rc=1, exc=None):
+    """`_fake_subprocess_run` with `git diff --quiet` answering `rc`, or raising `exc`."""
+
+    def run(cmd, **kwargs):
+        if cmd[:3] == ["git", "diff", "--quiet"]:
+            if exc:
+                raise exc
+            return type("R", (), {"returncode": rc, "stdout": ""})()
+        return _fake_subprocess_run(cmd, **kwargs)
+
+    return run
 
 
 def test_run_sdlc_review_gate_marks_status_complete_after_running(tmp_path):
@@ -1342,10 +1358,6 @@ def test_parse_minor_rollup_rejects_zero_and_trailing_junk_and_absence():
     assert run_next_plan.parse_minor_rollup("ISSUE: #5") is None
 
 
-def test_rollup_number_never_reaches_issue_parsing():
-    assert run_next_plan.parse_issue_numbers("ISSUE: #11\nMINOR_ROLLUP: #12\n") == ["#11"]
-
-
 def test_rearm_keeps_deferred_issues(tmp_path):
     prd_path = tmp_path / "prd.json"
     data = _completed_round_prd(1)
@@ -1431,11 +1443,11 @@ def _run_gate_recording_commits(tmp_path, *, interrupt_first_review, prd_extra=N
         run_next_plan.subprocess, "run", side_effect=_fake_subprocess_run
     ):
         run_next_plan.run_sdlc_review_gate(prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path))
-    return dict(commits), commits, prompts
+    return dict(commits), prompts
 
 
 def test_gate_passes_pr_ref_to_interrupt_triage_and_docs_commits(tmp_path):
-    by_context, commits, prompts = _run_gate_recording_commits(
+    by_context, prompts = _run_gate_recording_commits(
         tmp_path, interrupt_first_review=True, prd_extra={"pr_number": 4242}
     )
 
@@ -1446,7 +1458,199 @@ def test_gate_passes_pr_ref_to_interrupt_triage_and_docs_commits(tmp_path):
 
 def test_gate_commits_carry_empty_refs_when_no_pr_resolves(tmp_path):
     # gh finds no PR for the branch (empty stdout) and prd.json has no pr_number.
-    by_context, _, _ = _run_gate_recording_commits(tmp_path, interrupt_first_review=False)
+    by_context, _ = _run_gate_recording_commits(tmp_path, interrupt_first_review=False)
 
     assert by_context["SDLC review triage"] == ""
     assert by_context["SDLC review docs phase"] == ""
+
+
+# --- net-empty review range ------------------------------------------------------------------
+
+
+def _gate_with_diff(tmp_path, prd, run, ralph_config=None):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, prd)
+    calls = []
+
+    def recording(prompt, repo_root):
+        calls.append(prompt)
+        return _fake_gate_claude(prompt, repo_root)
+
+    with patch.object(run_next_plan, "invoke_claude", side_effect=recording), patch.object(
+        run_next_plan.subprocess, "run", side_effect=run
+    ):
+        result = run_next_plan.run_sdlc_review_gate(
+            prd_path, tmp_path, run_next_plan.resolve_config_root(tmp_path), ralph_config
+        )
+    return result, calls, load_prd(prd_path)
+
+
+def _prd_with_baseline():
+    data = _valid_prd()
+    data["last_reviewed_sha"] = FAKE_BASELINE_SHA
+    data["sdlc_review_rounds"] = 1
+    return data
+
+
+def test_gate_skips_a_range_with_commits_but_no_net_diff(tmp_path, capsys):
+    result, calls, loaded = _gate_with_diff(tmp_path, _prd_with_baseline(), _fake_run_with_diff(rc=0))
+
+    assert result == "complete"
+    assert calls == []
+    assert loaded["last_reviewed_sha"] == FAKE_HEAD_SHA
+    assert loaded["sdlc_review_rounds"] == 1
+    assert loaded["sdlc_review_status"] == "complete"
+    assert "SDLC review gate: no net changes since the last review — nothing to review." in capsys.readouterr().out
+
+
+def test_gate_net_empty_first_review_sets_the_baseline(tmp_path, capsys):
+    result, calls, loaded = _gate_with_diff(tmp_path, _valid_prd(), _fake_run_with_diff(rc=0))
+
+    assert result == "complete"
+    assert calls == []
+    assert loaded["last_reviewed_sha"] == FAKE_HEAD_SHA
+    assert "no net changes in the review range" in capsys.readouterr().out
+
+
+def test_gate_net_empty_range_leaves_the_findings_file_and_commits_alone(tmp_path):
+    findings = run_next_plan.resolve_config_root(tmp_path) / "sdlc-review-findings.md"
+    findings.parent.mkdir(parents=True, exist_ok=True)
+    findings.write_text("keep me")
+    prd = _prd_with_baseline()
+
+    with patch.object(run_next_plan, "ensure_committed") as committed:
+        _gate_with_diff(tmp_path, prd, _fake_run_with_diff(rc=0))
+
+    assert findings.read_text() == "keep me"
+    committed.assert_not_called()
+
+
+def test_gate_reviews_a_range_with_a_net_diff(tmp_path):
+    result, calls, loaded = _gate_with_diff(tmp_path, _prd_with_baseline(), _fake_run_with_diff(rc=1))
+
+    assert result == "complete"
+    assert any("Dispatch these review agents" in p for p in calls)
+    assert loaded["sdlc_review_rounds"] == 2
+
+
+@pytest.mark.parametrize("failure", [{"rc": 128}, {"exc": OSError("boom secret")}])
+def test_gate_reviews_anyway_when_the_diff_check_fails(tmp_path, capsys, failure):
+    result, calls, loaded = _gate_with_diff(
+        tmp_path, _prd_with_baseline(), _fake_run_with_diff(**failure)
+    )
+
+    assert result == "complete"
+    assert any("Dispatch these review agents" in p for p in calls)
+    err = capsys.readouterr().err
+    assert "_range_is_empty" in err and "reviewing anyway" in err
+    assert "secret" not in err
+
+
+def test_gate_net_empty_range_is_a_no_op_under_the_skill_recipe(tmp_path):
+    ralph = {"review": {"recipe": "skill", "skill": "review", "agents": []}}
+    result, calls, _ = _gate_with_diff(
+        tmp_path, _prd_with_baseline(), _fake_run_with_diff(rc=0), ralph
+    )
+
+    assert result == "complete"
+    assert calls == []
+
+
+def _repo_with_plans(tmp_path):
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
+    for k, v in (("user.email", "t@example.com"), ("user.name", "T")):
+        subprocess.run(["git", "config", k, v], cwd=tmp_path, check=True)
+    plans = tmp_path / "docs" / "agents" / "plans"
+    plans.mkdir(parents=True)
+    for f in ("prd.json", "progress.md"):
+        (plans / f).write_text("0\n")
+    (tmp_path / "a").write_text("1\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-qm", "base"], cwd=tmp_path, check=True)
+    return tmp_path / "docs" / "agents"
+
+
+def _commit_changes(repo, *rel_paths):
+    for rel in rel_paths:
+        (repo / rel).write_text("changed\n")
+    subprocess.run(["git", "commit", "-qam", "change"], cwd=repo, check=True)
+
+
+def test_range_is_empty_is_true_for_a_commit_and_its_revert(tmp_path):
+    config_root = _repo_with_plans(tmp_path)
+    _commit_changes(tmp_path, "a")
+
+    assert run_next_plan._range_is_empty(tmp_path, "HEAD~1..HEAD", config_root) is False
+
+    subprocess.run(["git", "revert", "--no-edit", "HEAD"], cwd=tmp_path, check=True, capture_output=True)
+
+    assert run_next_plan._range_is_empty(tmp_path, "HEAD~2..HEAD", config_root) is True
+
+
+def test_range_is_empty_ignores_runner_bookkeeping(tmp_path):
+    config_root = _repo_with_plans(tmp_path)
+    _commit_changes(tmp_path, "docs/agents/plans/prd.json", "docs/agents/plans/progress.md")
+
+    assert run_next_plan._range_is_empty(tmp_path, "HEAD~1..HEAD", config_root) is True
+
+
+def test_iteration_guard_survives_a_non_object_pr_view_reply(monkeypatch, capsys):
+    monkeypatch.setattr(run_next_plan, "resolve_pr_number", lambda *a, **k: 5)
+    monkeypatch.setattr(
+        run_next_plan.subprocess,
+        "run",
+        lambda cmd, **k: type("R", (), {"returncode": 0, "stdout": "[1]"})(),
+    )
+
+    state = run_next_plan._iteration_state(
+        {"integration_branch": "integration/x"}, "integration/x"
+    )
+
+    assert state is None
+    assert "iteration-state check failed (AttributeError)" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "output",
+    ["ISSUE: #" + "9" * 5000, "ISSUE: #\u0661\u0662", "ISSUE: #0", "ISSUE:\n\n5", "ISSUE: #1234567890"],
+)
+def test_parse_issue_numbers_ignores_unusable_numbers(output):
+    assert parse_issue_numbers(output) == []
+
+
+def test_parse_issue_numbers_accepts_nine_digits_and_crlf():
+    assert parse_issue_numbers("ISSUE: #123456789\r\nISSUE: 7\r\n") == ["#123456789", "#7"]
+
+
+@pytest.mark.parametrize(
+    "text", ["MINOR_ROLLUP: #" + "9" * 5000, "MINOR_ROLLUP: #\u0661\u0662", "MINOR_ROLLUP:\n\n5"]
+)
+def test_parse_minor_rollup_ignores_unusable_numbers(text):
+    assert run_next_plan.parse_minor_rollup(text) is None
+
+
+def test_parse_minor_rollup_accepts_nine_digits_and_crlf():
+    assert run_next_plan.parse_minor_rollup("MINOR_ROLLUP: #123456789\r\n") == 123456789
+
+
+def test_file_issues_phase_drops_unusable_numbers_instead_of_crashing(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+    config_root = tmp_path / "docs" / "agents"
+    config_root.mkdir(parents=True)
+    out = "ISSUE: #" + "9" * 5000 + "\nISSUE: #12\nMINOR_ROLLUP: #\u0661\u0662\n"
+
+    with patch.object(run_next_plan, "_gate_invoke", return_value=out):
+        filed = run_next_plan._run_file_issues_phase(prd_path, tmp_path, config_root)
+
+    assert filed == [12]
+
+
+def test_range_is_empty_still_counts_docs_beside_bookkeeping(tmp_path):
+    config_root = _repo_with_plans(tmp_path)
+    (tmp_path / "docs" / "features").mkdir(parents=True)
+    (tmp_path / "docs" / "features" / "x.md").write_text("doc\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    _commit_changes(tmp_path, "docs/agents/plans/prd.json")
+
+    assert run_next_plan._range_is_empty(tmp_path, "HEAD~1..HEAD", config_root) is False

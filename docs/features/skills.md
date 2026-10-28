@@ -31,7 +31,7 @@ Skills live at `~/.claude/skills/<name>/` (symlinked from this repo). When the d
 | `skills/pr-image-upload/SKILL.md` | Uploads screenshots to GitHub as release assets; returns markdown image tags |
 | `skills/pr-image-upload/pr-image-upload.sh` | Shell implementation for the upload workflow |
 | `skills/rank-backlog/SKILL.md` | GUS backlog analysis and nevering-candidate ranking; outputs CSV |
-| `skills/close-iteration/skill.md` | Gate-checks, merges, and cleans up an iteration opened by `/plan-iteration` |
+| `skills/close-iteration/SKILL.md` | Gate-checks, merges, and cleans up an iteration opened by `/plan-iteration` |
 | `skills/plan-iteration/SKILL.md` | Flags untriaged backlog issues for the user, then writes `<config-root>/plans/prd.json` + `<config-root>/plans/<slug>.md` for `run-next-plan.py` to execute |
 | `skills/triage-pr-comments/SKILL.md` | Re-opens plans against new PR review comments mid-iteration |
 
@@ -101,7 +101,9 @@ Scoring algorithm weights: epic completed/nevered (+100), zero customer impact (
 The bookend to `/plan-iteration`. Verifies hard blockers (all plans terminal, SDLC review
 complete, findings addressed, no merge conflicts, smoke test passes), surfaces soft
 warnings for confirmation, checks spec issue coverage, then promotes and merges the
-integration PR, closes linked issues, and deletes branches/worktrees.
+integration PR, closes linked issues, and deletes branches/worktrees. Step 9e then runs
+`scripts/clean-iteration-artifacts.py` to remove the gitignored runtime artifacts (logs, lock,
+findings file, PR summary), skipping and reporting any it can't safely delete.
 
 The hard-blocker check on `sdlc_review_status` treats a transient `pending` reading as
 potentially benign, not automatically a stop-the-run failure: because

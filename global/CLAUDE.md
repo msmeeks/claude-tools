@@ -69,7 +69,7 @@ New projects under `~/Code/` get this layout. **Existing projects keep theirs** 
 
 Older layout equivalents: `docs/llms.md` + `docs/overview.md` for the index, `meta/` for everything under `docs/agents/`.
 
-Under `plans/`, plan files, `prd.json` and `progress.md` are git-tracked on the integration branch (removed before merge); `implementation-logs/`, `prd.json.lock`, `sdlc-review-findings.md` and `pr-summary.md` are gitignored and never publishable, under either layout.
+Under `plans/`, plan files, `prd.json` and `progress.md` are git-tracked on the integration branch (removed before merge); `implementation-logs/`, `prd.json.lock`, `sdlc-review-findings.md` and `pr-summary.md` (these two sit at the config root, not under `plans/`) are gitignored and never publishable, under either layout.
 
 Read the project's brand voice doc, if it has one, before writing user-facing copy (demo scripts, help docs, UI text). Run `/demo <feature>` when creating or significantly changing a feature. Release history lives in GitHub Releases, generated from merged PR titles by `deploy-prod.yml`.
 

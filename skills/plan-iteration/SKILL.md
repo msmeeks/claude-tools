@@ -38,8 +38,8 @@ still unlabeled goes back to the user.
    already exists — if so, decide whether its iteration is over (below). While it is still
    open, its `plans` entries must be preserved/merged in Step 7, not overwritten.
 
-   **Finished-iteration check** (same rule as `_iteration_finished` in `run-next-plan.py`).
-   Over means the integration PR is `MERGED` or `CLOSED` with a matching `headRefName` and
+   **Finished-iteration check** (same rule as `_iteration_state` in `run-next-plan.py`).
+   Over means the integration PR is `MERGED` with a matching `headRefName` and
    `isCrossRepository` false, or the branch was pushed and is gone on origin
    (`git ls-remote --exit-code --heads origin refs/heads/<branch>` exits 2). Find the PR by
    `pr_number` (`gh pr view <N> --json state,headRefName,isCrossRepository`), else by branch
@@ -51,9 +51,19 @@ still unlabeled goes back to the user.
    pruned after a fetch). A local-only or unpushed-ahead branch is not finished. Do **not** treat
    "all plans terminal + `sdlc_review_status: complete`" as finished: adding plans to an open
    iteration after review is supported (that is what the runner's re-arm is for). If `gh` or
-   `git` can't answer, warn and fall back to the merge. Print which case applied:
-   `fresh prd.json (previous iteration finished: <reason>)` or
-   `merging into existing prd.json (iteration still open)`.
+   `git` can't answer, warn and fall back to the merge.
+
+   A same-repo PR with a matching `headRefName` that is `CLOSED` (unmerged) is **not** over —
+   it is unresolved, and takes precedence over a branch gone from origin. **Ask** the user:
+   continue (they reopen the PR; take the merge case — tell them the runner keeps refusing
+   until the PR is reopened) or archive and start fresh (take the fresh case). Never archive
+   on CLOSED without asking; stop if there's no one to ask.
+
+   Print which case applied: `fresh prd.json (previous iteration finished: <reason>)`,
+   `fresh prd.json (previous iteration closed, archived at user's request: <reason>)`,
+   `merging into existing prd.json (iteration still open)`,
+   `merging into existing prd.json (integration PR closed; user will reopen it)`, or, with no
+   one to ask, `stopping: integration PR closed and no one to ask`.
 
 ### Step 2 — Fetch Open Issues
 
@@ -158,11 +168,11 @@ Write one `<config-root>/plans/<slug>.md` per cluster using the **Standard Plan 
 Then write (or update) `<config-root>/plans/prd.json` — the plan index that `run-next-plan.py` reads:
 
 1. Read `<config-root>/plans/prd.json` if it exists; parse as JSON. If Step 1.2 found the
-   previous iteration finished, take the **fresh case** (step 5a) instead of merging.
+   previous iteration finished (or closed and the user chose archive), take the **fresh case** (step 5a) instead of merging.
 2. For each cluster, build a plan entry: `{"file": "<slug>.md", "issues": [N, M, ...], "size": "S|M|L|XL", "status": "pending", "attempts": 0, "blocked_by": []}`.
 3. Merge: if an entry with the same `file` already exists, preserve its `status` and `attempts`; overwrite all other fields. If no entry exists, add it as-is.
 4. Populate each entry's `blocked_by` array from the dependency analysis in Step 5 — list the `file` values of clusters that must merge first.
-5a. **Fresh case** (previous iteration finished). Move the old file to
+5a. **Fresh case** (previous iteration finished, or its PR was closed and the user chose archive). Move the old file to
    `prd.json.<YYYY-MM-DD>.bak` beside it, and ensure `<config-root>/plans/prd.json.*.bak` is in
    the file named by `git rev-parse --git-path info/exclude` (never `.gitignore`). Then write a
    new object with no `sdlc_*` keys, no `last_reviewed_sha`, no `pr_number` and no old plans —
