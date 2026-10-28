@@ -246,7 +246,7 @@ Then write (or update) `<config-root>/plans/prd.json` — the same plan index `/
 ## Reviewer Comments
 
 [All unresolved comments — grouped by action type, never by reviewer. Comment IDs are included
-so run-next-plan.py can post emoji reactions after successful execution. The plan is git-tracked
+so the session executing the plan can post emoji reactions as its last step. The plan is git-tracked
 on the integration branch, so write Context, Comment and Planned Response text as paraphrase with
 `@handles`, emails and names stripped; planned responses never address a commenter by handle.]
 
@@ -291,6 +291,12 @@ execute without re-exploring the codebase.]
 
 [For conversation responses: include the exact text to post as a GitHub PR reply comment.]
 
+[Always end with this step: "Post reactions. Once every step above is committed, react to each
+comment ID on the `<!-- reactions: ... -->` line at the end of this plan — `rocket` for each
+`rocket=` ID, `+1` for each `+1=` ID — with
+`gh api repos/{owner}/{repo}/pulls/comments/<id>/reactions -f content=rocket` (or `content=+1`).
+Skip any ID whose step you did not complete."]
+
 ---
 
 ## Pre-Implementation Review
@@ -302,9 +308,10 @@ execute without re-exploring the codebase.]
 <!-- reactions: rocket=<comma-separated comment IDs for code/test/style/doc changes> +1=<comma-separated comment IDs for conversation responses> -->
 ````
 
-> The `<!-- reactions: ... -->` line is machine-readable — `run-next-plan.py` parses it after
-> successful execution to post 🚀 reactions to code-change comments and 👍 reactions to
-> conversation-response comments. Omit a key if the list is empty.
+> The `<!-- reactions: ... -->` line lists which comments get 🚀 (code/test/style/doc changes)
+> and which get 👍 (conversation responses). The session executing the plan posts them in its
+> final Implementation Step; `run-next-plan.py` posts nothing. Step 2b's 🚀 skip depends on it.
+> Omit a key if the list is empty.
 
 ---
 
