@@ -168,6 +168,16 @@ def warn(msg: str) -> None:
     _log(f"WARN: {msg}")
 
 
+def _is_int_list(value: object) -> bool:
+    return isinstance(value, list) and all(
+        isinstance(n, int) and not isinstance(n, bool) for n in value
+    )
+
+
+def _is_str_list(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(x, str) for x in value)
+
+
 def _validate_prd_schema(data: object) -> dict:
     if not isinstance(data, dict):
         die("prd.json must contain a JSON object at the top level.")
@@ -190,9 +200,7 @@ def _validate_prd_schema(data: object) -> dict:
         if not isinstance(attempts, int) or isinstance(attempts, bool) or attempts < 0:
             die(f"prd.json: 'attempts' must be a non-negative int, got: {attempts!r}")
         blocked_by = entry.get("blocked_by")
-        if not isinstance(blocked_by, list) or not all(
-            isinstance(b, str) for b in blocked_by
-        ):
+        if not _is_str_list(blocked_by):
             die(f"prd.json: 'blocked_by' must be a list of strings, got: {blocked_by!r}")
     if "sdlc_review_status" in data and data["sdlc_review_status"] not in VALID_SDLC_REVIEW_STATUSES:
         die(f"prd.json: invalid 'sdlc_review_status' value: {data['sdlc_review_status']!r}")
@@ -206,23 +214,23 @@ def _validate_prd_schema(data: object) -> dict:
         die(f"prd.json: 'pr_number' must be an integer or null, got: {data['pr_number']!r}")
     if "sdlc_finding_issues" in data:
         sfi = data["sdlc_finding_issues"]
-        if not isinstance(sfi, list) or not all(isinstance(n, int) and not isinstance(n, bool) for n in sfi):
+        if not _is_int_list(sfi):
             die("prd.json: 'sdlc_finding_issues' must be a list of integers")
     if "sdlc_deferred_issues" in data:
         sdi = data["sdlc_deferred_issues"]
-        if not isinstance(sdi, list) or not all(isinstance(n, int) and not isinstance(n, bool) for n in sdi):
+        if not _is_int_list(sdi):
             die("prd.json: 'sdlc_deferred_issues' must be a list of integers")
     if "sdlc_round_filed_issues" in data:
         srfi = data["sdlc_round_filed_issues"]
-        if not isinstance(srfi, list) or not all(isinstance(n, int) and not isinstance(n, bool) for n in srfi):
+        if not _is_int_list(srfi):
             die("prd.json: 'sdlc_round_filed_issues' must be a list of integers")
     if "sdlc_review_completed_agents" in data:
         srca = data["sdlc_review_completed_agents"]
-        if not isinstance(srca, list) or not all(isinstance(a, str) for a in srca):
+        if not _is_str_list(srca):
             die("prd.json: 'sdlc_review_completed_agents' must be a list of strings")
     if "feature_branches" in data:
         fb = data["feature_branches"]
-        if not isinstance(fb, list) or not all(isinstance(b, str) for b in fb):
+        if not _is_str_list(fb):
             die("prd.json: 'feature_branches' must be a list of strings")
     if "smoke_test" in data and data["smoke_test"] is not None and not isinstance(
         data["smoke_test"], str
@@ -577,20 +585,29 @@ Integration branch: {integration_branch}
 Repo root: {repo_root}"""
 
 
-ISSUE_NUMBER_RE = re.compile(r"^ISSUE:\s*#?(\d+)$", re.MULTILINE)
-MINOR_ROLLUP_RE = re.compile(r"^MINOR_ROLLUP:\s*#?(\d+)\s*$", re.MULTILINE)
+def _is_issue_number(x: object) -> bool:
+    # `type(x) is int`, not isinstance: bool is an int subclass and must be excluded.
+    return type(x) is int and 0 < x < 10**9
+
+
+# [0-9] not \d (which matches non-ASCII digits); {1,9} keeps int() far from its digit limit.
+# [ \t] not \s so a match can't span lines; \r? tolerates CRLF output.
+_ISSUE_NUM = r"#?([0-9]{1,9})"
+ISSUE_NUMBER_RE = re.compile(rf"^ISSUE:[ \t]*{_ISSUE_NUM}\r?$", re.MULTILINE)
+MINOR_ROLLUP_RE = re.compile(rf"^MINOR_ROLLUP:[ \t]*{_ISSUE_NUM}[ \t]*\r?$", re.MULTILINE)
 PLAN_ISSUE_RE = re.compile(r"#(\d+)")
 
 
 def parse_issue_numbers(output: str) -> list[str]:
-    return [f"#{m.group(1)}" for m in ISSUE_NUMBER_RE.finditer(output)]
+    nums = (int(m.group(1)) for m in ISSUE_NUMBER_RE.finditer(output))
+    return [f"#{n}" for n in nums if _is_issue_number(n)]
 
 
 def parse_minor_rollup(text: str) -> int | None:
     """The rollup issue number (last `MINOR_ROLLUP:` line wins), or None if absent or 0.
     Kept apart from parse_issue_numbers so a rollup can never reach a `Closes` line."""
     matches = MINOR_ROLLUP_RE.findall(text)
-    if not matches or int(matches[-1]) == 0:
+    if not matches or not _is_issue_number(int(matches[-1])):
         return None
     return int(matches[-1])
 
@@ -622,8 +639,9 @@ def resolve_pr_number(
     earlier iteration's PR merged would match that old PR; integration branch names carry a
     date, and /plan-iteration records pr_number, so the lookup rarely runs at all."""
     pr_number = data.get("pr_number")
-    if isinstance(pr_number, int) and not isinstance(pr_number, bool):
-        return pr_number
+    if "pr_number" in data and pr_number is not None:
+        # The number reaches `gh` argv as a string, so anything but a sane int is refused.
+        return pr_number if _is_issue_number(pr_number) else None
     if include_finished:
         cmd = [
             "gh", "pr", "list", "--head", integration_branch, "--state", "all",
@@ -631,19 +649,30 @@ def resolve_pr_number(
         ]
     else:
         cmd = ["gh", "pr", "list", "--head", integration_branch, "--json", "number", "--limit", "1"]
-    r = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True)
+    except OSError as e:
+        warn(f"resolve_pr_number: unusable gh reply ({type(e).__name__}) — treating as no PR")
+        return None
     if r.returncode != 0 or not r.stdout.strip():
         return None
-    prs = json.loads(r.stdout)
-    if include_finished:
-        prs = [
-            pr for pr in prs
-            if pr.get("headRefName") == integration_branch and not pr.get("isCrossRepository")
-        ]
-        prs.sort(key=lambda pr: pr.get("state") != "OPEN")
-    if not prs:
+    try:
+        prs = json.loads(r.stdout)
+        if include_finished:
+            prs = [
+                pr for pr in prs
+                if pr.get("headRefName") == integration_branch
+                and not pr.get("isCrossRepository")
+            ]
+            prs.sort(key=lambda pr: pr.get("state") != "OPEN")
+        if not prs:
+            return None
+        number = prs[0]["number"]
+    except (ValueError, KeyError, IndexError, TypeError, AttributeError) as e:
+        # Type only, never stdout: the reply is untrusted and logs are retained.
+        warn(f"resolve_pr_number: unusable gh reply ({type(e).__name__}) — treating as no PR")
         return None
-    return prs[0]["number"]
+    return number if _is_issue_number(number) else None
 
 
 def _branch_is_pushed(integration_branch: str) -> bool:
@@ -722,7 +751,9 @@ def _iteration_state(data: dict, integration_branch: str) -> IterationState | No
             return IterationState("finished", f"branch {integration_branch} no longer exists on origin")
         if r.returncode != 0:
             warn(f"iteration-state check: git ls-remote exited {r.returncode} — continuing")
-    except (json.JSONDecodeError, KeyError, OSError, subprocess.CalledProcessError) as e:
+    except (
+        ValueError, KeyError, TypeError, AttributeError, OSError, subprocess.CalledProcessError
+    ) as e:
         warn(f"iteration-state check failed ({type(e).__name__}) — continuing")
     return None
 
@@ -882,8 +913,12 @@ def _validate_reviewer_list(value: object, where: str) -> list[str]:
 _COMMIT_REF_SECTION = "## Commit references"
 _COMMIT_REF_READ_CAP = 64 * 1024
 _COMMIT_REF_MAX_LEN = 40
+_COMMIT_REF_MAX_COUNT = 20
 _COMMIT_REF_RE = re.compile(r"[A-Za-z0-9 #:.,_\-]*\{n\}[A-Za-z0-9 #:.,_\-]*")
-_MAX_REFS = 20
+# Letter-bounded, not \b: \b misses `Fixes_#{n}`, `Fix#{n}` and `Closes#{n}`.
+_CLOSING_KEYWORD_RE = re.compile(
+    r"(?<![A-Za-z])(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)(?![A-Za-z])", re.IGNORECASE
+)
 
 
 def _commit_ref_template_problem(line: str) -> str | None:
@@ -897,6 +932,10 @@ def _commit_ref_template_problem(line: str) -> str | None:
         return "no {n}"
     if not _COMMIT_REF_RE.fullmatch(line):
         return "disallowed characters"
+    if keyword := _CLOSING_KEYWORD_RE.search(line):
+        # A closing keyword would make a commit on the integration branch close the issue
+        # at merge, before the PR's own `Closes` block has vouched for it.
+        return f"closing keyword '{keyword.group().lower()}'"
     return None
 
 
@@ -917,18 +956,15 @@ def _load_commit_ref_template(config_root: Path) -> str:
         start = lines.index(_COMMIT_REF_SECTION) + 1
     except ValueError:
         return DEFAULT_COMMIT_REF_TEMPLATE
-    for line in lines[start:]:
-        if line.strip():
-            candidate = line.strip()
-            break
-    else:
+    candidate = next((line.strip() for line in lines[start:] if line.strip()), None)
+    if candidate is None:
         return DEFAULT_COMMIT_REF_TEMPLATE
     problem = _commit_ref_template_problem(candidate)
     if problem:
         # resolve_config_root only ever returns <repo>/meta or <repo>/docs/agents.
         layout = CONFIG_ROOT_OLD if config_root.name == CONFIG_ROOT_OLD else CONFIG_ROOT_NEW
         warn(
-            f"{layout}/{path.name}: commit reference template invalid ({problem}); "
+            f"{layout}/{path.name}: '{_COMMIT_REF_SECTION}' template invalid ({problem}); "
             f"using '{DEFAULT_COMMIT_REF_TEMPLATE}'"
         )
         return DEFAULT_COMMIT_REF_TEMPLATE
@@ -942,16 +978,15 @@ def _coerce_refs(values: object) -> list[int]:
     kept: list[int] = []
     items = list(values) if isinstance(values, (list, tuple)) else []
     for x in items:
-        # `type(x) is int`, not isinstance: bool is an int subclass and must be excluded.
-        if type(x) is int and 0 < x < 10**9 and x not in kept:
+        if _is_issue_number(x) and x not in kept:
             kept.append(x)
     invalid = len(items) - len(kept)
-    overflow = max(0, len(kept) - _MAX_REFS)
+    overflow = max(0, len(kept) - _COMMIT_REF_MAX_COUNT)
     if invalid:
         warn(f"issue references: dropped {invalid} invalid or duplicate — continuing without them")
     if overflow:
-        warn(f"issue references: {overflow} over the cap of {_MAX_REFS} — dropped")
-    return kept[:_MAX_REFS]
+        warn(f"issue references: {overflow} over the cap of {_COMMIT_REF_MAX_COUNT} — dropped")
+    return kept[:_COMMIT_REF_MAX_COUNT]
 
 
 def _format_refs(template: str, nums: list[int]) -> str:
@@ -1195,6 +1230,12 @@ def _push_branch(repo_root: Path, branch: str) -> None:
         info(f"Pushed {branch} to origin.")
 
 
+def _refs_instruction(refs: str) -> str:
+    """The bare sentence asking Claude to end a commit with the already-formatted `refs` line;
+    callers add their own separator. Never formats the template itself."""
+    return f"End the commit message with this last line: {refs}" if refs else ""
+
+
 def ensure_committed(
     repo_root: Path,
     config_root: Path,
@@ -1209,9 +1250,7 @@ def ensure_committed(
     the already-formatted issue reference line (see `_format_refs`); empty means none."""
     if _working_tree_dirty(repo_root, config_root):
         warn(f"Uncommitted changes detected after {context} — asking Claude to commit them.")
-        refs_instruction = (
-            f" End the commit message with this last line: {refs}" if refs else ""
-        )
+        refs_instruction = f" {_refs_instruction(refs)}" if refs else ""
         commit_prompt = f"""git status shows uncommitted changes after {context}. Commit all
 outstanding changes to {integration_branch} with an appropriate descriptive commit message
 (git add, then git commit).{refs_instruction} Do not modify {config_root_rel(repo_root, config_root)}/plans/prd.json's sdlc_review_status field or
@@ -1267,7 +1306,9 @@ def exit_flush(repo_root: Path, config_root: Path, integration_branch: str) -> N
     is the value `main` resolved at startup, never re-resolved here, so this exit path can
     never itself trigger the both-layouts-present abort. Any git failure is swallowed: an exit
     path is the worst place to raise. For the same reason its wip message carries no issue
-    reference, unlike `ensure_committed`: resolving one means reading prd.json."""
+    reference, unlike `ensure_committed`: resolving one means reading prd.json (see
+    docs/features/run-next-plan.md, "exit paths must not raise"). Registered by `main` after
+    the iteration-state guard and not under `--dry-run`."""
     try:
         if _working_tree_dirty(repo_root, config_root):
             warn("Uncommitted changes at exit — auto-committing so no work is lost.")
@@ -1384,7 +1425,7 @@ def run_docs_phase(prd_path: Path, repo_root: Path, config_root: Path) -> None:
     default_branch = get_default_branch()
 
     refs = _pr_refs_line(data, config_root, integration_branch)
-    refs_rule = f"\n   End the commit message with this last line: {refs}" if refs else ""
+    refs_rule = f"\n   {_refs_instruction(refs)}" if refs else ""
     docs_prompt = f"""The integration branch {integration_branch} has completed all plans and SDLC review.
 
 Update documentation and help resources for all changes in this iteration:
@@ -1795,7 +1836,7 @@ it is left for a human to schedule, not planned or fixed in this iteration."""
         # does not fix (final-round findings, minor rollups). /close-iteration reconciles
         # against it so it neither re-files them nor reports "Issues left open: none".
         deferred = list(data.get("sdlc_deferred_issues", []))
-        for n in ([*issue_ints] if final_round else []) + ([rollup] if rollup else []):
+        for n in (issue_ints if final_round else []) + ([rollup] if rollup else []):
             if n not in deferred:
                 deferred.append(n)
         if deferred:
@@ -1877,7 +1918,10 @@ def run_sdlc_review_gate(
         attempt += 1
         if attempt > MAX_REVIEW_ATTEMPTS:
             integration_branch = load_prd(prd_path)["integration_branch"]
-            ensure_committed(repo_root, config_root, integration_branch, "SDLC review (interrupted)", refs=commit_refs)
+            ensure_committed(
+                repo_root, config_root, integration_branch, "SDLC review (interrupted)",
+                refs=commit_refs,
+            )
             warn(
                 f"SDLC review gate still session/usage-limited after {MAX_REVIEW_ATTEMPTS} "
                 "attempts — giving up for now; review left incomplete (progress saved). "
@@ -1914,7 +1958,10 @@ def run_sdlc_review_gate(
             break
         except ReviewInterrupted as exc:
             integration_branch = load_prd(prd_path)["integration_branch"]
-            ensure_committed(repo_root, config_root, integration_branch, "SDLC review (interrupted)", refs=commit_refs)
+            ensure_committed(
+                repo_root, config_root, integration_branch, "SDLC review (interrupted)",
+                refs=commit_refs,
+            )
             wait_secs = _parse_retry_after_text(exc.output) + 60
             resume_str = (datetime.now() + timedelta(seconds=wait_secs)).strftime("%H:%M:%S")
             switch = (
@@ -1931,7 +1978,9 @@ def run_sdlc_review_gate(
             continue
 
     integration_branch = load_prd(prd_path)["integration_branch"]
-    ensure_committed(repo_root, config_root, integration_branch, "SDLC review triage", refs=commit_refs)
+    ensure_committed(
+        repo_root, config_root, integration_branch, "SDLC review triage", refs=commit_refs
+    )
 
     # Record the reviewed HEAD as the new baseline so the next round diffs from here, and clear
     # the per-round bookkeeping so a fresh round (re-armed after 'complete') starts clean
@@ -1957,7 +2006,9 @@ def run_sdlc_review_gate(
     run_docs_phase(prd_path, repo_root, config_root)
     # update_pr_description writes pr-summary.md after the docs-phase commit, so sweep it
     # up here; then publish the whole round in a single push.
-    ensure_committed(repo_root, config_root, integration_branch, "SDLC review docs phase", refs=commit_refs)
+    ensure_committed(
+        repo_root, config_root, integration_branch, "SDLC review docs phase", refs=commit_refs
+    )
     flush_push(repo_root, integration_branch)
     return "complete"
 

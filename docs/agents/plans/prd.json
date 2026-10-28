@@ -30,7 +30,7 @@
         93
       ],
       "size": "M",
-      "status": "pending",
+      "status": "done",
       "attempts": 0,
       "blocked_by": [
         "fix-iteration-guard.md"

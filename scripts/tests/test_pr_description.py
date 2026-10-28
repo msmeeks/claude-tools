@@ -337,3 +337,48 @@ def test_update_pr_description_warns_instead_of_crashing_when_the_edit_fails(
     assert "update_pr_description: gh pr edit #5 failed — PR summary not updated" in err
     assert "SECRETBODY" not in err and "more" not in err
     assert len(edits) == 1
+
+
+def _gh_reply(monkeypatch, stdout, returncode=0):
+    monkeypatch.setattr(
+        run_next_plan.subprocess,
+        "run",
+        lambda cmd, **k: type("R", (), {"returncode": returncode, "stdout": stdout})(),
+    )
+
+
+@pytest.mark.parametrize(
+    "stdout", ["not json", "{}", '["x"]', "[null]", '[{"number": "--body"}]',
+               '[{"number": true}]', '[{"number": -1}]', '[{"number": 1000000000}]', "[{}]"]
+)
+def test_resolve_pr_number_treats_a_malformed_gh_reply_as_no_pr(monkeypatch, capsys, stdout):
+    _gh_reply(monkeypatch, stdout)
+
+    assert resolve_pr_number({}, "integration/x") is None
+    assert resolve_pr_number({}, "integration/x", include_finished=True) is None
+
+
+def test_resolve_pr_number_warns_with_the_error_type_only(monkeypatch, capsys):
+    _gh_reply(monkeypatch, "SECRET not json")
+
+    resolve_pr_number({}, "integration/x")
+
+    err = capsys.readouterr().err
+    assert "unusable gh reply (JSONDecodeError)" in err
+    assert "SECRET" not in err
+
+
+def test_resolve_pr_number_treats_a_missing_gh_as_no_pr(monkeypatch):
+    def missing(*a, **k):
+        raise FileNotFoundError("gh")
+
+    monkeypatch.setattr(run_next_plan.subprocess, "run", missing)
+
+    assert resolve_pr_number({}, "integration/x") is None
+
+
+@pytest.mark.parametrize("bad", ["--body", True, -1, 0, 10**9])
+def test_resolve_pr_number_rejects_an_unusable_prd_json_number(monkeypatch, bad):
+    _gh_reply(monkeypatch, "[]")
+
+    assert resolve_pr_number({"pr_number": bad}, "integration/x") is None

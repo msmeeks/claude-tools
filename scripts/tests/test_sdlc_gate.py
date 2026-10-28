@@ -1571,3 +1571,55 @@ def test_range_is_empty_is_true_for_a_commit_and_its_revert(tmp_path):
     subprocess.run(["git", "revert", "--no-edit", "HEAD"], cwd=tmp_path, check=True, capture_output=True)
 
     assert run_next_plan._range_is_empty(tmp_path, "HEAD~2..HEAD") is True
+
+
+def test_iteration_guard_survives_a_non_object_pr_view_reply(monkeypatch, capsys):
+    monkeypatch.setattr(run_next_plan, "resolve_pr_number", lambda *a, **k: 5)
+    monkeypatch.setattr(
+        run_next_plan.subprocess,
+        "run",
+        lambda cmd, **k: type("R", (), {"returncode": 0, "stdout": "[1]"})(),
+    )
+
+    state = run_next_plan._iteration_state(
+        {"integration_branch": "integration/x"}, "integration/x"
+    )
+
+    assert state is None
+    assert "iteration-state check failed (AttributeError)" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "output",
+    ["ISSUE: #" + "9" * 5000, "ISSUE: #\u0661\u0662", "ISSUE: #0", "ISSUE:\n\n5", "ISSUE: #1234567890"],
+)
+def test_parse_issue_numbers_ignores_unusable_numbers(output):
+    assert parse_issue_numbers(output) == []
+
+
+def test_parse_issue_numbers_accepts_nine_digits_and_crlf():
+    assert parse_issue_numbers("ISSUE: #123456789\r\nISSUE: 7\r\n") == ["#123456789", "#7"]
+
+
+@pytest.mark.parametrize(
+    "text", ["MINOR_ROLLUP: #" + "9" * 5000, "MINOR_ROLLUP: #\u0661\u0662", "MINOR_ROLLUP:\n\n5"]
+)
+def test_parse_minor_rollup_ignores_unusable_numbers(text):
+    assert run_next_plan.parse_minor_rollup(text) is None
+
+
+def test_parse_minor_rollup_accepts_nine_digits_and_crlf():
+    assert run_next_plan.parse_minor_rollup("MINOR_ROLLUP: #123456789\r\n") == 123456789
+
+
+def test_file_issues_phase_drops_unusable_numbers_instead_of_crashing(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+    config_root = tmp_path / "docs" / "agents"
+    config_root.mkdir(parents=True)
+    out = "ISSUE: #" + "9" * 5000 + "\nISSUE: #12\nMINOR_ROLLUP: #\u0661\u0662\n"
+
+    with patch.object(run_next_plan, "_gate_invoke", return_value=out):
+        filed = run_next_plan._run_file_issues_phase(prd_path, tmp_path, config_root)
+
+    assert filed == [12]
