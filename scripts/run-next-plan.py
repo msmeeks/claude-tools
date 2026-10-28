@@ -363,11 +363,19 @@ def _find_plan_entry(data: dict, plan_file: str) -> dict:
     die(f"No plan entry found for file: {plan_file}")
 
 
-def increment_attempts(path: Path, plan_file: str) -> None:
+def increment_attempts(
+    path: Path, plan_file: str, pre_run_attempts: dict[str, int] | None = None
+) -> None:
+    """Add one attempt to ``plan_file``. With ``pre_run_attempts``, first put every listed
+    plan back to its pre-session count: the runner is the only writer of ``attempts``, and
+    sessions marking a plan done have bumped it too, double-charging the run."""
     plans_dir = path.parent
     _resolve_plan_path(plans_dir, plan_file)
 
     def mutate(data: dict) -> None:
+        for entry in data["plans"]:
+            if pre_run_attempts and entry["file"] in pre_run_attempts:
+                entry["attempts"] = pre_run_attempts[entry["file"]]
         entry = _find_plan_entry(data, plan_file)
         entry["attempts"] += 1
 
@@ -481,7 +489,7 @@ def account_attempt(
     worked = _attribute_worked_plan(prd_path, pre_run_status, output_text, eligible_plans)
     if worked is None:
         return None, False
-    increment_attempts(prd_path, worked)
+    increment_attempts(prd_path, worked, {p["file"]: p["attempts"] for p in eligible_plans})
     entry = _find_plan_entry(load_prd(prd_path), worked)
     if entry["attempts"] > MAX_ATTEMPTS and entry["status"] != "done":
         mark_stalled(prd_path, worked)
@@ -572,7 +580,8 @@ Do not push —
 the runner publishes the branch once per iteration, so a mid-plan push wastes a CI run.
 Update {plans}/progress.md — append a timestamped entry with the plan filename and
 a brief summary of what you did.
-Update {plans}/prd.json — set status to "done" for the completed plan.
+Update {plans}/prd.json — set status to "done" for the completed plan. Leave `attempts`
+alone: the runner counts attempts itself.
 
 ONLY DO ONE PLAN AT A TIME.
 Use /tdd to drive implementation (write failing test first).

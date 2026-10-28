@@ -220,6 +220,22 @@ def test_account_attempt_charges_plan_that_flipped_to_done(tmp_path):
     assert _attempts(prd_path, "a.md") == 1  # eligible[0] guess untouched
 
 
+def test_account_attempt_overrides_attempts_the_session_wrote_itself(tmp_path):
+    # Sessions marking a plan done have also bumped its attempts; the runner's own charge
+    # then counted that run twice, pulling a still-unfinished plan toward stalled early.
+    plans = [_plan("a.md", attempts=0), _plan("b.md", attempts=2)]
+    prd_path = _write_prd(
+        tmp_path, [_plan("a.md", attempts=3), _plan("b.md", status="done", attempts=3)]
+    )
+    pre = {"a.md": "pending", "b.md": "pending"}
+
+    charged, _ = account_attempt(prd_path, "ok", pre, "no sigil here", plans)
+
+    assert charged == "b.md"
+    assert _attempts(prd_path, "b.md") == 3
+    assert _attempts(prd_path, "a.md") == 0
+
+
 def test_account_attempt_falls_back_to_declared_plan_sigil(tmp_path):
     plans = [_plan("a.md", attempts=0), _plan("b.md", attempts=0)]
     prd_path = _write_prd(tmp_path, plans)
@@ -586,6 +602,13 @@ def test_plan_prompt_asks_claude_to_commit_but_not_push(tmp_path):
         "integration/x", tmp_path, resolve_config_root(tmp_path)
     )
     _asserts_commit_only(prompt)
+
+
+def test_plan_prompt_leaves_attempts_to_the_runner(tmp_path):
+    prompt = run_next_plan._build_claude_prompt(
+        "integration/x", tmp_path, resolve_config_root(tmp_path)
+    )
+    assert "Leave `attempts`" in prompt
 
 
 def test_plan_prompt_qa_line_falls_back_to_sdlc_qa_engineer(tmp_path):

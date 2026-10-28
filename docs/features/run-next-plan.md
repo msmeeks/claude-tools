@@ -50,7 +50,7 @@ Each pass through the `while True:` loop re-reads `prd.json`, selects a non-term
 **Attempt accounting is deferred until *after* the session** (`account_attempt`), so it reflects only sessions that actually ran and worked on a given plan:
 
 - **Attribution, not guesswork.** `select_next_plan` returns `eligible[0]`, but the prompt tells Claude to pick the *highest-priority* plan — which may differ — so the runner's guess isn't charged. After the session, `_attribute_worked_plan` charges the plan that demonstrably advanced: the one plan that flipped to `done` this run (primary signal), or, failing that, the plan named in a session-declared `<plan>slug.md</plan>` sigil. The sigil value is untrusted (Claude runs with `bypassPermissions` and can echo injected text) and is only honored when it names a plan in the current eligible set; an unknown/ineligible name is ignored with a warning. If neither signal is present, **nothing** is charged — never `eligible[0]` by default.
-- **Rate limits don't burn attempts.** A `rate_limit` outcome did zero work, so `account_attempt` charges nothing — mirroring the loop's treatment of limits as non-failures. Only genuine (non-limit) sessions increment `attempts` (under an `fcntl` lock).
+- **Rate limits don't burn attempts.** A `rate_limit` outcome did zero work, so `account_attempt` charges nothing — mirroring the loop's treatment of limits as non-failures. Only genuine (non-limit) sessions increment `attempts` (under an `fcntl` lock). The runner is the only writer of `attempts`: the plan prompt tells sessions to leave it alone, and the charge first resets every plan to its pre-session count, so a session that bumps it too can't double-count the run.
 
 ### Stall detection and model escalation
 
