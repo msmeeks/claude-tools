@@ -341,10 +341,39 @@ def test_non_empty_plans_dir_is_not_removed(tmp_path):
     assert (repo / CFG / "plans" / "keep.md").exists()
 
 
-def test_outside_git_repo_fails_without_deleting(tmp_path):
-    r = subprocess.run(
-        [sys.executable, str(_SCRIPT)], cwd=tmp_path, capture_output=True, text=True, timeout=30
+def _run_raw(cwd, *flags):
+    return subprocess.run(
+        [sys.executable, str(_SCRIPT), *flags], cwd=cwd, capture_output=True, text=True, timeout=30
     )
 
-    assert r.returncode != 0
+
+def test_outside_git_repo_explains_without_traceback(tmp_path):
+    r = _run_raw(tmp_path)
+
+    assert r.returncode == 1
     assert "removed:" not in r.stdout
+    assert "Traceback" not in r.stderr
+    assert "not inside a git repository" in r.stderr.splitlines()[0]
+
+
+def test_help_prints_usage_and_deletes_nothing(tmp_path):
+    repo = _repo(tmp_path)
+
+    r = _run_raw(repo, "--help")
+
+    assert r.returncode == 0
+    assert "--findings-filed" in r.stdout
+    assert "removed:" not in r.stdout
+    assert (repo / LOGS / "x.log").exists()
+    assert (repo / SUMMARY).exists()
+
+
+def test_unknown_flag_exits_2_and_deletes_nothing(tmp_path):
+    repo = _repo(tmp_path)
+
+    r = _run_raw(repo, "--findings-fild")
+
+    assert r.returncode == 2
+    assert "removed:" not in r.stdout
+    assert (repo / LOGS / "x.log").exists()
+    assert (repo / FINDINGS).exists()

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Remove the gitignored runner artifacts once /close-iteration has merged the iteration.
 
-Usage: clean-iteration-artifacts.py [--findings-filed]
+Usage: clean-iteration-artifacts.py [--findings-filed] (see --help)
 
 Prints one line per artifact — `removed: <relpath>` or `skipped: <relpath> (<reason>)` — and
 exits 0 even when something is skipped. Output is names and reasons only: the artifacts are
@@ -10,6 +10,7 @@ Without --findings-filed the findings file is kept; it is the only local copy of
 nobody has filed yet.
 """
 
+import argparse
 import fcntl
 import importlib.util
 import shutil
@@ -103,16 +104,27 @@ def _delete_logs_and_lock(
     return logs_reason, lock_reason
 
 
-def main(argv: list[str]) -> int:
-    findings_filed = "--findings-filed" in argv
-    top = Path(
-        subprocess.run(
-            ["git", "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout.strip()
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Remove the gitignored runner artifacts after /close-iteration's merge."
     )
+    parser.add_argument(
+        "--findings-filed",
+        action="store_true",
+        help="also remove the SDLC findings file (only once every finding is filed or dismissed)",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str]) -> int:
+    findings_filed = _parse_args(argv).findings_filed
+    toplevel = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True
+    )
+    if toplevel.returncode != 0:
+        print("error: not inside a git repository; run from the project root", file=sys.stderr)
+        return 1
+    top = Path(toplevel.stdout.strip())
     # resolve_config_root dies on a symlinked root, so look before it does.
     symlinked_root = any(
         (top / name).is_symlink() for name in (runner.CONFIG_ROOT_NEW, runner.CONFIG_ROOT_OLD)
