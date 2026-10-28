@@ -100,18 +100,8 @@
   "pr_number": 104,
   "smoke_test": "cd scripts && python3 -m pytest",
   "feature_branches": [],
-  "sdlc_review_completed_agents": [
-    "sdlc-code-reviewer",
-    "sdlc-style-reviewer",
-    "sdlc-security-reviewer",
-    "sdlc-privacy-reviewer",
-    "sdlc-accessibility-reviewer",
-    "sdlc-design-reviewer",
-    "sdlc-test-reviewer"
-  ],
-  "sdlc_round_filed_issues": [
-    110
-  ],
+  "sdlc_review_completed_agents": [],
+  "sdlc_round_filed_issues": [],
   "sdlc_deferred_issues": [
     109,
     110,
@@ -123,7 +113,7 @@
     107,
     108
   ],
-  "sdlc_review_status": "pending",
-  "last_reviewed_sha": "43d584b5d476e4df34fae6c4bdef0d50f0b6159a",
-  "sdlc_review_rounds": 1
+  "sdlc_review_status": "complete",
+  "last_reviewed_sha": "d3e3c7b99be85f0fefefb0f289237bed419e6933",
+  "sdlc_review_rounds": 2
 }
