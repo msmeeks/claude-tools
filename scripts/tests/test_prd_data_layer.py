@@ -375,3 +375,44 @@ def test_max_review_rounds_ignores_a_zero_or_negative_override(monkeypatch):
 def test_max_review_rounds_ignores_a_non_integer_override(monkeypatch):
     monkeypatch.setenv("RALPH_MAX_REVIEW_ROUNDS", "lots")
     assert run_next_plan.max_review_rounds() == run_next_plan.MAX_REVIEW_ROUNDS
+
+
+_INT_LIST_FIELDS = ["sdlc_finding_issues", "sdlc_deferred_issues", "sdlc_round_filed_issues"]
+_STR_LIST_FIELDS = ["sdlc_review_completed_agents", "feature_branches"]
+
+
+def _prd_with_list_field(field, value):
+    data = _valid_prd()
+    if field == "blocked_by":
+        data["plans"][0]["blocked_by"] = value
+    else:
+        data[field] = value
+    return data
+
+
+_REJECTED_LIST_VALUES = (
+    [("blocked_by", bad) for bad in ([1], "x", None)]
+    + [(f, bad) for f in _INT_LIST_FIELDS for bad in ([True], ["1"], 1)]
+    + [(f, bad) for f in _STR_LIST_FIELDS for bad in ([1], "x", None)]
+)
+
+
+@pytest.mark.parametrize(("field", "bad_value"), _REJECTED_LIST_VALUES)
+def test_load_prd_rejects_malformed_list_field_naming_it(tmp_path, capsys, field, bad_value):
+    prd_path = tmp_path / "prd.json"
+    prd_path.write_text(json.dumps(_prd_with_list_field(field, bad_value)))
+
+    with pytest.raises(SystemExit):
+        load_prd(prd_path)
+
+    assert field in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "field", ["blocked_by", *_INT_LIST_FIELDS, *_STR_LIST_FIELDS]
+)
+def test_load_prd_accepts_empty_list_for_each_list_field(tmp_path, field):
+    prd_path = tmp_path / "prd.json"
+    prd_path.write_text(json.dumps(_prd_with_list_field(field, [])))
+
+    assert load_prd(prd_path)["integration_branch"] == "integration/batch"

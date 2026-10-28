@@ -27,3 +27,7 @@ Prose polish (#90, #93). `sdlc-design-reviewer`: brief at `docs/agents/` or `met
 ## 2026-10-28T13:20-04:00 — fix-clean-iteration-artifacts.md
 
 clean-iteration-artifacts fixes (#106, #107). Logs and lock now decided independently: `removed:` is printed only after the delete returns, every undeleted artifact gets its real reason (tracked/absent/symlink/locked, new `delete failed` for `rmtree`/`unlink` OSError, lock kept then). Held lock still skips both; symlinked lock is never opened. 11 new tests: mixed logs/lock cases, legacy `meta/` root, symlinked root, config root outside repo (runner refuses), tracked lock, rmtree failure, non-empty `plans/`, outside git repo. 452 tests + ruff pass.
+
+## 2026-10-28T13:45-04:00 — fix-run-next-plan-hygiene.md
+
+Hygiene (#105, #108). `git rm scripts/run-next-plan.py.bak` (byte-identical duplicate); `*.bak` added to `.gitignore`. New parametrized tests in `test_prd_data_layer.py` cover `blocked_by`, the three int-list fields and the two str-list fields with bad values (rejected, field name in stderr) and `[]` (accepted). Validator already correct, so no code change. 476 tests + ruff pass.

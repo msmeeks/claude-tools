@@ -26,3 +26,5 @@ demo-gen/.ruff_cache/
 demo-gen/.coverage
 demo-gen/htmlcov/
 demo-gen/output/
+
+*.bak
