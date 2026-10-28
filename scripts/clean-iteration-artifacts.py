@@ -68,7 +68,9 @@ def _remove_logs_and_lock(
 ) -> tuple[str | None, str | None]:
     """Delete whichever of logs/lock is safe; return each one's skip reason (None = removed).
 
-    The lock, when it is a real file, is held while deleting so a live runner blocks both.
+    The lock, when it is a real file, is held while deleting. The runner takes it only around
+    each prd.json write, so this catches a runner mid-write, not one that is merely running —
+    /close-iteration assumes no runner is active.
     """
     # A symlinked lock must not be opened: flock would follow it out of the repo.
     guard = lock_reason in (None, TRACKED, NOT_IGNORED)
