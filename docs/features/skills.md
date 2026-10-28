@@ -32,6 +32,7 @@ Skills live at `~/.claude/skills/<name>/` (symlinked from this repo). When the d
 | `skills/pr-image-upload/pr-image-upload.sh` | Shell implementation for the upload workflow |
 | `skills/rank-backlog/SKILL.md` | GUS backlog analysis and nevering-candidate ranking; outputs CSV |
 | `skills/close-iteration/SKILL.md` | Gate-checks, merges, and cleans up an iteration opened by `/plan-iteration` |
+| `skills/run-iteration/SKILL.md` | Drives `run-next-plan.py` in a background subagent until `prd.json` shows the iteration finished, reviews and verifies the result, reports what needs a human |
 | `skills/plan-iteration/SKILL.md` | Flags untriaged backlog issues for the user, then writes `<config-root>/plans/prd.json` + `<config-root>/plans/<slug>.md` for `run-next-plan.py` to execute |
 | `skills/triage-pr-comments/SKILL.md` | Re-opens plans against new PR review comments mid-iteration |
 
@@ -127,6 +128,19 @@ rest of the iteration's work, and ride along in the normal merge commit instead 
 requiring a separate direct push to the default branch afterward. Post-merge cleanup
 (Step 9) only closes spec issues, deletes branches/worktrees, and pulls the default branch
 before deleting the local integration branch; it no longer touches `<config-root>/plans/`.
+
+### run-iteration
+
+The middle step: `/plan-iteration` → `/run-iteration` → `/close-iteration`. The coordinator
+dispatches a background subagent to run `run-next-plan.py` (re-running past session limits,
+failed sessions and fixable stalls), reviews what the runner's gate doesn't (CI, conflicts,
+acceptance criteria, smoke test), then has a second subagent verify the PR body's test plans
+end to end. Ends with a report of what needs a human.
+
+"Finished" is read from `prd.json` (every plan `done`/`stalled` and `sdlc_review_status`
+`complete`), never from the runner's exit code, which is also 0 when it gives up on a session
+limit or an incomplete review. Re-running resumes from `prd.json`. It never merges and never
+runs `/close-iteration`; it only reminds the user to.
 
 ### plan-iteration
 

@@ -16,9 +16,10 @@ A named, user-invocable procedure the CLI loads on `/<name>`. Prose instructions
 _Avoid_: command, macro, prompt template
 
 **Iteration**:
-One pass of the plan-then-run cycle: `/plan-iteration` grooms the backlog into plans, the
-Ralph loop implements them on a single integration branch and PR, `/close-iteration` merges
-and tears down. Bounded by one integration branch.
+One pass of the plan-then-run cycle: `/plan-iteration` grooms the backlog into plans,
+`/run-iteration` drives the Ralph loop that implements them on a single integration branch and
+PR (then reviews and verifies the result), `/close-iteration` merges and tears down. Bounded by
+one integration branch.
 _Avoid_: sprint, cycle, batch
 
 **Plan**:

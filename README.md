@@ -23,6 +23,7 @@ skills/                   # Slash-command skills
   plan-iteration/         # /plan-iteration   — backlog grooming: triage → cluster → plan files
   pr-image-upload/        # /pr-image-upload  — embed screenshots in PRs (private-repo safe)
   rank-backlog/           # /rank-backlog     — GUS backlog nevering analysis
+  run-iteration/          # /run-iteration    — drive the planned iteration to ready-to-close, verify it
   sdlc/                   # /sdlc             — full dev lifecycle orchestrator
   triage-pr-comments/     # /triage-pr-comments — turn PR review comments into plan files
 
@@ -209,6 +210,7 @@ Tests: `cd scripts && python3 -m pytest`
 | plan-iteration | `/plan-iteration` | Groom backlog: triage issues, cluster into workstreams, write plan files to `<config-root>/plans/` |
 | pr-image-upload | `/pr-image-upload [PR#] <files>` | Upload screenshots to GitHub and return markdown image tags (private-repo safe) |
 | rank-backlog | `/rank-backlog "Team Name"` | Rank GUS backlog items as candidates for nevering |
+| run-iteration | `/run-iteration` | Drive `run-next-plan.py` until the iteration finishes, review and verify the result, report what needs a human |
 | sdlc | `/sdlc` | Full SDLC pipeline: planning reviews → implementation → code review → QA → docs |
 | triage-pr-comments | `/triage-pr-comments` | Turn open PR reviewer comments into plan files in `<config-root>/plans/` |
 
