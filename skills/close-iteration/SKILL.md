@@ -169,7 +169,8 @@ git push origin <integration_branch>
 afterwards (untracked plans), archive it — never delete untracked plans outright. Gitignored
 runtime artifacts (`implementation-logs/`, `prd.json.lock`) always survive `git rm`; on their own
 they are not a trigger for archiving — Step 9e removes them after the merge. When archiving, move everything
-except `archive/` itself, including `implementation-logs/`, into
+except `archive/` itself and the runtime artifacts (`implementation-logs/`, `prd.json.lock`) —
+Step 9e removes those — into
 `<config-root>/plans/archive/<slug>/`:
 
 - `<slug>` is `integration_branch` with `/` replaced by `-`, restricted to `[A-Za-z0-9._-]`,
@@ -350,7 +351,10 @@ python3 ~/.claude/scripts/clean-iteration-artifacts.py [--findings-filed]
 
 Pass `--findings-filed` only if Step 5 filed or explicitly dismissed every finding — the
 findings file is the only local copy of unfiled ones. The helper documents its safety rules
-(symlinks, tracked files, held lock); don't restate or bypass them.
+(symlinks, tracked files, held lock); don't restate or bypass them. If it exits non-zero,
+report `Runtime artifacts:  cleanup failed (<first stderr line>)` and carry on. If
+`~/.claude/scripts/clean-iteration-artifacts.py` is missing, re-run `setup-symlinks.sh` from
+the claude-tools checkout first.
 
 ---
 
@@ -383,6 +387,7 @@ Report exactly one of `removed: yes (history on <integration_branch>)` or `archi
 never "removed: no".
 
 For `Runtime artifacts`, echo the helper's output: reasons verbatim, names only, never
-contents. Omit `absent` artifacts, and never list as removed one the Step 4 fallback moved into
-the archive. A skipped `implementation-logs/` or findings file stays on disk and is among the
-most sensitive artifacts (`docs/agents/PRIVACY.md`) — add a one-line manual-delete hint for it.
+contents. Omit `absent` artifacts. A skipped `implementation-logs/` or findings file stays on
+disk and is among the most sensitive artifacts (`docs/agents/PRIVACY.md`) — add a one-line hint
+for it: for `findings unfiled`, file or dismiss the findings, then re-run the helper with
+`--findings-filed`; for any other reason, delete it by hand.
