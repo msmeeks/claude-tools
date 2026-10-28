@@ -5,6 +5,9 @@ non-interactive orchestrator that drives an iteration's plans to completion by r
 spawning headless Claude sessions, then runs the SDLC review gate. Stdlib only, Python 3.10+,
 with a pytest suite under `tests/` and ruff configured in `pyproject.toml`.
 
+`clean-iteration-artifacts.py` is the helper `/close-iteration` Step 9e calls to remove the
+gitignored runtime artifacts after merge; it reuses the runner's path list and config-root rules.
+
 Per-repo review configuration lives in `<config-root>/ralph.json` (see
 [ADR 0002](../docs/adr/0002-review-recipe-is-repo-config.md)); `load_ralph_config` validates it
 once in `main()` and passes it down like `config_root`.

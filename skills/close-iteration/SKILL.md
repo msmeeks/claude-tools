@@ -1,13 +1,13 @@
 ---
 name: close-iteration
-description: Closes an iteration by gate-checking completion, merging the integration PR to the default branch, closing linked issues, cleaning up branches/worktrees, and removing <config-root>/plans/. The bookend to /plan-iteration. Use when all plans are done and the SDLC review is complete.
+description: Closes an iteration by gate-checking completion, merging the integration PR to the default branch, closing linked issues, cleaning up branches/worktrees, removing <config-root>/plans/, and removing the gitignored runtime artifacts. The bookend to /plan-iteration. Use when all plans are done and the SDLC review is complete.
 ---
 
 # Close Iteration
 
 Closes an iteration end-to-end: verifies all gate conditions, promotes the draft PR, merges
 to the default branch, closes linked issues, removes `<config-root>/plans/` from the working tree,
-and deletes the integration branch and all associated worktrees.
+removes the gitignored runtime artifacts, and deletes the integration branch and all associated worktrees.
 
 ## Usage
 
@@ -168,7 +168,7 @@ git push origin <integration_branch>
 **Archive fallback.** If `prd.json` or any plan `.md` file remains under `<config-root>/plans/`
 afterwards (untracked plans), archive it — never delete untracked plans outright. Gitignored
 runtime artifacts (`implementation-logs/`, `prd.json.lock`) always survive `git rm`; on their own
-they are not a trigger — leave them and report `removed: yes`. When archiving, move everything
+they are not a trigger for archiving — Step 9e removes them after the merge. When archiving, move everything
 except `archive/` itself, including `implementation-logs/`, into
 `<config-root>/plans/archive/<slug>/`:
 
@@ -230,6 +230,10 @@ the legacy `prd` label (June `to-prd` install; lowercase), never to all `ready-f
 issues:
 ```bash
 gh issue view <prd_issue> --json number,title,body
+```
+
+Only if `prd_issue` is absent:
+```bash
 gh issue list --label prd --state open --limit 100 --json number,title,body
 ```
 
@@ -335,6 +339,19 @@ local default branch, so this succeeds without `-D`:
 git branch -d <integration_branch>
 ```
 
+### 9e — Remove runtime artifacts
+
+Only after Step 8's merge succeeded, on the default branch after 9c (so the ignore rules come
+from that checkout). Removes `implementation-logs/`, `prd.json.lock`, `sdlc-review-findings.md`
+and `pr-summary.md`, so the next iteration can't read this one's findings or summary:
+```bash
+python3 ~/.claude/scripts/clean-iteration-artifacts.py [--findings-filed]
+```
+
+Pass `--findings-filed` only if Step 5 filed or explicitly dismissed every finding — the
+findings file is the only local copy of unfiled ones. The helper documents its safety rules
+(symlinks, tracked files, held lock); don't restate or bypass them.
+
 ---
 
 ## Step 10 — Print Closing Report
@@ -356,9 +373,16 @@ Spec issues skipped: #N (reason: <gap>)
 
 Branches deleted:    <list>
 Worktrees removed:   <list>
+Runtime artifacts:   removed: <a>, <b>
+                     skipped: <path> (<reason>)   (one per skip)
 <config-root>/plans/:  removed: yes (history on <integration_branch>)
                       — or — archived to <path>
 ```
 
 Report exactly one of `removed: yes (history on <integration_branch>)` or `archived to <path>`;
 never "removed: no".
+
+For `Runtime artifacts`, echo the helper's output: reasons verbatim, names only, never
+contents. Omit `absent` artifacts, and never list as removed one the Step 4 fallback moved into
+the archive. A skipped `implementation-logs/` or findings file stays on disk and is among the
+most sensitive artifacts (`docs/agents/PRIVACY.md`) — add a one-line manual-delete hint for it.

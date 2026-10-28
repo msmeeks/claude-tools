@@ -89,6 +89,11 @@ session-transcript content.
 
 ## Retention guidance
 
+- **Runtime artifacts after merge**: `/close-iteration` removes `implementation-logs/`,
+  `prd.json.lock`, `sdlc-review-findings.md` and `pr-summary.md` once the iteration merges.
+  The rules below are the fallback for an iteration that is never closed, or when the
+  cleanup skips an artifact (it reports the skip).
+
 - **`implementation-logs/`** (both layouts): treat as short-lived debugging
   artifacts. Prune logs older than 30 days, or sooner if the batch they belong
   to has merged and no issues were found. Do not retain indefinitely.
