@@ -82,6 +82,13 @@ def main():
     if not os.environ.get("E2E_STATE"):
         sys.exit("fake claude: E2E_STATE is not set")
     prompt = sys.stdin.read()
+    state_path = Path(os.environ["E2E_STATE"])
+    state = json.loads(state_path.read_text())
+    if state.get("claude_silent"):
+        # A session that dies before doing or printing anything (auth error, crash).
+        state["claude_calls"] = state.get("claude_calls", 0) + 1
+        state_path.write_text(json.dumps(state))
+        return
     for pattern, handler in _PHASES:
         if pattern.match(prompt):
             handler(prompt)

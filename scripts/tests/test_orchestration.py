@@ -1365,3 +1365,21 @@ def test_main_commits_attempt_bookkeeping_with_the_plans_refs(tmp_path, monkeypa
     assert json.loads((plans_dir / "prd.json").read_text())["plans"][0]["attempts"] == 1
     last = _git_out(tmp_path, "log", "-1", "--format=%B", "--", "docs/agents/plans/prd.json")
     assert last.rstrip().endswith("Refs #7, Refs #8")
+
+
+def _streak_after(outcomes_and_charges):
+    streak = 0
+    for outcome, charged in outcomes_and_charges:
+        streak = run_next_plan.next_unattributed_streak(streak, outcome, charged)
+    return streak
+
+
+def test_unattributed_streak_resets_when_a_session_advances_a_plan():
+    cap = run_next_plan.MAX_ATTEMPTS
+    silent = [("ok", None)] * (cap - 1)
+    assert _streak_after(silent + [("ok", "a.md")] + silent) == cap - 1
+
+
+def test_unattributed_streak_ignores_rate_limited_sessions():
+    assert _streak_after([("ok", None), ("rate_limit", None), ("ok", None)]) == 2
+    assert _streak_after([("ok", None), ("rate_limit", "a.md")]) == 1

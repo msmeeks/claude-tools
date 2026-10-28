@@ -498,6 +498,15 @@ def account_attempt(
     return worked, False
 
 
+def next_unattributed_streak(streak: int, outcome: str, charged: str | None) -> int:
+    """Count consecutive sessions that advanced no plan. account_attempt charges nothing for
+    them, so without this a session that dies silently is relaunched forever (#114). A
+    ``rate_limit`` outcome did no work, so it neither counts nor resets the streak."""
+    if outcome == "rate_limit":
+        return streak
+    return 0 if charged else streak + 1
+
+
 def scan_output(text: str, exit_code: int) -> Literal["complete", "rate_limit", "error", "ok"]:
     """Classify a finished Claude invocation's combined stdout/stderr."""
     match = COMPLETE_SIGIL_RE.search(text)
@@ -2309,6 +2318,7 @@ def main() -> None:
     # Latched once the round cap declines a re-arm, so the policy-stop line is logged once
     # rather than on every pass through the remaining plans.
     rearm_suppressed = False
+    unattributed_streak = 0
 
     while True:
         data = load_prd(prd_path)
@@ -2515,6 +2525,13 @@ def main() -> None:
             _format_refs(commit_ref_template, _coerce_refs(charged_entry.get("issues") or [])),
         )
         flush_push(repo_root, integration_branch)
+        unattributed_streak = next_unattributed_streak(unattributed_streak, outcome, charged)
+        if unattributed_streak >= MAX_ATTEMPTS:
+            die(
+                f"{unattributed_streak} consecutive sessions made no attributable progress "
+                "(no plan flipped to done, no <plan> sigil) — stopping; check the session logs "
+                f"in {logs_dir}"
+            )
         if stalled:
             continue
         data = load_prd(prd_path)

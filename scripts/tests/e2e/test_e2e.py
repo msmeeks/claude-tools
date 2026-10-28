@@ -4,6 +4,7 @@ calls main() in-process with subprocess stubbed, nothing in the runner is patche
 
 Asserts on die()/warn() read stderr; info() lines are on stdout."""
 
+import json
 import re
 import shutil
 import subprocess
@@ -167,3 +168,16 @@ def test_e2e_env_is_isolated_to_fakes_and_git(e2e_env):
     out = subprocess.run(["git", "--version"], env=env, capture_output=True, timeout=30)
     assert out.returncode == 0
     assert not {"GH_TOKEN", "ANTHROPIC_API_KEY", "SSH_AUTH_SOCK"} & env.keys()
+
+
+def test_e2e_silent_sessions_stop_the_runner_without_charging_a_plan(make_iteration):
+    it = make_iteration(pr_number=7)
+    it.set_state(prs=[SEED_PR], claude_silent=True)
+
+    result = it.run()
+
+    assert result.returncode != 0
+    assert "consecutive sessions made no attributable progress" in result.stderr
+    assert it.state()["claude_calls"] == 5
+    plans = json.loads((it.plans_dir / "prd.json").read_text())["plans"]
+    assert all(p["attempts"] == 0 and p["status"] != "stalled" for p in plans)
