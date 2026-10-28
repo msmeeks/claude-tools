@@ -27,6 +27,7 @@ SYMLINK = "symlink"
 NOT_IGNORED = "not ignored"
 TRACKED = "tracked"
 LOCKED = "locked"
+DELETE_FAILED = "delete failed"
 FINDINGS_UNFILED = "findings unfiled"
 
 
@@ -62,21 +63,42 @@ def _unsafe_reason(top: Path, rel: str) -> str | None:
     return None
 
 
-def _remove_logs_and_lock(logs: Path, lock: Path, lock_present: bool) -> bool:
-    """Delete the logs dir and lock while holding the lock. False if it couldn't be taken."""
-    if not lock_present:
-        shutil.rmtree(logs, ignore_errors=True)
-        return True
+def _remove_logs_and_lock(
+    logs: Path, lock: Path, logs_reason: str | None, lock_reason: str | None
+) -> tuple[str | None, str | None]:
+    """Delete whichever of logs/lock is safe; return each one's skip reason (None = removed).
+
+    The lock, when it is a real file, is held while deleting so a live runner blocks both.
+    """
+    # A symlinked lock must not be opened: flock would follow it out of the repo.
+    guard = lock_reason in (None, TRACKED, NOT_IGNORED)
+    if not guard:
+        return _delete_logs_and_lock(logs, lock, logs_reason, lock_reason)
     try:
         with open(lock) as lock_fh:
             fcntl.flock(lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            shutil.rmtree(logs)
-            # Unlink while still holding the lock; a runner started after this creates a
-            # fresh one. Accepted: the user is closing the iteration, so none should run.
-            lock.unlink()
+            return _delete_logs_and_lock(logs, lock, logs_reason, lock_reason)
     except OSError:
-        return False
-    return True
+        return LOCKED, LOCKED
+
+
+def _delete_logs_and_lock(
+    logs: Path, lock: Path, logs_reason: str | None, lock_reason: str | None
+) -> tuple[str | None, str | None]:
+    if logs_reason is None:
+        try:
+            shutil.rmtree(logs)
+        except OSError:
+            # Lock stays so the next /close-iteration still has a guard for the leftovers.
+            return DELETE_FAILED, lock_reason or DELETE_FAILED
+    if lock_reason is None:
+        # Unlink while still holding the lock; a runner started after this creates a
+        # fresh one. Accepted: the user is closing the iteration, so none should run.
+        try:
+            lock.unlink()
+        except OSError:
+            return logs_reason, DELETE_FAILED
+    return logs_reason, lock_reason
 
 
 def main(argv: list[str]) -> int:
@@ -109,20 +131,14 @@ def main(argv: list[str]) -> int:
             report(rel, SYMLINK)
         return 0
 
-    logs_reason = _unsafe_reason(top, logs_rel)
-    lock_reason = _unsafe_reason(top, lock_rel)
-    if logs_reason is None and lock_reason in (None, ABSENT):
-        lock_present = lock_reason is None
-        if _remove_logs_and_lock(top / logs_rel.rstrip("/"), top / lock_rel, lock_present):
-            report(logs_rel, None)
-            report(lock_rel, None if lock_present else ABSENT)
-        else:
-            logs_reason = lock_reason = LOCKED
-            report(logs_rel, LOCKED)
-            report(lock_rel, LOCKED)
-    else:
-        report(logs_rel, logs_reason)
-        report(lock_rel, lock_reason)
+    logs_reason, lock_reason = _remove_logs_and_lock(
+        top / logs_rel.rstrip("/"),
+        top / lock_rel,
+        _unsafe_reason(top, logs_rel),
+        _unsafe_reason(top, lock_rel),
+    )
+    report(logs_rel, logs_reason)
+    report(lock_rel, lock_reason)
 
     for rel in (findings_rel, summary_rel):
         reason = _unsafe_reason(top, rel)

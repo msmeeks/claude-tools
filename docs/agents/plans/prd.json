@@ -80,8 +80,8 @@
         107
       ],
       "size": "M",
-      "status": "pending",
-      "attempts": 0,
+      "status": "done",
+      "attempts": 1,
       "blocked_by": []
     },
     {
@@ -111,7 +111,7 @@
     107,
     108
   ],
-  "sdlc_review_status": "complete",
+  "sdlc_review_status": "pending",
   "last_reviewed_sha": "43d584b5d476e4df34fae6c4bdef0d50f0b6159a",
   "sdlc_review_rounds": 1
 }
