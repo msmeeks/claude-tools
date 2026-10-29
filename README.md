@@ -78,12 +78,12 @@ cd ~/Code/claude-tools
 bash setup-symlinks.sh
 ```
 
-`setup-symlinks.sh` replaces the live files in `~/.claude/skills/`, `~/.claude/agents/`, and
-`~/.claude/CLAUDE.md` with symlinks back into this repo. After running it, editing any file here
+`setup-symlinks.sh` replaces the live files in `~/.claude/skills/`, `~/.claude/agents/`,
+`~/.claude/scripts/`, and `~/.claude/CLAUDE.md` with symlinks back into this repo. After running it, editing any file here
 takes effect in Claude Code immediately — no copy or restart required.
 
-The script backs up any existing file it replaces as `<file>.bak` and skips anything that is
-already a symlink.
+The script backs up any existing file it replaces as `<file>.bak`, skips anything that is
+already a symlink, and removes links into this repo that no longer point at an installable file.
 
 ## Quick start — Claude Desktop (macOS)
 

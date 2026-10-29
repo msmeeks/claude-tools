@@ -24,11 +24,18 @@ and skip destinations that are already symlinks.
 
 ### What it does
 
-Three passes:
+Four passes:
 
 1. **Skills** — `skills/*/` → `~/.claude/skills/<name>` (directory symlinks)
-2. **Agents** — `agents/*.md` → `~/.claude/agents/<name>.md` (file symlinks)
-3. **Global** — `global/CLAUDE.md` → `~/.claude/CLAUDE.md` (file symlink)
+2. **Agents** — `agents/*.md` except `CONTEXT.md` → `~/.claude/agents/<name>.md` (file symlinks)
+3. **Scripts** — executable files in `scripts/` → `~/.claude/scripts/<name>` (file symlinks)
+4. **Global** — `global/CLAUDE.md` → `~/.claude/CLAUDE.md` (file symlink)
+
+Area docs (`CONTEXT.md`) and tool config (`scripts/pyproject.toml`) sit beside the installables
+but are for working on this repo, so they are not linked. After the agents and scripts passes,
+the script removes any link in that `~/.claude/` directory that points into the matching repo
+directory at something it would no longer install — a stray from an older run, or a file since
+deleted. Links that point anywhere else are left alone.
 
 ### First-time setup
 
@@ -46,6 +53,9 @@ bash setup-symlinks.sh
   agents/
     code-reviewer.md      → ~/Code/claude-tools/agents/code-reviewer.md
     ... (one symlink per agent)
+  scripts/
+    run-next-plan.py      → ~/Code/claude-tools/scripts/run-next-plan.py
+    ... (one symlink per executable script)
   skills/
     sdlc/                 → ~/Code/claude-tools/skills/sdlc/
     ... (one symlink per skill)

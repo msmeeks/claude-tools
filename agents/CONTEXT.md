@@ -1,8 +1,8 @@
 # Agents
 
 Subagent definitions the CLI can dispatch as specialist workers. Each file is frontmatter
-(name, description, tools) plus a review checklist in prose. `setup-symlinks.sh` symlinks this
-directory into `~/.claude/agents/`.
+(name, description, tools) plus a review checklist in prose. `setup-symlinks.sh` symlinks each
+one into `~/.claude/agents/` — every `*.md` here except this file.
 
 Nine agents: the seven `sdlc-*` reviewers dispatched in parallel by `/sdlc` Phase 3
 (`code`, `style`, `security`, `privacy`, `accessibility`, `design`, `test`), plus
