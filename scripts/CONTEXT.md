@@ -3,7 +3,8 @@
 Real code, unlike most of this repo. `run-next-plan.py` is the Ralph Wiggum loop: a
 non-interactive orchestrator that drives an iteration's plans to completion by repeatedly
 spawning headless Claude sessions, then runs the SDLC review gate. Stdlib only, Python 3.10+,
-with a pytest suite under `tests/` and ruff configured in `pyproject.toml`.
+with a pytest suite under `tests/` and ruff configured in `pyproject.toml`. `setup-symlinks.sh`
+links only the executable files here into `~/.claude/scripts/`, so a new script needs `chmod +x`.
 
 `clean-iteration-artifacts.py` is the helper `/close-iteration` Step 9e calls to remove the
 gitignored runtime artifacts after merge; it reuses the runner's path list and config-root rules.

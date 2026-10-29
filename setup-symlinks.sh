@@ -8,7 +8,8 @@
 # Run once after cloning:
 #   bash setup-symlinks.sh
 #
-# Safe to re-run; existing symlinks are skipped.
+# Safe to re-run; existing symlinks are skipped, and links into this repo
+# that no longer point at an installable file are removed.
 
 set -euo pipefail
 
@@ -48,6 +49,26 @@ link() {
   fi
 }
 
+# What gets installed. Area docs (CONTEXT.md) and tool config (pyproject.toml)
+# live beside the installables but are for working on this repo, not for Claude.
+is_agent()  { [[ -f "$1" && "$1" == *.md && "$(basename "$1")" != CONTEXT.md ]]; }
+is_script() { [[ -f "$1" && -x "$1" ]]; }
+
+# Remove links in $1 that point into repo dir $2 at something $3 rejects:
+# leftovers from older runs or from files since deleted. Links elsewhere stay.
+prune() {
+  local dir="$1" area keep="$3" dst src
+  area="$(realpath_of "$2")"
+  for dst in "$dir"/*; do
+    [[ -L "$dst" ]] || continue
+    src="$(realpath_of "$dst")"
+    [[ "$src" == "$area"/* ]] || continue
+    "$keep" "$src" && continue
+    rm "$dst"
+    echo "  unlink $dst (not installable: $src)"
+  done
+}
+
 mkdir -p "${CLAUDE_DIR}/skills" "${CLAUDE_DIR}/agents" "${CLAUDE_DIR}/scripts"
 
 echo "=== Linking skills ==="
@@ -59,17 +80,20 @@ done
 echo ""
 echo "=== Linking agents ==="
 for agent_file in "$REPO_DIR/agents"/*.md; do
+  is_agent "$agent_file" || continue
   agent_name="$(basename "$agent_file")"
   link "$agent_file" "${CLAUDE_DIR}/agents/${agent_name}"
 done
+prune "${CLAUDE_DIR}/agents" "$REPO_DIR/agents" is_agent
 
 echo ""
 echo "=== Linking scripts ==="
 for script_file in "$REPO_DIR/scripts"/*; do
-  [[ -f "$script_file" ]] || continue
+  is_script "$script_file" || continue
   script_name="$(basename "$script_file")"
   link "$script_file" "${CLAUDE_DIR}/scripts/${script_name}"
 done
+prune "${CLAUDE_DIR}/scripts" "$REPO_DIR/scripts" is_script
 
 echo ""
 echo "=== Linking global CLAUDE.md ==="
