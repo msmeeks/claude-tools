@@ -124,7 +124,9 @@ itself is unchanged: `complete` with no remaining eligible plans.
 The `Closes` list assembled for the PR body is compiled from **`done` plans only** —
 `stalled` plans contributed no work, so their linked issues are deliberately left off (and
 therefore left open after merge) rather than silently marked resolved. `sdlc_finding_issues`
-is added on top of the done-plan issues so SDLC findings always auto-close on merge. The
+is added on top of the done-plan issues so SDLC findings always auto-close on merge — but
+only entries still labelled `ready-for-agent`: a `ready-for-human`, `needs-info` or unlabeled
+finding was never planned, so the PR can't have done it, and it stays open. The
 closing report's `Issues left open:` line surfaces exactly the issues this exclusion leaves
 behind, tying back to the stalled-plan warnings raised earlier in the run.
 

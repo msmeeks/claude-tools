@@ -146,8 +146,12 @@ Print a warning table and ask for explicit confirmation before proceeding:
   reason. Confirming merges an iteration nobody saw running deployed.
 - **Deferred review issues** — each still-open `prd.json.sdlc_deferred_issues` entry (check with
   `gh issue view <N> --json state`). Print one per line as `#N — deferred by round cap` (filed
-  on the final review round) or `#N — minor rollup` (the rollup issue). They stay open after
-  merge and carry through to the Step 10 `Issues left open:` line.
+  on the final review round), `#N — needs a human` (labelled `ready-for-human`, `needs-info`
+  or unlabeled, so no agent picked it up) or `#N — minor rollup` (the rollup issue). They stay
+  open after merge and carry through to the Step 10 `Issues left open:` line.
+- **Human-held finding issues** — each still-open `prd.json.sdlc_finding_issues` entry not
+  labelled `ready-for-agent`. Step 7 leaves it out of the Closes set; print it as
+  `#N — needs a human` alongside the deferred issues.
 - **Untraceable commits** — commits on `integration_branch` that contain no issue
   reference in their message. The reference format is the template on the first non-empty line
   under `## Commit references` in `<config-root>/issue-tracker.md` (default `Refs #{n}`; ignore
@@ -284,6 +288,14 @@ work as resolved. Those issues stay deliberately open (surfaced in Step 3 and St
 `prd.json.sdlc_deferred_issues` is **never** added to the `Closes` block: those issues were
 filed but not fixed in this iteration. Including the SDLC finding issues here guarantees they auto-close on merge even if the
 commit(s) that addressed them didn't happen to use a closing keyword.
+
+**Agent-fixable findings only.** Before adding an open `sdlc_finding_issues` entry, read its
+labels (`gh issue view <N> --json labels`) and keep it only if it carries `ready-for-agent`.
+Drop anything labelled `ready-for-human` or `needs-info`, or with no state label: triage
+planned none of them, and a PR can't do a person's work, so closing them on merge would mark
+human work done. Older iterations recorded these in `sdlc_finding_issues` rather than
+`sdlc_deferred_issues`; this check covers them. Each dropped issue is a Step 3 warning and goes
+on the Step 10 `Issues left open:` line.
 
 Optionally cross-check the computed list against the PR's `closingIssuesReferences` (fetched
 in Step 2c) and confirm no `done`-plan issue is missing and no `stalled`-plan issue slipped in.

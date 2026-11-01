@@ -1903,6 +1903,8 @@ it is left for a human to schedule, not planned or fixed in this iteration."""
     issue_numbers = parse_issue_numbers(issues_output)
     issue_ints = [int(n.lstrip("#")) for n in issue_numbers]
     rollup = parse_minor_rollup(issues_output)
+    # Read labels before taking the prd lock. On the final round every issue is deferred anyway.
+    unfixed = issue_ints if final_round else _issues_no_agent_will_fix(issue_ints, repo_root)
 
     # Persist immediately so a triage interruption can resume against the filed issues
     # instead of re-filing them (which would duplicate). The per-round scratch field
@@ -1911,23 +1913,21 @@ it is left for a human to schedule, not planned or fixed in this iteration."""
     def mutate(data: dict) -> None:
         data["sdlc_round_filed_issues"] = issue_ints
         # sdlc_deferred_issues is the iteration-cumulative record of filed issues this PR
-        # does not fix (final-round findings, minor rollups). /close-iteration reconciles
-        # against it so it neither re-files them nor reports "Issues left open: none".
+        # does not fix (final-round findings, findings no agent will pick up, minor
+        # rollups). /close-iteration reconciles against it so it neither re-files them nor
+        # reports "Issues left open: none".
         deferred = list(data.get("sdlc_deferred_issues", []))
-        for n in (issue_ints if final_round else []) + ([rollup] if rollup else []):
+        for n in unfixed + ([rollup] if rollup else []):
             if n not in deferred:
                 deferred.append(n)
         if deferred:
             data["sdlc_deferred_issues"] = deferred
-        if final_round:
-            # The cap means nothing will fix these before the PR merges. They stay filed as
-            # issues for a human, but must not enter sdlc_finding_issues — /close-iteration
-            # turns that list into the PR's `Closes` block, and a PR must not claim to close
-            # findings it never addressed (#47/#44).
-            return
+        # Deferred findings stay filed as issues for a human, but must not enter
+        # sdlc_finding_issues — /close-iteration turns that list into the PR's `Closes`
+        # block, and a PR must not claim to close findings it never addressed (#47/#44).
         cumulative = list(data.get("sdlc_finding_issues", []))
         for n in issue_ints:
-            if n not in cumulative:
+            if n not in unfixed and n not in cumulative:
                 cumulative.append(n)
         data["sdlc_finding_issues"] = cumulative
 
@@ -2124,23 +2124,39 @@ _TRIAGE_STATE_LABELS = frozenset(
 )
 
 
+def _issue_labels(n: int, repo_root: Path) -> "set[str] | None":
+    """Issue #n's label names, or None if gh couldn't read them."""
+    result = subprocess.run(
+        ["gh", "issue", "view", str(n), "--json", "labels", "--jq", ".labels[].name"],
+        capture_output=True,
+        text=True,
+        cwd=repo_root,
+    )
+    if result.returncode != 0:
+        return None
+    return set(result.stdout.split())
+
+
+def _issues_no_agent_will_fix(issue_ints: list[int], repo_root: Path) -> list[int]:
+    """Filed issues not labelled ready-for-agent (ready-for-human, needs-info, unlabeled…).
+    Triage plans only ready-for-agent issues, so nothing in this PR fixes these. An issue
+    whose labels can't be read is left out; /close-iteration re-checks labels anyway."""
+    return [
+        n
+        for n in issue_ints
+        if (labels := _issue_labels(n, repo_root)) is not None and "ready-for-agent" not in labels
+    ]
+
+
 def _unlabeled_issues(issue_ints: list[int], repo_root: Path) -> list[int]:
     """Filed issues with no state label (needs-triage counts as none). An issue whose labels
     can't be read is skipped rather than flagged — a gh hiccup must not cry wolf."""
-    unlabeled = []
-    for n in issue_ints:
-        result = subprocess.run(
-            ["gh", "issue", "view", str(n), "--json", "labels", "--jq", ".labels[].name"],
-            capture_output=True,
-            text=True,
-            cwd=repo_root,
-        )
-        if result.returncode != 0:
-            continue
-        labels = set(result.stdout.split())
-        if not labels & (_TRIAGE_STATE_LABELS - {"needs-triage"}):
-            unlabeled.append(n)
-    return unlabeled
+    return [
+        n
+        for n in issue_ints
+        if (labels := _issue_labels(n, repo_root)) is not None
+        and not labels & (_TRIAGE_STATE_LABELS - {"needs-triage"})
+    ]
 
 
 def _run_triage_phase(

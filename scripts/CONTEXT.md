@@ -84,7 +84,8 @@ reach it. Each attempt's prd.json bookkeeping is committed with the charged plan
 _Avoid_: issue link, footer
 
 **Deferred issue**:
-A filed review finding this PR will not fix — final-round findings and minor rollups — recorded
+A filed review finding this PR will not fix — final-round findings, findings not labelled
+`ready-for-agent` (triage plans no others), and minor rollups — recorded
 in `prd.json`'s `sdlc_deferred_issues`, never in `sdlc_finding_issues`, so it can't reach a
 `Closes` line.
 _Avoid_: leftover, backlog item
