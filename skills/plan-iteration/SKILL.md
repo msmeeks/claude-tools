@@ -218,6 +218,7 @@ Size key: `S` (1–3 files), `M` (4–8 files), `L` (9–15 files), `XL` (16+ fi
    with commits; only create the commit on a fresh branch.
 
 4. Detect the smoke test command (check in order, stop at first match):
+   - `<config-root>/ralph.json` → `qa.smoke_test`
    - `package.json` → `scripts["test:smoke"]`, then `scripts["test"]`
    - `Makefile` → `smoke` target, then `test` target (`grep -m1 "^smoke:\|^test:" Makefile`)
    - `pyproject.toml` → `[tool.pytest.ini_options]` present → `python3 -m pytest`

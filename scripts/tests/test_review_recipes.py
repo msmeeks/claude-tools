@@ -35,7 +35,8 @@ def _skill_cfg(reviewers=None, registry=False, skill="my-review"):
             "skill": skill,
             "reviewers": list(reviewers or ROSTER),
             "registry": registry,
-        }
+        },
+        "docs": {"help_docs": True, "demo": True},
     }
 
 

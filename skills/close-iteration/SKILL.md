@@ -108,8 +108,27 @@ Any conflict markers in the output are a hard blocker. Tell the user to resolve 
 on the integration branch and re-run.
 
 ### 2e — Smoke test passes
-Run the command in `prd.json.smoke_test` from the repo root. A non-zero exit code is a
-hard blocker — print the full output. If `smoke_test` is absent or `null`, warn and skip.
+Run the command in `prd.json.smoke_test` from the repo root; if that is absent or `null`, use
+`qa.smoke_test` from `<config-root>/ralph.json`. A non-zero exit code is a hard blocker — print
+the full output. If neither is set, warn and skip.
+
+### 2f — Dev environment works
+Skip when `<config-root>/ralph.json` has no `qa.dev`. `<dev-url>` is `qa.dev.url` with `{pr}`
+replaced by the integration PR number.
+
+1. The PR must carry `qa.dev.label` and its deploy check must have passed on the PR's head
+   commit (`gh pr checks <pr-number>`). If the label is missing, add it — `ralph.json` is the
+   standing authorization for this one deploy — and wait for the check as a background task.
+2. `curl -fsS --retry 6 --retry-delay 10 --retry-all-errors <dev-url>` must answer.
+3. Dispatch `sdlc-qa-engineer` for a smoke pass against `<dev-url>`: the app's health
+   endpoint, every page or API the iteration changed (from `gh pr diff <pr-number>
+   --name-only`), and the main flows in the PR body's test plan. Test data only; never
+   production, real messages, hosting config or secrets. It reports, it doesn't fix.
+
+The environment answers but a check fails → hard blocker, with the failing items; fix on the
+integration branch (`/run-iteration` resumes) and re-run. The environment can't be deployed or
+never answers (hosting not set up, an environment cap, a failed deploy job) → a Step 3 warning,
+not a blocker.
 
 ---
 
@@ -123,6 +142,8 @@ Print a warning table and ask for explicit confirmation before proceeding:
   Step 7 Closes set, so they stay open after merge (correct behaviour). Print each stalled
   plan's `file` and its still-open issue numbers so the user can consciously confirm leaving
   them for a future iteration. These carry through to the Step 10 `Issues left open:` line.
+- **Dev environment unavailable** — Step 2f couldn't deploy or reach `<dev-url>`; print the
+  reason. Confirming merges an iteration nobody saw running deployed.
 - **Deferred review issues** — each still-open `prd.json.sdlc_deferred_issues` entry (check with
   `gh issue view <N> --json state`). Print one per line as `#N — deferred by round cap` (filed
   on the final review round) or `#N — minor rollup` (the rollup issue). They stay open after

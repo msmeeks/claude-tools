@@ -152,7 +152,7 @@ Once `select_next_plan` finds no eligible plans (or Claude emits the `<promise>C
 
   **Session-limit resilience.** Every gate Claude call goes through `_gate_invoke`, which raises `ReviewInterrupted` when the invocation both exits non-zero and matches `RATE_LIMIT_RE` — the same two-signal discriminator `scan_output` uses, and for the same reason: review output routinely *discusses* rate limits, and an exit-0 reviewer that merely quoted limit text must not be mistaken for a real limit hit. A reviewer discussing limits therefore never triggers a spurious wait. Instead — exactly like the main plan loop — the gate parses the reset delay from the output (`_parse_retry_after_text` + 60s buffer), `time.sleep`s until it clears, and retries; the retry escalates the reviewer dispatch parallel→serial per the `attempt` counter (mirroring the per-plan model escalation). Each attempt commits any progress first (`sdlc_review_completed_agents`, `sdlc_finding_issues`), so nothing is lost. Only if the limit persists across all `MAX_REVIEW_ATTEMPTS` (5) attempts does the gate give up, returning `"incomplete"` (status left non-terminal); `_run_gate_and_continue` then exits 0 so a later re-run resumes from the persisted progress.
 
-- **`complete`**: the docs phase runs (`run_docs_phase`: `/sdlc-doc-writer` scoped to the iteration's changed files, then `/help-docs` and `/demo` for new/changed features, committed to the integration branch), then `update_pr_description` writes the final PR summary (see below), then the script exits 0 — the iteration is genuinely finished.
+- **`complete`**: the docs phase runs (`run_docs_phase`: `/sdlc-doc-writer` scoped to the iteration's changed files, then `/help-docs` and `/demo` for new/changed features unless `ralph.json` turns them off, committed to the integration branch), then `update_pr_description` writes the final PR summary (see below), then the script exits 0 — the iteration is genuinely finished.
 
 
 If new plans were created by the triage step, the loop simply `continue`s and picks them up like any other pending plan on the next pass.
@@ -172,7 +172,12 @@ file the `agents` recipe's prompts are byte-identical to before (regression-test
     "reviewers": ["sdlc-security-reviewer", "sdlc-code-reviewer", "spec"],
     "registry": true
   },
-  "plan_review": { "reviewers": ["sdlc-security-reviewer", "sdlc-privacy-reviewer"] }
+  "plan_review": { "reviewers": ["sdlc-security-reviewer", "sdlc-privacy-reviewer"] },
+  "docs": { "help_docs": false, "demo": false },
+  "qa": {
+    "smoke_test": "make test",
+    "dev": { "label": "deploy", "url": "https://myapp-pr-{pr}.example.dev" }
+  }
 }
 ```
 
@@ -183,8 +188,11 @@ file the `agents` recipe's prompts are byte-identical to before (regression-test
 | `review.reviewers` | Non-empty, duplicate-free list of ids matching `^[a-z0-9][a-z0-9-]*$`; default is the seven `sdlc-*` agents |
 | `review.registry` | Bool, default `false`; passed to the skill as `--registry yes\|no` |
 | `plan_review.reviewers` | Same list rules; default the four plan-review agents. Read by `/plan-iteration` and `/triage-pr-comments`, not by this script |
+| `docs.help_docs`, `docs.demo` | Bool, default `true`. `false` drops that step from the docs phase; `/sdlc-doc-writer` always runs |
+| `qa.smoke_test` | Non-empty string or `null` (default). Fallback when `prd.json`'s `smoke_test` is null; `/plan-iteration` also seeds `prd.json` from it |
+| `qa.dev` | `null` (default) or an object with `label` (the PR label that deploys a per-PR dev environment) and `url` (`https://`, exactly one `{pr}` placeholder, no whitespace or extra braces). `/run-iteration` Step 6 and `/close-iteration` 2f add the label and check the app at the URL |
 
-Unknown top-level keys warn and are ignored; unknown keys inside `review`/`plan_review` are silently ignored.
+The script never reads `qa`; it validates it so a malformed block fails at the start of a run, not at close. Unknown top-level keys warn and are ignored; unknown keys inside `review`/`plan_review`/`docs`/`qa` are silently ignored.
 
 **`agents` recipe.** The original dispatch, over the configured roster instead of the fixed
 `SDLC_REVIEW_AGENTS`.

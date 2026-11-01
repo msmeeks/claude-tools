@@ -100,11 +100,18 @@ Scoring algorithm weights: epic completed/nevered (+100), zero customer impact (
 ### close-iteration
 
 The bookend to `/plan-iteration`. Verifies hard blockers (all plans terminal, SDLC review
-complete, findings addressed, no merge conflicts, smoke test passes), surfaces soft
+complete, findings addressed, no merge conflicts, smoke test passes, per-PR dev environment
+works), surfaces soft
 warnings for confirmation, checks spec issue coverage, then promotes and merges the
 integration PR, closes linked issues, and deletes branches/worktrees. Step 9e then runs
 `scripts/clean-iteration-artifacts.py` to remove the gitignored runtime artifacts (logs, lock,
 findings file, PR summary), skipping and reporting any it can't safely delete.
+
+The smoke test is `prd.json`'s `smoke_test`, else `ralph.json` `qa.smoke_test`. Step 2f runs
+only when `ralph.json` sets `qa.dev`: it adds the deploy label if missing, requires the deploy
+check to pass on the head commit, and has `sdlc-qa-engineer` smoke-test the app at the dev URL.
+A failing check blocks the merge; an environment that never comes up (deploys not set up yet,
+or the environment cap reached) is a Step 3 warning instead.
 
 The hard-blocker check on `sdlc_review_status` treats a transient `pending` reading as
 potentially benign, not automatically a stop-the-run failure: because
@@ -135,7 +142,12 @@ The middle step: `/plan-iteration` → `/run-iteration` → `/close-iteration`. 
 dispatches a background subagent to run `run-next-plan.py` (re-running past session limits,
 failed sessions and fixable stalls), reviews what the runner's gate doesn't (CI, conflicts,
 acceptance criteria, smoke test), then has a second subagent verify the PR body's test plans
-end to end. Ends with a report of what needs a human.
+end to end. When `ralph.json` sets `qa.dev`, Step 6 then labels the integration PR to deploy its
+per-PR dev environment, waits for it, and has a third subagent re-run the same checks against
+the dev URL (report-only; the coordinator fixes failures test-first and gets them reviewed).
+The label is the authorization — the repo opted in through `ralph.json` — and it stays on for
+`/close-iteration`. An unavailable environment goes under "Needs a human", not a blocker. Ends
+with a report of what needs a human, including a `Dev:` line.
 
 "Finished" is read from `prd.json` (every plan `done`/`stalled` and `sdlc_review_status`
 `complete`), never from the runner's exit code, which is also 0 when it gives up on a session
@@ -147,7 +159,8 @@ runs `/close-iteration`; it only reminds the user to.
 Backlog grooming entry point: checks every open issue carries a state label, groups the
 `ready-for-agent` ones into logical clusters, and writes `<config-root>/plans/<slug>.md` plan files
 plus `<config-root>/plans/prd.json` for `run-next-plan.py` (see
-[run-next-plan.md](run-next-plan.md)) to drive to completion.
+[run-next-plan.md](run-next-plan.md)) to drive to completion. Step 4 takes the smoke test from
+`<config-root>/ralph.json` `qa.smoke_test` when set, before detecting one from the repo.
 
 The plan-review agents in Step 6 and `review` mode come from `plan_review.reviewers` in
 `<config-root>/ralph.json` when that file exists (default: security, privacy, accessibility,
