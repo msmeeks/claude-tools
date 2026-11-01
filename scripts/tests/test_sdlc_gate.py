@@ -1308,6 +1308,54 @@ def test_minor_rollup_is_recorded_as_deferred_on_a_non_final_round(tmp_path):
     assert loaded["sdlc_finding_issues"] == [11]
 
 
+def _run_gate_with_labels(prd_path, tmp_path, labels_by_issue):
+    """Gate round filing #11 and #12, each answering `gh issue view` with its labels (None:
+    the read fails)."""
+
+    def fake(prompt, repo_root):
+        if "file a GitHub issue" in prompt:
+            return ("ISSUE: #11\nISSUE: #12\n", 0)
+        return _fake_gate_claude(prompt, repo_root)
+
+    def run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "view"]:
+            labels = labels_by_issue[int(cmd[3])]
+            if labels is None:
+                return type("R", (), {"returncode": 1, "stdout": ""})()
+            return type("R", (), {"returncode": 0, "stdout": labels})()
+        return _fake_subprocess_run(cmd, **kwargs)
+
+    _record_gate_prompts(prd_path, tmp_path, fake, run)
+    return load_prd(prd_path)
+
+
+@pytest.mark.parametrize("held", ["bug\nready-for-human\n", "bug\nneeds-info\n", "bug\n"])
+def test_non_final_finding_no_agent_will_fix_is_deferred_not_claimed(tmp_path, held):
+    # Triage plans only ready-for-agent issues, so nothing in this PR fixes the rest. In
+    # sdlc_finding_issues they'd reach the PR's Closes block and close unfixed on merge.
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    loaded = _run_gate_with_labels(
+        prd_path, tmp_path, {11: "bug\nready-for-agent\n", 12: held}
+    )
+
+    assert loaded["sdlc_finding_issues"] == [11]
+    assert loaded["sdlc_deferred_issues"] == [12]
+
+
+def test_non_final_finding_with_unreadable_labels_stays_claimed(tmp_path):
+    # A gh hiccup must not silently drop a finding the PR may well fix; /close-iteration
+    # re-reads labels before writing the Closes block.
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    loaded = _run_gate_with_labels(prd_path, tmp_path, {11: None, 12: "bug\nready-for-agent\n"})
+
+    assert loaded["sdlc_finding_issues"] == [11, 12]
+    assert loaded.get("sdlc_deferred_issues", []) == []
+
+
 def test_minor_rollup_is_recorded_alongside_final_round_issues(tmp_path):
     prd_path = tmp_path / "prd.json"
     save_prd(prd_path, _final_round_prd())
