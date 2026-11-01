@@ -35,7 +35,9 @@ desktop app), one works too. Brief each one fully — it sees nothing of this co
 2. Resolve `<config-root>`: `docs/agents/` if it exists, else `meta/`. Load
    `<config-root>/plans/prd.json`; if absent, stop and tell the user to run `/plan-iteration`.
 3. Record `integration_branch`, `pr_number`, `smoke_test`, and the default branch
-   (`git symbolic-ref refs/remotes/origin/HEAD`).
+   (`git symbolic-ref refs/remotes/origin/HEAD`). From `<config-root>/ralph.json`, if present,
+   record `qa.dev` (`label` and `url`), and use `qa.smoke_test` wherever this skill says
+   `smoke_test` if `prd.json`'s is `null`.
 4. If `git status --porcelain` shows changes, stop and ask — never stash or commit the
    user's work.
 
@@ -73,7 +75,7 @@ Dispatch one subagent with this brief, and wait for its report:
 > `sdlc_deferred_issues`, each fix you made (commit + one line), and anything still blocking
 > with its cause.
 
-**Done when** the subagent reports finished, or reports a blocker. On a blocker, go to Step 5
+**Done when** the subagent reports finished, or reports a blocker. On a blocker, go to Step 7
 — don't review or verify an unfinished iteration.
 
 ---
@@ -125,13 +127,49 @@ assumptions. Brief:
 
 ---
 
-## Step 5 — Settle and report
+## Step 5 — Settle
 
 If Steps 3–4 made commits, dispatch `sdlc-code-reviewer` and `sdlc-test-reviewer` over
 `<pre-fix-sha>..HEAD` — the runner's gate never saw them — fix what they find, re-run
 `smoke_test`, and `git push` once.
 
-Then print:
+---
+
+## Step 6 — Verify in dev (dev subagent)
+
+Skip when `qa.dev` isn't set. `<dev-url>` is `qa.dev.url` with `{pr}` replaced by `pr_number`.
+
+1. With the branch pushed (Step 5), deploy it: `gh pr edit <pr_number> --add-label
+   "<qa.dev.label>"`. The repo's `ralph.json` is the standing authorization for this one
+   deploy; nothing else on the hosting platform is.
+2. Wait for it: `gh pr checks <pr_number> --watch --interval 30` as a background task, then
+   `curl -fsS --retry 6 --retry-delay 10 --retry-all-errors <dev-url>`.
+   If the deploy fails or never answers (hosting not set up yet, an environment cap, a failed
+   deploy job), don't block: list `Dev environment — <reason>` under *Needs a human* and go to
+   Step 7.
+3. Dispatch a fresh subagent:
+
+   > Check the dev environment for iteration PR #`<pr_number>` at `<dev-url>`, which runs the
+   > head of `<integration_branch>`. Re-run, against that URL, every Step 4 checklist item that
+   > exercises the running app — pages, API calls, health, the flows the plans changed — plus
+   > what only shows once deployed: static assets served, migrations applied, environment
+   > config and banners, background workers running. Dev holds test data only. Never touch
+   > production, send real messages, or change hosting config, secrets or labels. Don't fix
+   > anything. Give each item **verified** (how, with evidence), **failed** (what you saw), or
+   > **needs a human** (why), as a table.
+
+4. Fix failures that are small and local yourself, test-first, committed with the issue
+   reference; have `sdlc-code-reviewer` review those commits, push, wait for the redeploy as in
+   2, and re-check the item. File anything bigger per the "Filing issues" rules.
+
+Leave the label on: `/close-iteration` re-checks the same environment, and the repo's deploy
+workflow tears it down when the PR closes.
+
+---
+
+## Step 7 — Report
+
+Print:
 
 ```
 === Iteration ready to close ===        (or: === Iteration blocked ===)
@@ -141,6 +179,8 @@ Plans:         <done> done, <stalled> stalled
 Loop:          <runs> runs; fixes: <commit — one line each, or none>
 Review:        CI <state>; fixes: <…>
 Verification:  <v> verified, <f> fixed, <h> need a human
+Dev:           <dev-url> — <v> verified, <f> fixed, <h> need a human
+               (or: not configured / unavailable — <reason>)
 
 Needs your input:
 - <decision, with the options>

@@ -1216,6 +1216,39 @@ def test_docs_phase_prompt_has_no_commit_message_rule_without_refs(tmp_path):
     assert "End the commit message" not in prompts[0]
 
 
+def _docs_phase_prompt(tmp_path, ralph=None):
+    prd_path = tmp_path / "prd.json"
+    run_next_plan.save_prd(prd_path, {"integration_branch": "integration/x", "plans": []})
+    config_root = resolve_config_root(tmp_path)
+    if ralph is not None:
+        config_root.mkdir(parents=True, exist_ok=True)
+        (config_root / "ralph.json").write_text(json.dumps(ralph))
+
+    prompts = []
+    with patch.object(run_next_plan, "invoke_claude", side_effect=lambda p, r: prompts.append(p)), \
+         patch.object(run_next_plan, "ensure_committed"), \
+         patch.object(run_next_plan, "update_pr_description"), \
+         patch.object(run_next_plan, "get_default_branch", return_value="main"):
+        run_next_plan.run_docs_phase(prd_path, tmp_path, config_root)
+    return prompts[0]
+
+
+def test_docs_phase_runs_help_docs_and_demo_by_default(tmp_path):
+    prompt = _docs_phase_prompt(tmp_path)
+
+    assert "/help-docs" in prompt
+    assert "/demo" in prompt
+
+
+def test_docs_phase_skips_help_docs_and_demo_when_ralph_json_turns_them_off(tmp_path):
+    prompt = _docs_phase_prompt(tmp_path, {"docs": {"help_docs": False, "demo": False}})
+
+    assert "/help-docs" not in prompt
+    assert "/demo" not in prompt
+    assert "/sdlc-doc-writer" in prompt
+    _asserts_commit_only(prompt)
+
+
 def test_ensure_committed_prompt_asks_for_the_refs_line_after_a_space(tmp_path):
     local, _ = _init_repo_with_remote(tmp_path)
     (local / "README.md").write_text("x\n")

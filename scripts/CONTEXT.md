@@ -9,9 +9,10 @@ links only the executable files here into `~/.claude/scripts/`, so a new script 
 `clean-iteration-artifacts.py` is the helper `/close-iteration` Step 9e calls to remove the
 gitignored runtime artifacts after merge; it reuses the runner's path list and config-root rules.
 
-Per-repo review configuration lives in `<config-root>/ralph.json` (see
+Per-repo review, docs-phase and QA configuration lives in `<config-root>/ralph.json` (see
 [ADR 0002](../docs/adr/0002-review-recipe-is-repo-config.md)); `load_ralph_config` validates it
-once in `main()` and passes it down like `config_root`.
+once in `main()` and passes it down like `config_root`. The `qa` block is read only by the
+iteration skills; the script validates it so a bad block fails early.
 
 Run the suite with `cd scripts && python3 -m pytest`; lint with `python3 -m ruff check .`
 (the `ruff` binary may not be on PATH). Full reference:

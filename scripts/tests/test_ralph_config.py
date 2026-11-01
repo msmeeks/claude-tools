@@ -27,6 +27,27 @@ def test_absent_file_gives_defaults(tmp_path):
     assert cfg["review"]["reviewers"] == list(run_next_plan.SDLC_REVIEW_AGENTS)
     assert cfg["review"]["registry"] is False
     assert cfg["plan_review"]["reviewers"] == list(run_next_plan.PLAN_REVIEW_AGENTS)
+    assert cfg["docs"] == {"help_docs": True, "demo": True}
+    assert cfg["qa"] == {"smoke_test": None, "dev": None}
+
+
+def test_qa_and_docs_config_is_loaded(tmp_path):
+    _write(
+        tmp_path,
+        {
+            "docs": {"help_docs": False},
+            "qa": {
+                "smoke_test": "uv run pytest",
+                "dev": {"label": "deploy", "url": "https://app-pr-{pr}.example.dev"},
+            },
+        },
+    )
+    cfg = load_ralph_config(tmp_path)
+    assert cfg["docs"] == {"help_docs": False, "demo": True}
+    assert cfg["qa"] == {
+        "smoke_test": "uv run pytest",
+        "dev": {"label": "deploy", "url": "https://app-pr-{pr}.example.dev"},
+    }
 
 
 def test_absent_keys_fall_back_to_defaults(tmp_path):
@@ -81,6 +102,20 @@ def test_full_skill_config_is_loaded(tmp_path):
         {"plan_review": {"reviewers": []}},
         {"plan_review": {"reviewers": ["x", "x"]}},
         {"plan_review": []},
+        {"docs": []},
+        {"docs": {"help_docs": "no"}},
+        {"docs": {"demo": 0}},
+        {"qa": []},
+        {"qa": {"smoke_test": ""}},
+        {"qa": {"smoke_test": 3}},
+        {"qa": {"dev": []}},
+        {"qa": {"dev": {"url": "https://app-pr-{pr}.example.dev"}}},
+        {"qa": {"dev": {"label": "", "url": "https://app-pr-{pr}.example.dev"}}},
+        {"qa": {"dev": {"label": "deploy"}}},
+        {"qa": {"dev": {"label": "deploy", "url": "http://app-pr-{pr}.example.dev"}}},
+        {"qa": {"dev": {"label": "deploy", "url": "https://app.example.dev"}}},
+        {"qa": {"dev": {"label": "deploy", "url": "https://app-{pr}.example.dev/{x}"}}},
+        {"qa": {"dev": {"label": "deploy", "url": "https://app-pr-{pr}.example.dev path"}}},
     ],
 )
 def test_invalid_config_dies(tmp_path, payload):
