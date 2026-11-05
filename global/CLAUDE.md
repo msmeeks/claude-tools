@@ -51,7 +51,8 @@ Every issue a session files must be ready to work on as filed — nobody triages
 
 - Before filing: confirm against the code that it's still real, and search open issues for a duplicate.
 - Body is an agent brief: Context, Change, Acceptance criteria, How to verify.
-- Label it at filing: one category (`bug`/`enhancement`) plus one state — `ready-for-agent`, `ready-for-human` (needs a person's judgment, access, or manual testing), or `needs-info` (you couldn't complete the brief). Strings from `docs/agents/triage-labels.md` (`meta/` in older repos); `gh label create` any that are missing.
+- The bar: a bug to fix now → `ready-for-agent`; real but not urgent → `later`; polish nobody would miss → don't file.
+- Label it at filing: one category (`bug`/`enhancement`) plus one state — `ready-for-agent`, `ready-for-human` (needs a person's judgment, access, or manual testing), `needs-info` (you couldn't complete the brief), or `later` (valid, deliberately deferred; planning skips it). Strings from `docs/agents/triage-labels.md` (`meta/` in older repos); `gh label create` any that are missing.
 - A whole feature, not one issue → tell the user to run `/to-spec` then `/to-tickets` (`/to-prd`, `/to-issues` on older installs). They're user-invoked; you can't call them.
 
 ## Project layout

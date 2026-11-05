@@ -26,7 +26,8 @@ _Avoid_: linter (the style reviewer *runs* a linter; it is not one)
 
 **Checklist**:
 The body of an agent file: what to look for, in what order, with what severity. The agent's
-actual behaviour, since there is no code.
+actual behaviour, since there is no code. Severity comes from the shared scale
+(`SEVERITY_SCALE` in `scripts/run-next-plan.py`), copied verbatim into each finding agent.
 _Avoid_: rules, config
 
 **Round**:

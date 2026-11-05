@@ -1122,44 +1122,39 @@ def _record_gate_prompts(prd_path, tmp_path, fake=_fake_gate_claude, run=_fake_s
     return prompts
 
 
-def test_only_medium_and_above_findings_are_filed_as_their_own_issues(tmp_path):
-    # One issue per finding at every severity filed 100 issues across two rounds of one
-    # iteration, most of them nits. Minor/low findings share a single rollup issue instead.
+def test_filing_sorts_findings_into_fix_now_later_and_drop(tmp_path):
+    # #122: planning every Medium-and-up finding let polish crowd out the iteration's real
+    # work, and nobody ever worked the minor-findings rollups.
     prd_path = tmp_path / "prd.json"
     save_prd(prd_path, _valid_prd())
 
     prompts = _record_gate_prompts(prd_path, tmp_path)
 
     file_issues_prompt = next(p for p in prompts if "file a GitHub issue" in p)
-    assert "Blocker, Critical, High, Major or Medium" in file_issues_prompt
-    assert "ONE rollup issue" in file_issues_prompt
-    assert "MINOR_ROLLUP:" in file_issues_prompt
+    assert run_next_plan.SEVERITY_SCALE in file_issues_prompt
+    for outcome in ("**Fix now.**", "**Later.**", "**Drop.**"):
+        assert outcome in file_issues_prompt
+    assert "`later`" in file_issues_prompt
+    assert "rollup" not in file_issues_prompt.lower()
 
 
-def test_minor_rollup_is_neither_triaged_nor_claimed_by_the_pr(tmp_path):
+def test_filing_creates_the_later_label_with_its_meaning(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    prompts = _record_gate_prompts(prd_path, tmp_path)
+
+    file_issues_prompt = next(p for p in prompts if "file a GitHub issue" in p)
+    assert run_next_plan.LATER_LABEL_DESCRIPTION in file_issues_prompt
+
+
+def test_round_whose_findings_were_all_dropped_completes_without_triage(tmp_path):
     prd_path = tmp_path / "prd.json"
     save_prd(prd_path, _valid_prd())
 
     def fake(prompt, repo_root):
         if "file a GitHub issue" in prompt:
-            return ("ISSUE: #11\nMINOR_ROLLUP: #12\n", 0)
-        return _fake_gate_claude(prompt, repo_root)
-
-    prompts = _record_gate_prompts(prd_path, tmp_path, fake)
-
-    triage_prompt = next(p for p in prompts if "labeled at filing" in p)
-    assert "#11" in triage_prompt
-    assert "#12" not in triage_prompt
-    assert load_prd(prd_path)["sdlc_finding_issues"] == [11]
-
-
-def test_round_with_only_minor_findings_completes_without_triage(tmp_path):
-    prd_path = tmp_path / "prd.json"
-    save_prd(prd_path, _valid_prd())
-
-    def fake(prompt, repo_root):
-        if "file a GitHub issue" in prompt:
-            return ("MINOR_ROLLUP: #12\n", 0)
+            return ("No findings met the bar; nothing filed.\n", 0)
         return _fake_gate_claude(prompt, repo_root)
 
     prompts = _record_gate_prompts(prd_path, tmp_path, fake)
@@ -1237,6 +1232,36 @@ def test_filed_issue_without_a_state_label_is_flagged_for_the_user_to_triage(tmp
     assert load_prd(prd_path)["sdlc_review_status"] == "complete"
 
 
+def test_later_finding_is_not_flagged_as_unlabeled(tmp_path, capsys):
+    # `later` is a real state (#122), not a missing one.
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    def fake(prompt, repo_root):
+        if "file a GitHub issue" in prompt:
+            return ("ISSUE: #11\n", 0)
+        return _fake_gate_claude(prompt, repo_root)
+
+    def run(cmd, **kwargs):
+        if cmd[:3] == ["gh", "issue", "view"]:
+            return type("R", (), {"returncode": 0, "stdout": "enhancement\nlater\n"})()
+        return _fake_subprocess_run(cmd, **kwargs)
+
+    _record_gate_prompts(prd_path, tmp_path, fake, run)
+
+    assert "/triage" not in capsys.readouterr().err
+
+
+def test_triage_never_plans_later_issues(tmp_path):
+    prd_path = tmp_path / "prd.json"
+    save_prd(prd_path, _valid_prd())
+
+    prompts = _record_gate_prompts(prd_path, tmp_path)
+
+    triage_prompt = next(p for p in prompts if "labeled at filing" in p)
+    assert "never plan an issue labeled `later`" in triage_prompt.lower()
+
+
 def test_finding_on_an_issue_this_pr_claims_to_fix_is_not_deduped_away(tmp_path):
     # Issues the PR closes stay open until it merges. A later round finding that one of them
     # is still broken means the fix fell short; deduping it would drop the finding and let
@@ -1257,7 +1282,7 @@ def test_finding_on_an_issue_this_pr_claims_to_fix_is_not_deduped_away(tmp_path)
     assert "is NOT a duplicate" in file_issues_prompt
 
 
-# --- #78: deferred and rollup issues are recorded in sdlc_deferred_issues -------------------
+# --- #78: deferred issues are recorded in sdlc_deferred_issues ------------------------------
 
 
 def _final_round_prd():
@@ -1297,17 +1322,6 @@ def test_non_final_round_issues_are_not_deferred(tmp_path):
     assert load_prd(prd_path).get("sdlc_deferred_issues", []) == []
 
 
-def test_minor_rollup_is_recorded_as_deferred_on_a_non_final_round(tmp_path):
-    prd_path = tmp_path / "prd.json"
-    save_prd(prd_path, _valid_prd())
-
-    _run_gate_with_filing_output(prd_path, tmp_path, "ISSUE: #11\nMINOR_ROLLUP: #12\n")
-
-    loaded = load_prd(prd_path)
-    assert loaded["sdlc_deferred_issues"] == [12]
-    assert loaded["sdlc_finding_issues"] == [11]
-
-
 def _run_gate_with_labels(prd_path, tmp_path, labels_by_issue):
     """Gate round filing #11 and #12, each answering `gh issue view` with its labels (None:
     the read fails)."""
@@ -1329,7 +1343,9 @@ def _run_gate_with_labels(prd_path, tmp_path, labels_by_issue):
     return load_prd(prd_path)
 
 
-@pytest.mark.parametrize("held", ["bug\nready-for-human\n", "bug\nneeds-info\n", "bug\n"])
+@pytest.mark.parametrize(
+    "held", ["bug\nready-for-human\n", "bug\nneeds-info\n", "bug\n", "enhancement\nlater\n"]
+)
 def test_non_final_finding_no_agent_will_fix_is_deferred_not_claimed(tmp_path, held):
     # Triage plans only ready-for-agent issues, so nothing in this PR fixes the rest. In
     # sdlc_finding_issues they'd reach the PR's Closes block and close unfixed on merge.
@@ -1356,31 +1372,13 @@ def test_non_final_finding_with_unreadable_labels_stays_claimed(tmp_path):
     assert loaded.get("sdlc_deferred_issues", []) == []
 
 
-def test_minor_rollup_is_recorded_alongside_final_round_issues(tmp_path):
-    prd_path = tmp_path / "prd.json"
-    save_prd(prd_path, _final_round_prd())
-
-    _run_gate_with_filing_output(prd_path, tmp_path, "ISSUE: #11\nMINOR_ROLLUP: #12\n")
-
-    assert load_prd(prd_path)["sdlc_deferred_issues"] == [11, 12]
-
-
-def test_missing_rollup_line_is_fine(tmp_path):
-    prd_path = tmp_path / "prd.json"
-    save_prd(prd_path, _valid_prd())
-
-    _run_gate_with_filing_output(prd_path, tmp_path, "ISSUE: #11\n")
-
-    assert load_prd(prd_path)["sdlc_review_status"] == "complete"
-
-
 def test_deferred_issues_are_deduped_across_rounds(tmp_path):
     prd_path = tmp_path / "prd.json"
     data = _final_round_prd()
     data["sdlc_deferred_issues"] = [12]
     save_prd(prd_path, data)
 
-    _run_gate_with_filing_output(prd_path, tmp_path, "ISSUE: #11\nMINOR_ROLLUP: #12\n")
+    _run_gate_with_filing_output(prd_path, tmp_path, "ISSUE: #11\nISSUE: #12\n")
 
     assert load_prd(prd_path)["sdlc_deferred_issues"] == [12, 11]
 
@@ -1394,16 +1392,6 @@ def test_gate_completion_keeps_deferred_issues(tmp_path):
     loaded = load_prd(prd_path)
     assert loaded["sdlc_round_filed_issues"] == []
     assert loaded["sdlc_deferred_issues"] == [11]
-
-
-def test_parse_minor_rollup_takes_the_last_match():
-    assert run_next_plan.parse_minor_rollup("MINOR_ROLLUP: #5\nMINOR_ROLLUP: 7\n") == 7
-
-
-def test_parse_minor_rollup_rejects_zero_and_trailing_junk_and_absence():
-    assert run_next_plan.parse_minor_rollup("MINOR_ROLLUP: #0") is None
-    assert run_next_plan.parse_minor_rollup("MINOR_ROLLUP: #5 extra") is None
-    assert run_next_plan.parse_minor_rollup("ISSUE: #5") is None
 
 
 def test_rearm_keeps_deferred_issues(tmp_path):
@@ -1670,23 +1658,12 @@ def test_parse_issue_numbers_accepts_nine_digits_and_crlf():
     assert parse_issue_numbers("ISSUE: #123456789\r\nISSUE: 7\r\n") == ["#123456789", "#7"]
 
 
-@pytest.mark.parametrize(
-    "text", ["MINOR_ROLLUP: #" + "9" * 5000, "MINOR_ROLLUP: #\u0661\u0662", "MINOR_ROLLUP:\n\n5"]
-)
-def test_parse_minor_rollup_ignores_unusable_numbers(text):
-    assert run_next_plan.parse_minor_rollup(text) is None
-
-
-def test_parse_minor_rollup_accepts_nine_digits_and_crlf():
-    assert run_next_plan.parse_minor_rollup("MINOR_ROLLUP: #123456789\r\n") == 123456789
-
-
 def test_file_issues_phase_drops_unusable_numbers_instead_of_crashing(tmp_path):
     prd_path = tmp_path / "prd.json"
     save_prd(prd_path, _valid_prd())
     config_root = tmp_path / "docs" / "agents"
     config_root.mkdir(parents=True)
-    out = "ISSUE: #" + "9" * 5000 + "\nISSUE: #12\nMINOR_ROLLUP: #\u0661\u0662\n"
+    out = "ISSUE: #" + "9" * 5000 + "\nISSUE: #12\n"
 
     with patch.object(run_next_plan, "_gate_invoke", return_value=out):
         filed = run_next_plan._run_file_issues_phase(prd_path, tmp_path, config_root)
@@ -1702,3 +1679,21 @@ def test_range_is_empty_still_counts_docs_beside_bookkeeping(tmp_path):
     _commit_changes(tmp_path, "docs/agents/plans/prd.json")
 
     assert run_next_plan._range_is_empty(tmp_path, "HEAD~1..HEAD", config_root) is False
+
+
+# --- #122: one severity scale across the reviewers and the file-issues phase -----------------
+
+_AGENTS_DIR = Path(__file__).resolve().parents[2] / "agents"
+# sdlc-doc-writer writes docs and reports no findings, so it carries no scale.
+_FINDING_AGENTS = sorted(
+    p for p in _AGENTS_DIR.glob("sdlc-*.md") if p.name != "sdlc-doc-writer.md"
+)
+
+
+def test_finding_agents_are_discovered():
+    assert len(_FINDING_AGENTS) == 8
+
+
+@pytest.mark.parametrize("agent", _FINDING_AGENTS, ids=lambda p: p.stem)
+def test_every_finding_agent_carries_the_shared_severity_scale(agent):
+    assert run_next_plan.SEVERITY_SCALE in agent.read_text()

@@ -85,7 +85,7 @@ _Avoid_: issue link, footer
 
 **Deferred issue**:
 A filed review finding this PR will not fix — final-round findings, findings not labelled
-`ready-for-agent` (triage plans no others), and minor rollups — recorded
+`ready-for-agent` (triage plans no others; `later` is the usual one) — recorded
 in `prd.json`'s `sdlc_deferred_issues`, never in `sdlc_finding_issues`, so it can't reach a
 `Closes` line.
 _Avoid_: leftover, backlog item

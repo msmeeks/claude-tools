@@ -81,6 +81,7 @@ Sort every open issue by its state label (strings from `<config-root>/triage-lab
 |---|---|
 | `ready-for-agent` | Planning pool |
 | `ready-for-human`, `needs-info`, `wontfix` | Excluded from this iteration |
+| `later` | Excluded — deferred (a valid finding nobody has scheduled; a person relabels it to plan it) |
 | none, or `needs-triage` | **Untriaged** |
 
 Do not triage untriaged issues yourself — not by invoking `/triage` (it is user-invoked and
@@ -90,13 +91,23 @@ the call is refused) and not by judging and labeling them inline. If there are a
 2. Tell the user how to triage them, then re-run `/plan-iteration`:
    > Run `/triage` and name the issues, e.g. `/triage #12 #14 — read each issue's comments
    > before deciding`. Each one ends with a category (`bug`/`enhancement`) and a state
-   > (`ready-for-agent`, `ready-for-human`, `needs-info`, or `wontfix`).
+   > (`ready-for-agent`, `ready-for-human`, `needs-info`, `later`, or `wontfix`).
 3. Ask whether to **stop here** (default, recommended) or **plan only the issues already
    labeled `ready-for-agent`**, leaving the untriaged ones for the next iteration. Stop if
    there's no one to ask.
 
 Then print a summary table: the pool, and the excluded and untriaged issues with the reason
 for each.
+
+**Findings-only pool.** If the pool is non-empty and every issue in it carries
+`sdlc-finding`, say so:
+
+> Every `ready-for-agent` issue in the pool is an SDLC review finding — this would be a
+> fixes-only iteration, with no feature work.
+
+Ask whether to **stop here** (default, recommended) or **plan a fixes-only iteration**. Stop
+if there's no one to ask. One issue without `sdlc-finding` in the pool is enough to plan
+normally.
 
 ### Step 4 — Explore Codebase
 

@@ -49,4 +49,14 @@ For any new dependency: check last publish date, download count, issue/PR activi
 
 ## Output format
 
-**Critical** (exploit in prod) → **High** (significant risk) → **Medium** → **Informational**. Each finding: file + line, vulnerability class, attack scenario, remediation. Cite CVE numbers or OWASP references where applicable.
+**Severity scale.** Grade every finding by its impact, on this scale:
+- **Blocker / Critical:** a security hole; Tier 4 data or PII exposed; data lost or corrupted; the app won't build, boot or deploy.
+- **High:** shipped behaviour that a user or operator would hit is wrong; a migration that fails or isn't safe to re-run; a privacy rule is broken.
+- **Major / Medium:** a real problem, but nothing is wrong today. Examples: a missing test on a risky path, an accessibility failure on a user-facing screen, a design flaw likely to cause bugs.
+- **Minor and below:** everything else.
+
+`sdlc-test-reviewer` and `sdlc-style-reviewer` findings are capped at Medium. The exception is a finding that shows something actually broken: a failing test or a reproduced bug.
+
+Here: an exploitable vulnerability is **Critical**; a hardening gap with no known exploit path is **Medium**; informational notes are **Minor**.
+
+Group findings by severity. Each finding: file + line, vulnerability class, attack scenario, remediation. Cite CVE numbers or OWASP references where applicable.

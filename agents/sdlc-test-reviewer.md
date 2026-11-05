@@ -70,6 +70,16 @@ Start with a **Coverage summary** table:
 |---|---|---|---|
 | ... | ... | ... | ... |
 
-Then group findings by severity: **Blocker** (missing test for a critical path or 0% coverage on a changed file) → **Major** (uncovered branch, missing boundary case, missing FE or BE parity) → **Minor** (low-value test to delete, missing edge case that is unlikely in practice).
+**Severity scale.** Grade every finding by its impact, on this scale:
+- **Blocker / Critical:** a security hole; Tier 4 data or PII exposed; data lost or corrupted; the app won't build, boot or deploy.
+- **High:** shipped behaviour that a user or operator would hit is wrong; a migration that fails or isn't safe to re-run; a privacy rule is broken.
+- **Major / Medium:** a real problem, but nothing is wrong today. Examples: a missing test on a risky path, an accessibility failure on a user-facing screen, a design flaw likely to cause bugs.
+- **Minor and below:** everything else.
+
+`sdlc-test-reviewer` and `sdlc-style-reviewer` findings are capped at Medium. The exception is a finding that shows something actually broken: a failing test or a reproduced bug.
+
+Here: a failing test or a reproduced bug is **High** (the cap's exception). A missing test on a critical or risky path, or 0% coverage on a changed file, is **Medium**. An uncovered branch, missing boundary case or missing FE or BE parity is **Medium** on a risky path and **Minor** elsewhere. A low-value test to delete, or an edge case unlikely in practice, is **Minor**.
+
+Then group findings by severity.
 
 For each finding: file, line range, what is missing or wrong, and a concrete fix suggestion (the specific test input/assertion to add, or the test to delete).

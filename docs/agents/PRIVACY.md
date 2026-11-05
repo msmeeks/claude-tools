@@ -66,7 +66,7 @@ author names or titles are copied into it. Fields the runner, `/plan-iteration` 
   issues (iteration-cumulative and per-round scratch). Numbers only; the issues themselves can
   hold unredacted content.
 - `sdlc_deferred_issues`: enforced int list of filed-but-not-fixed issue numbers (final-round
-  findings, minor rollups). Numbers only, but each points at an `sdlc-finding` issue that stays
+  findings, and `later`/`ready-for-human`/`needs-info` findings). Numbers only, but each points at an `sdlc-finding` issue that stays
   open and can hold unredacted content.
 - `feature_branches`: user-authored; names can encode a person or an issue title. Can carry PII
   — keep generic.
