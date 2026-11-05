@@ -612,22 +612,12 @@ def _is_issue_number(x: object) -> bool:
 # [ \t] not \s so a match can't span lines; \r? tolerates CRLF output.
 _ISSUE_NUM = r"#?([0-9]{1,9})"
 ISSUE_NUMBER_RE = re.compile(rf"^ISSUE:[ \t]*{_ISSUE_NUM}\r?$", re.MULTILINE)
-MINOR_ROLLUP_RE = re.compile(rf"^MINOR_ROLLUP:[ \t]*{_ISSUE_NUM}[ \t]*\r?$", re.MULTILINE)
 PLAN_ISSUE_RE = re.compile(r"#(\d+)")
 
 
 def parse_issue_numbers(output: str) -> list[str]:
     nums = (int(m.group(1)) for m in ISSUE_NUMBER_RE.finditer(output))
     return [f"#{n}" for n in nums if _is_issue_number(n)]
-
-
-def parse_minor_rollup(text: str) -> int | None:
-    """The rollup issue number (last `MINOR_ROLLUP:` line wins), or None if absent or 0.
-    Kept apart from parse_issue_numbers so a rollup can never reach a `Closes` line."""
-    matches = MINOR_ROLLUP_RE.findall(text)
-    if not matches or not _is_issue_number(int(matches[-1])):
-        return None
-    return int(matches[-1])
 
 
 def extract_plan_issue_numbers(plan_path: Path) -> list[int]:
@@ -1844,6 +1834,21 @@ def _rotate_findings_file(repo_root: Path, config_root: Path) -> None:
         findings.unlink()
 
 
+# One impact-based scale for every SDLC reviewer and the file-issues phase (#122). The agent
+# files under agents/ carry this text verbatim; a test keeps them in step.
+SEVERITY_SCALE = """**Severity scale.** Grade every finding by its impact, on this scale:
+- **Blocker / Critical:** a security hole; Tier 4 data or PII exposed; data lost or corrupted; the app won't build, boot or deploy.
+- **High:** shipped behaviour that a user or operator would hit is wrong; a migration that fails or isn't safe to re-run; a privacy rule is broken.
+- **Major / Medium:** a real problem, but nothing is wrong today. Examples: a missing test on a risky path, an accessibility failure on a user-facing screen, a design flaw likely to cause bugs.
+- **Minor and below:** everything else.
+
+`sdlc-test-reviewer` and `sdlc-style-reviewer` findings are capped at Medium. The exception is a finding that shows something actually broken: a failing test or a reproduced bug."""
+
+LATER_LABEL_DESCRIPTION = (
+    "Valid, deliberately deferred; planning skips it until a person relabels it"
+)
+
+
 def _run_file_issues_phase(
     prd_path: Path, repo_root: Path, config_root: Path, final_round: bool = False
 ) -> list[int]:
@@ -1862,31 +1867,33 @@ A finding that one of those is still broken is NOT a duplicate — the fix fell 
 file it, and name the earlier issue in its body.
 Merge findings that describe the same problem into one before filing.
 
-Sort each remaining finding by severity. Use the severity its reviewer gave; if it has
-none, judge it yourself on the same scale.
+Grade each remaining finding on this scale. Use the grade its reviewer gave unless it breaks
+the scale (a test or style finding above Medium that shows nothing broken is Medium); if it
+has none, grade it yourself.
 
-- Blocker, Critical, High, Major or Medium: file a GitHub issue for it using
-  `gh issue create`. Use the ## heading as the title and the body text as the issue body.
-- Anything lower (Minor, Low, Nit, Informational, suggestions): do NOT file it on its own.
-  Collect every such finding into ONE rollup issue titled
-  "SDLC review: minor findings", whose body is a Markdown checklist with one line per
-  finding (file and symbol plus a one-sentence description). Drop purely informational
-  notes that ask for no change. Skip the rollup if nothing is left to put in it.
+{SEVERITY_SCALE}
+
+Then give each finding exactly one outcome:
+- **Fix now.** Blocker, Critical or High — or any finding that shows shipped behaviour is
+  wrong, whatever grade it was given: file a GitHub issue for it using `gh issue create`,
+  with the ## heading as the title and the body text as the issue body. Its state is
+  `ready-for-agent`, `ready-for-human` or `needs-info` (below).
+- **Later.** Major or Medium findings that are not fix-now: file an issue for it the
+  same way, with the state `later`: valid, but deliberately not planned in this iteration.
+- **Drop.** Minor and below, cosmetic churn (naming, comment wording, style the linter
+  already accepts), an alternative phrasing of working code, a tighter assertion on
+  behaviour that already works. Do NOT file it. It stays in {findings_rel} and the gate log
+  only.
 
 Nothing triages these issues after you file them, so each must be ready to work on as filed.
-Hold every finding to a bar before filing it on its own: fixing it must change behaviour,
-correctness, security, privacy, accessibility or user-facing copy, or close a test gap on a
-risky path. Never file cosmetic churn on its own — naming, comment wording, style the
-linter already accepts, an alternative phrasing of working code — at most a rollup line.
-
-Write each individually filed body as an agent brief: Context, Change, Acceptance criteria,
-How to verify. Label it at filing with "sdlc-finding", one category (`bug` or `enhancement`)
-and one state:
+Write each body as an agent brief: Context, Change, Acceptance criteria, How to verify.
+Label it at filing with "sdlc-finding", one category (`bug` or `enhancement`) and one state.
+A later issue's state is `later`. A fix-now issue's state is one of:
 - `ready-for-agent` — the brief is complete and an agent can fix it unattended;
 - `ready-for-human` — fixing it needs a person's judgment, access, or manual testing;
 - `needs-info` — you could not complete the brief (say what is missing in the body).
-Label the rollup "sdlc-finding", `enhancement` and `ready-for-human`.
-Create any of these labels that the repo lacks with `gh label create` first.
+Create any of these labels that the repo lacks with `gh label create` first; give `later`
+the description "{LATER_LABEL_DESCRIPTION}".
 
 These issue bodies leave this machine and land in a tracker that may be public, and the
 automation cannot retract one once filed. Before filing, rewrite each body so it:
@@ -1896,13 +1903,11 @@ automation cannot retract one once filed. Before filing, rewrite each body so it
 - carries no credentials, tokens, keys, connection strings, customer data, email
   addresses, or other personal data — redact any such value as [REDACTED].
 
-Output the numbers of the individually filed issues, one per line, prefixed with "ISSUE:".
-Output the rollup's number on its own line prefixed with "MINOR_ROLLUP:", never "ISSUE:" —
-it is left for a human to schedule, not planned or fixed in this iteration."""
+Output the number of every issue you filed, fix-now and later alike, one per line, prefixed
+with "ISSUE:"."""
     issues_output = _gate_invoke("issue filing", file_issues_prompt, repo_root)
     issue_numbers = parse_issue_numbers(issues_output)
     issue_ints = [int(n.lstrip("#")) for n in issue_numbers]
-    rollup = parse_minor_rollup(issues_output)
     # Read labels before taking the prd lock. On the final round every issue is deferred anyway.
     unfixed = issue_ints if final_round else _issues_no_agent_will_fix(issue_ints, repo_root)
 
@@ -1913,11 +1918,11 @@ it is left for a human to schedule, not planned or fixed in this iteration."""
     def mutate(data: dict) -> None:
         data["sdlc_round_filed_issues"] = issue_ints
         # sdlc_deferred_issues is the iteration-cumulative record of filed issues this PR
-        # does not fix (final-round findings, findings no agent will pick up, minor
-        # rollups). /close-iteration reconciles against it so it neither re-files them nor
+        # does not fix (final-round findings, and findings no agent will pick up: `later`,
+        # ready-for-human, needs-info). /close-iteration reconciles against it so it neither re-files them nor
         # reports "Issues left open: none".
         deferred = list(data.get("sdlc_deferred_issues", []))
-        for n in unfixed + ([rollup] if rollup else []):
+        for n in unfixed:
             if n not in deferred:
                 deferred.append(n)
         if deferred:
@@ -2033,8 +2038,7 @@ def run_sdlc_review_gate(
             )
             if not round_filed:
                 round_filed = _run_file_issues_phase(prd_path, repo_root, config_root, final_round)
-            # A round whose findings were all minor files only the rollup, which is left for
-            # a human — nothing to plan.
+            # A round whose findings were all dropped or duplicates files nothing to plan.
             if round_filed:
                 _run_triage_phase(
                     prd_path, repo_root, config_root, round_filed, triage_log_path, final_round
@@ -2105,6 +2109,9 @@ Append one entry per new plan to the "plans" list in {plans_rel}/prd.json, in ex
 shape (blocked_by lists other plan filenames, or is empty):
   {{"file": "<slug>.md", "issues": [<issue numbers>], "size": "S|M|L", "status": "pending", "attempts": 0, "blocked_by": []}}
 
+Never plan an issue labeled `later`, ready-for-human or needs-info: `later` findings are
+valid but deliberately deferred until a person relabels them.
+
 Do NOT run /plan-iteration's Step 8 (no new integration branch, no new draft PR) — this
 work folds into the current iteration's existing integration branch and PR."""
 
@@ -2120,7 +2127,7 @@ Leave each issue open with the labels it was filed with so a human can schedule 
 # State labels from triage-labels.md. A filed issue carrying none of these was not labeled at
 # filing; the runner cannot triage it (/triage is user-invoked), so it flags it instead.
 _TRIAGE_STATE_LABELS = frozenset(
-    {"needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"}
+    {"needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "later", "wontfix"}
 )
 
 

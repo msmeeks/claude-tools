@@ -71,4 +71,14 @@ For any form or API accepting user input, test:
 
 ## Output format
 
+**Severity scale.** Grade every finding by its impact, on this scale:
+- **Blocker / Critical:** a security hole; Tier 4 data or PII exposed; data lost or corrupted; the app won't build, boot or deploy.
+- **High:** shipped behaviour that a user or operator would hit is wrong; a migration that fails or isn't safe to re-run; a privacy rule is broken.
+- **Major / Medium:** a real problem, but nothing is wrong today. Examples: a missing test on a risky path, an accessibility failure on a user-facing screen, a design flaw likely to cause bugs.
+- **Minor and below:** everything else.
+
+`sdlc-test-reviewer` and `sdlc-style-reviewer` findings are capped at Medium. The exception is a finding that shows something actually broken: a failing test or a reproduced bug.
+
+Here: a failing test, a lint error, a failed smoke test or a reproduced bug shows something actually broken, so it is **High** or above. A chaos input handled badly but harmlessly is **Medium**.
+
 **PASS / FAIL** banner at the top. Then: Test Results → Linter → API Tests → UI Tests → Regression → Chaos. Be specific about what passed and what failed. Any failure blocks the change from merging.

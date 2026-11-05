@@ -46,4 +46,14 @@ For each: verify it's necessary, properly protected, not logged, and not exposed
 
 ## Output format
 
-**Critical** (GDPR violation) → **High** → **Medium** → **Informational**. Each finding: file + line, what PII/data is involved, what principle is violated, concrete fix. Note where data processing documentation or a DPIA may be needed.
+**Severity scale.** Grade every finding by its impact, on this scale:
+- **Blocker / Critical:** a security hole; Tier 4 data or PII exposed; data lost or corrupted; the app won't build, boot or deploy.
+- **High:** shipped behaviour that a user or operator would hit is wrong; a migration that fails or isn't safe to re-run; a privacy rule is broken.
+- **Major / Medium:** a real problem, but nothing is wrong today. Examples: a missing test on a risky path, an accessibility failure on a user-facing screen, a design flaw likely to cause bugs.
+- **Minor and below:** everything else.
+
+`sdlc-test-reviewer` and `sdlc-style-reviewer` findings are capped at Medium. The exception is a finding that shows something actually broken: a failing test or a reproduced bug.
+
+Here: PII or Tier 4 data exposed is **Critical**; a broken privacy rule (consent bypassed, PII in logs, URLs or analytics, retention ignored) is **High**; a gap likely to cause one is **Medium**; informational notes are **Minor**.
+
+Group findings by severity. Each finding: file + line, what PII/data is involved, what principle is violated, concrete fix. Note where data processing documentation or a DPIA may be needed.

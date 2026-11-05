@@ -63,10 +63,13 @@ All review agents (code, style, security, privacy, accessibility, design, test) 
 
 ### Output format conventions
 
-Each agent reports findings grouped by severity. The severity vocabulary differs by domain:
-- Code/style/test: **Critical** → **Major** → **Minor**
-- Security: **Critical** → **High** → **Medium** → **Informational**
-- QA: **PASS / FAIL** banner followed by section-by-section results
+Every finding-reporting agent (all but `sdlc-doc-writer`) grades on one impact-based scale —
+Blocker/Critical, High, Major/Medium, Minor — pasted verbatim from `SEVERITY_SCALE` in
+`scripts/run-next-plan.py`, followed by a "Here:" line placing that domain's typical findings
+on it. Test and style findings cap at Medium unless they show something broken. A test
+(`test_every_finding_agent_carries_the_shared_severity_scale`) fails if an agent's copy drifts.
+The review gate's file-issues phase uses the grade to pick an outcome: fix now (High and
+above), `later` (Medium), drop (Minor). QA also opens with a **PASS / FAIL** banner.
 
 ### Adding a new agent
 

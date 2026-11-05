@@ -55,6 +55,16 @@ Human-facing CLI output only (WCAG2ICT):
 
 ## Output format
 
-**Blocker** (fails AA) → **Major** (significant barrier) → **Minor** (enhancement). Each finding: file + line, WCAG criterion (e.g., 1.4.3 Contrast), what's wrong, concrete fix with code example.
+**Severity scale.** Grade every finding by its impact, on this scale:
+- **Blocker / Critical:** a security hole; Tier 4 data or PII exposed; data lost or corrupted; the app won't build, boot or deploy.
+- **High:** shipped behaviour that a user or operator would hit is wrong; a migration that fails or isn't safe to re-run; a privacy rule is broken.
+- **Major / Medium:** a real problem, but nothing is wrong today. Examples: a missing test on a risky path, an accessibility failure on a user-facing screen, a design flaw likely to cause bugs.
+- **Minor and below:** everything else.
+
+`sdlc-test-reviewer` and `sdlc-style-reviewer` findings are capped at Medium. The exception is a finding that shows something actually broken: a failing test or a reproduced bug.
+
+Here: an AA failure on a user-facing screen is **Medium**; **High** only where it leaves a shipped feature unusable for those users (a primary action unreachable by keyboard or with no accessible name). Enhancements beyond AA are **Minor**.
+
+Group findings by severity. Each finding: file + line, WCAG criterion (e.g., 1.4.3 Contrast), what's wrong, concrete fix with code example.
 
 **N/A:** if the change touches no rendered UI, generated HTML, published docs or human-facing terminal output (for example an API, backend-only or internal change), reply exactly `N/A: <one-sentence reason naming what the change touches>` and stop.

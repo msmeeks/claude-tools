@@ -146,9 +146,10 @@ Print a warning table and ask for explicit confirmation before proceeding:
   reason. Confirming merges an iteration nobody saw running deployed.
 - **Deferred review issues** — each still-open `prd.json.sdlc_deferred_issues` entry (check with
   `gh issue view <N> --json state`). Print one per line as `#N — deferred by round cap` (filed
-  on the final review round), `#N — needs a human` (labelled `ready-for-human`, `needs-info`
-  or unlabeled, so no agent picked it up) or `#N — minor rollup` (the rollup issue). They stay
-  open after merge and carry through to the Step 10 `Issues left open:` line.
+  on the final review round), `#N — later` (labelled `later`: valid, deliberately not planned)
+  or `#N — needs a human` (labelled `ready-for-human`, `needs-info` or unlabeled, so no agent
+  picked it up; an older iteration's minor-findings rollup issue prints this way too). They
+  stay open after merge and carry through to the Step 10 `Issues left open:` line.
 - **Human-held finding issues** — each still-open `prd.json.sdlc_finding_issues` entry not
   labelled `ready-for-agent`. Step 7 leaves it out of the Closes set; print it as
   `#N — needs a human` alongside the deferred issues.
@@ -291,8 +292,8 @@ commit(s) that addressed them didn't happen to use a closing keyword.
 
 **Agent-fixable findings only.** Before adding an open `sdlc_finding_issues` entry, read its
 labels (`gh issue view <N> --json labels`) and keep it only if it carries `ready-for-agent`.
-Drop anything labelled `ready-for-human` or `needs-info`, or with no state label: triage
-planned none of them, and a PR can't do a person's work, so closing them on merge would mark
+Drop anything labelled `ready-for-human`, `needs-info` or `later`, or with no state label:
+triage planned none of them, and a PR can't do a person's work, so closing them on merge would mark
 human work done. Older iterations recorded these in `sdlc_finding_issues` rather than
 `sdlc_deferred_issues`; this check covers them. Each dropped issue is a Step 3 warning and goes
 on the Step 10 `Issues left open:` line.
@@ -402,8 +403,8 @@ PR:                  #<N> <title> (<url>)
 Plans:               <done> done, <stalled> stalled, <total> total
 Issues closed:       #N, #M, ...
 Issues left open:    #N, #M (stalled plans — no work done)
-                     #N — deferred by round cap / #N — minor rollup (one per line; never "none"
-                     while any is open)
+                     #N — deferred by round cap / #N — later / #N — needs a human (one per
+                     line; never "none" while any is open)
                      #N — spec child, still open after merge (Step 9a)
 Spec issues closed:  #N, ...
 Spec issues skipped: #N (reason: <gap>)

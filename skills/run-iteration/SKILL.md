@@ -92,7 +92,8 @@ then check what the gate doesn't:
    `git diff origin/<default>...HEAD`. For each `stalled` plan, note what is missing.
 4. **Smoke test** — run `smoke_test` if set.
 5. **Human-labelled findings** — `sdlc_finding_issues` and `sdlc_deferred_issues` still open
-   with `ready-for-human` or `needs-info`: note each for the report.
+   with `ready-for-human`, `needs-info` or `later`: note each for the report. Leave `later`
+   ones alone — they are deliberately deferred, not work for this pass.
 
 Fix what is small and local yourself, test-first, committed with the issue reference as in
 Step 2. Anything bigger: file it per the "Filing issues" rules and list it for the report.

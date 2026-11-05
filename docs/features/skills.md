@@ -175,7 +175,13 @@ It never triages. `/triage` is user-invoked (`disable-model-invocation`), so no 
 headless session can call it. Issues are labeled by whoever files them (the "Filing issues"
 rule in `global/CLAUDE.md`); any open issue with no state label (or `needs-triage`) is listed
 back to the user with the `/triage #N …` command to run, and the skill stops unless the user
-chooses to plan only what is already `ready-for-agent`.
+chooses to plan only what is already `ready-for-agent`. `later` issues are excluded as
+deferred, not listed as untriaged.
+
+If every pool issue carries `sdlc-finding`, it says so and asks whether to plan a fixes-only
+iteration or stop (the default, and what a headless run does). An iteration of nothing but
+review findings tends to feed the next round's review more findings; one non-finding issue in
+the pool is enough to plan normally.
 
 When `prd.json` already exists (re-running against a partially-worked iteration), it merges
 rather than overwrites: an existing `plans[]` entry for the same `file` keeps its `status`
