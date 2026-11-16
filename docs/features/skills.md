@@ -102,8 +102,9 @@ Scoring algorithm weights: epic completed/nevered (+100), zero customer impact (
 The bookend to `/plan-iteration`. Verifies hard blockers (all plans terminal, SDLC review
 complete, findings addressed, no merge conflicts, smoke test passes, per-PR dev environment
 works), surfaces soft
-warnings for confirmation, checks spec issue coverage, then promotes and merges the
-integration PR, closes linked issues, and deletes branches/worktrees. Step 9e then runs
+warnings for confirmation, checks spec issue coverage, then promotes the integration PR,
+checks its CI status on the head commit (Step 8a: always checked, even where GitHub doesn't
+enforce it; which checks must pass is judged from the repo's own docs), merges it, closes linked issues, and deletes branches/worktrees. Step 9e then runs
 `scripts/clean-iteration-artifacts.py` to remove the gitignored runtime artifacts (logs, lock,
 findings file, PR summary), skipping and reporting any it can't safely delete.
 

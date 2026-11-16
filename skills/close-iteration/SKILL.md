@@ -320,6 +320,39 @@ gh pr ready <pr-number>
 
 ## Step 8 — Merge
 
+### 8a — CI status on the head commit
+
+Always check, right before merging, even when GitHub doesn't require it. Some repos have no
+branch protection, or a ruleset with no required-status-checks rule, so GitHub merges a PR
+whose checks are failing or still running. Step 7 can also start new runs (body edit, ready
+for review).
+
+```bash
+gh pr checks <pr-number>
+```
+
+Don't add `--required`: in a repo that marks no check required it lists nothing and looks
+clean.
+
+Which checks must pass is your judgment, from the repo's own guidelines: its `CLAUDE.md`, its
+context index and the docs it points at (a required-checks or CI feature doc, say), and its
+rulesets (`gh api repos/<owner>/<repo>/rules/branches/<default_branch>`). A check the repo
+treats as required counts as required whether or not GitHub enforces it.
+
+- **Pending** → wait for it as a background task (`gh pr checks <pr-number> --watch`), then
+  check again. Never merge on pending.
+- **A required check failed** → hard blocker. Print the failing checks and their run links; fix
+  on the integration branch and re-run.
+- **Only checks the repo's docs call optional or informational failed** → a Step 3-style
+  warning: list them and get the user's confirmation before merging.
+- **No checks at all** → warn and confirm with the user; the repo may have no CI, or it never
+  started.
+
+Never use auto-merge (`gh pr merge --auto`) in place of this check. Record the result for the
+Step 10 report.
+
+### 8b — Merge
+
 ```bash
 gh pr merge <pr-number> --merge --delete-branch
 ```
@@ -399,6 +432,7 @@ the claude-tools checkout first.
 
 Branch merged:       <integration_branch> → <default_branch>
 PR:                  #<N> <title> (<url>)
+CI at merge:         <passed: a, b, c> / <failed, user confirmed: x> / <no checks, user confirmed>
 
 Plans:               <done> done, <stalled> stalled, <total> total
 Issues closed:       #N, #M, ...
